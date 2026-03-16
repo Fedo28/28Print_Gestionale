@@ -1,4 +1,4 @@
-# Fede Kart
+nom# Fede Kart
 
 Gestionale ordini desktop-first per negozio di stampa digitale.
 
