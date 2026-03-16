@@ -1,0 +1,21 @@
+import { NextRequest, NextResponse } from "next/server";
+import { readSession } from "@/lib/auth-core";
+import { markOrderReady } from "@/lib/orders";
+
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  if (!readSession(request.cookies.get("fede_session")?.value)) {
+    return NextResponse.json({ error: "Sessione non valida." }, { status: 401 });
+  }
+
+  try {
+    const result = await markOrderReady(params.id);
+    return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Errore inatteso."
+      },
+      { status: 400 }
+    );
+  }
+}

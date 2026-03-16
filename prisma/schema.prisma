@@ -1,0 +1,199 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+}
+
+enum MainPhase {
+  ACCETTATO
+  CALENDARIZZATO
+  IN_LAVORAZIONE
+  SVILUPPO_COMPLETATO
+  CONSEGNATO
+}
+
+enum OperationalStatus {
+  ATTIVO
+  IN_ATTESA_FILE
+  IN_ATTESA_APPROVAZIONE
+}
+
+enum PaymentStatus {
+  NON_PAGATO
+  ACCONTO
+  PARZIALE
+  PAGATO
+}
+
+enum InvoiceStatus {
+  DA_FATTURARE
+  FATTURATO
+  NON_RICHIESTO
+}
+
+enum Priority {
+  BASSA
+  MEDIA
+  ALTA
+  URGENTE
+}
+
+enum PaymentMethod {
+  CONTANTI
+  CARTA
+  BONIFICO
+  ALTRO
+}
+
+enum HistoryType {
+  CREATED
+  UPDATED
+  PHASE_CHANGED
+  STATUS_CHANGED
+  PAYMENT_RECORDED
+  ATTACHMENT_UPLOADED
+  NOTE
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(OPERATOR)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Customer {
+  id         String   @id @default(uuid())
+  name       String
+  phone      String
+  whatsapp   String?
+  email      String?
+  taxCode    String?
+  vatNumber  String?
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  orders     Order[]
+
+  @@index([name])
+  @@index([phone])
+}
+
+model Order {
+  id                  String            @id @default(uuid())
+  customerId          String
+  orderCode           String            @unique
+  title               String
+  titleNormalized     String
+  createdOn           String
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  deliveryAt          DateTime
+  priority            Priority          @default(MEDIA)
+  mainPhase           MainPhase         @default(ACCETTATO)
+  operationalStatus   OperationalStatus @default(ATTIVO)
+  paymentStatus       PaymentStatus     @default(NON_PAGATO)
+  invoiceStatus       InvoiceStatus     @default(DA_FATTURARE)
+  totalCents          Int               @default(0)
+  depositCents        Int               @default(0)
+  paidCents           Int               @default(0)
+  balanceDueCents     Int               @default(0)
+  notes               String?
+  customer            Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  items               OrderItem[]
+  attachments         Attachment[]
+  payments            Payment[]
+  history             OrderHistory[]
+
+  @@unique([createdOn, titleNormalized])
+  @@index([deliveryAt])
+  @@index([mainPhase, operationalStatus])
+  @@index([paymentStatus])
+}
+
+model OrderItem {
+  id               String          @id @default(uuid())
+  orderId          String
+  serviceCatalogId String?
+  label            String
+  description      String?
+  quantity         Int             @default(1)
+  unitPriceCents   Int             @default(0)
+  lineTotalCents   Int             @default(0)
+  format           String?
+  material         String?
+  finishing        String?
+  notes            String?
+  createdAt        DateTime        @default(now())
+  order            Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  serviceCatalog   ServiceCatalog? @relation(fields: [serviceCatalogId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+}
+
+model ServiceCatalog {
+  id             String      @id @default(uuid())
+  name           String      @unique
+  description    String?
+  basePriceCents Int         @default(0)
+  active         Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  items          OrderItem[]
+}
+
+model Attachment {
+  id        String   @id @default(uuid())
+  orderId   String
+  fileName  String
+  filePath  String
+  mimeType  String?
+  sizeBytes Int      @default(0)
+  createdAt DateTime @default(now())
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+model Payment {
+  id         String        @id @default(uuid())
+  orderId    String
+  amountCents Int
+  method     PaymentMethod
+  note       String?
+  createdAt  DateTime      @default(now())
+  order      Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+}
+
+model OrderHistory {
+  id          String      @id @default(uuid())
+  orderId     String
+  type        HistoryType
+  description String
+  details     String?
+  createdAt   DateTime    @default(now())
+  order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+}
+
+model AppSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
