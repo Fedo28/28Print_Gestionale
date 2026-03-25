@@ -1,8 +1,8 @@
-import { createServiceAction, saveWhatsappTemplateAction, updateServiceAction } from "@/app/actions";
+import { createServiceAction, saveWhatsappTemplateAction } from "@/app/actions";
 import { CatalogImportForm } from "@/components/catalog-import-form";
+import { CatalogServiceSearch } from "@/components/catalog-service-search";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
-import { formatCurrency } from "@/lib/format";
 import { getServiceCatalogAdmin } from "@/lib/orders";
 import { getWhatsappTemplate } from "@/lib/settings";
 
@@ -45,6 +45,11 @@ export default async function SettingsPage() {
                 <label htmlFor="description">Descrizione</label>
                 <textarea id="description" name="description" />
               </div>
+              <div className="field full">
+                <label htmlFor="quantityTiers">Scaglioni quantita</label>
+                <input id="quantityTiers" name="quantityTiers" placeholder="1-9:0,50 | 10-49:0,30 | 50+:0,20" />
+                <p className="hint">Facoltativo. Se la quantita rientra in uno scaglione, il prezzo unitario viene preso da qui invece che dal listino base.</p>
+              </div>
               <div className="button-row settings-form-actions">
                 <button className="primary" type="submit">
                   Salva servizio
@@ -54,56 +59,7 @@ export default async function SettingsPage() {
 
             <CatalogImportForm />
 
-            <div className="stack settings-existing-services">
-              <div className="list-header">
-                <div>
-                  <h4>Servizi presenti</h4>
-                  <p className="card-muted">Puoi aggiornare codice, nome, prezzo base, descrizione e stato senza toccare gli ordini gia creati.</p>
-                </div>
-              </div>
-              <div className="mini-list">
-                {services.map((service) => (
-                  <article className={`mini-item service-admin-item${service.active ? "" : " service-admin-item-muted"}`} key={service.id}>
-                    <form action={updateServiceAction} className="form-grid">
-                      <input name="id" type="hidden" value={service.id} />
-                      <div className="field service-admin-code">
-                        <label htmlFor={`service-code-${service.id}`}>Codice</label>
-                        <input defaultValue={service.code || ""} id={`service-code-${service.id}`} name="code" required />
-                      </div>
-                      <div className="field wide service-admin-name">
-                        <label htmlFor={`service-name-${service.id}`}>Nome</label>
-                        <input defaultValue={service.name} id={`service-name-${service.id}`} name="name" required />
-                      </div>
-                      <div className="field service-admin-price">
-                        <label htmlFor={`service-price-${service.id}`}>Prezzo base</label>
-                        <input
-                          defaultValue={(service.basePriceCents / 100).toFixed(2).replace(".", ",")}
-                          id={`service-price-${service.id}`}
-                          name="basePrice"
-                          required
-                        />
-                      </div>
-                      <div className="field full service-admin-description">
-                        <label htmlFor={`service-description-${service.id}`}>Descrizione</label>
-                        <textarea defaultValue={service.description || ""} id={`service-description-${service.id}`} name="description" />
-                      </div>
-                      <div className="field service-admin-toggle">
-                        <label className="toggle-field" htmlFor={`service-active-${service.id}`}>
-                          <input defaultChecked={service.active} id={`service-active-${service.id}`} name="active" type="checkbox" />
-                          <span>{service.active ? "Attivo" : "Disattivato"}</span>
-                        </label>
-                      </div>
-                      <div className="button-row service-admin-actions">
-                        <span className="subtle">{formatCurrency(service.basePriceCents)}</span>
-                        <button className="secondary" type="submit">
-                          Salva servizio
-                        </button>
-                      </div>
-                    </form>
-                  </article>
-                ))}
-              </div>
-            </div>
+            <CatalogServiceSearch services={services} />
           </div>
         </section>
 

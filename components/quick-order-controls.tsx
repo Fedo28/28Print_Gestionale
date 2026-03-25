@@ -15,6 +15,7 @@ export type QuickOrderControlProps = {
   phase: MainPhase;
   status: OperationalStatus;
   hasWhatsapp?: boolean;
+  showWhatsapp?: boolean;
   isQuote?: boolean;
   includeQuote?: boolean;
   align?: "start" | "end";
@@ -52,6 +53,7 @@ export function QuickOrderControlForms({
   phase,
   status,
   hasWhatsapp = false,
+  showWhatsapp = true,
   isQuote = false,
   includeQuote = false
 }: Omit<QuickOrderControlProps, "align">) {
@@ -123,7 +125,7 @@ export function QuickOrderControlForms({
         </form>
       ) : null}
 
-      {phase === "SVILUPPO_COMPLETATO" ? (
+      {showWhatsapp && phase === "SVILUPPO_COMPLETATO" ? (
         <div className="quick-order-actions">
           <ReadyWhatsAppButton hasPhone={hasWhatsapp} orderId={orderId} />
         </div>
@@ -137,6 +139,7 @@ export function QuickOrderControls({
   phase,
   status,
   hasWhatsapp = false,
+  showWhatsapp = true,
   isQuote = false,
   includeQuote = false,
   align = "start"
@@ -181,6 +184,7 @@ export function QuickOrderControls({
             isQuote={isQuote}
             orderId={orderId}
             phase={phase}
+            showWhatsapp={showWhatsapp}
             status={status}
           />
         </div>

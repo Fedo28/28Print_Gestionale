@@ -4,6 +4,7 @@ import type { MainPhase, OperationalStatus, PaymentStatus, Priority } from "@pri
 import Link from "next/link";
 import { Fragment, useState } from "react";
 import { QuickOrderControlForms, QuickOrderTriggerButton } from "@/components/quick-order-controls";
+import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
 import { StatusPills } from "@/components/status-pills";
 import { priorityLabels } from "@/lib/constants";
 import { formatCurrency, formatDateTime } from "@/lib/format";
@@ -40,12 +41,13 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
           <th>Priorita</th>
           <th>Stato</th>
           <th>Importi</th>
+          <th>WhatsApp</th>
         </tr>
       </thead>
       <tbody>
         {orders.length === 0 ? (
           <tr>
-            <td colSpan={6}>
+            <td colSpan={7}>
               <div className="empty">Nessun ordine trovato.</div>
             </td>
           </tr>
@@ -91,10 +93,18 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                     <div className="strong">{formatCurrency(order.totalCents)}</div>
                     <div className="subtle">Residuo {formatCurrency(order.balanceDueCents)}</div>
                   </td>
+                  <td className="orders-table-whatsapp-cell">
+                    <ReadyWhatsAppButton
+                      compact
+                      disabled={order.mainPhase !== "SVILUPPO_COMPLETATO"}
+                      hasPhone={order.hasWhatsapp}
+                      orderId={order.id}
+                    />
+                  </td>
                 </tr>
                 {isOpen ? (
                   <tr className="order-row-details">
-                    <td colSpan={6}>
+                    <td colSpan={7}>
                       <div className="order-row-panel" id={panelId}>
                         <QuickOrderControlForms
                           hasWhatsapp={order.hasWhatsapp}
@@ -102,6 +112,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                           isQuote={order.isQuote}
                           orderId={order.id}
                           phase={order.mainPhase}
+                          showWhatsapp={false}
                           status={order.operationalStatus}
                         />
                       </div>

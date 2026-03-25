@@ -222,7 +222,8 @@ export async function createServiceAction(formData: FormData) {
     String(formData.get("code") || ""),
     String(formData.get("name") || ""),
     String(formData.get("description") || "") || undefined,
-    parseCurrencyToCents(formData.get("basePrice")?.toString() || null)
+    parseCurrencyToCents(formData.get("basePrice")?.toString() || null),
+    String(formData.get("quantityTiers") || "")
   );
 
   revalidatePath("/settings");
@@ -237,6 +238,7 @@ export async function updateServiceAction(formData: FormData) {
     name: String(formData.get("name") || ""),
     description: String(formData.get("description") || "") || undefined,
     basePriceCents: parseCurrencyToCents(formData.get("basePrice")?.toString() || null),
+    quantityTiers: String(formData.get("quantityTiers") || ""),
     active: parseBooleanFlag(formData.get("active"))
   });
 

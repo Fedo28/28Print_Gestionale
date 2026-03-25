@@ -4,20 +4,30 @@ import { useState, useTransition } from "react";
 
 export function ReadyWhatsAppButton({
   orderId,
-  hasPhone
+  hasPhone,
+  disabled = false,
+  compact = false
 }: {
   orderId: string;
   hasPhone: boolean;
+  disabled?: boolean;
+  compact?: boolean;
 }) {
   const [message, setMessage] = useState("");
   const [isPending, startTransition] = useTransition();
+  const isDisabled = disabled || !hasPhone || isPending;
+  const title = disabled
+    ? "Disponibile solo quando l'ordine e pronto."
+    : !hasPhone
+      ? "Manca un numero cliente valido."
+      : "Invia messaggio WhatsApp";
 
   return (
-    <div className="ready-whatsapp-control">
+    <div className={`ready-whatsapp-control${compact ? " compact" : ""}`}>
       <button
         aria-label="Apri messaggio WhatsApp"
         className="button ghost ready-whatsapp-button"
-        disabled={!hasPhone || isPending}
+        disabled={isDisabled}
         onClick={() => {
           startTransition(() => {
             void (async () => {
@@ -38,7 +48,7 @@ export function ReadyWhatsAppButton({
             })();
           });
         }}
-        title="Invia messaggio WhatsApp"
+        title={title}
         type="button"
       >
         <svg aria-hidden="true" className="glyph" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
@@ -46,8 +56,8 @@ export function ReadyWhatsAppButton({
           <path d="m6 8l6 5l6-5" />
         </svg>
       </button>
-      {message ? <p className="hint">{message}</p> : null}
-      {!hasPhone ? <p className="hint">Manca un numero cliente valido: aggiorna telefono o WhatsApp.</p> : null}
+      {!compact && message ? <p className="hint">{message}</p> : null}
+      {!compact && !disabled && !hasPhone ? <p className="hint">Manca un numero cliente valido: aggiorna telefono o WhatsApp.</p> : null}
     </div>
   );
 }

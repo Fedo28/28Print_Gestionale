@@ -10,9 +10,9 @@ import {
   Prisma,
   Priority
 } from "@prisma/client";
-import { mainPhaseLabels, operationalStatusLabels, phaseOrder } from "@/lib/constants";
+import { APP_TIMEZONE, mainPhaseLabels, operationalStatusLabels, phaseOrder } from "@/lib/constants";
 import { formatDateKey } from "@/lib/format";
-import { clampDiscountValue, computeDiscountedUnitPrice } from "@/lib/pricing";
+import { clampDiscountValue, computeDiscountedUnitPrice, normalizeQuantityTiers } from "@/lib/pricing";
 import type {
   InvoiceFilter,
   PaymentFilter,
@@ -118,11 +118,60 @@ type MonthlyAgendaSnapshot = {
   appointmentAt: Date | string | null;
 };
 
+type SalesStatsLineSnapshot = {
+  label: string;
+  quantity: number;
+  lineTotalCents: number;
+  serviceCatalogId?: string | null;
+  serviceCatalog?: {
+    code: string | null;
+    name: string;
+  } | null;
+};
+
+type SalesStatsOrderSnapshot = {
+  id: string;
+  isQuote: boolean;
+  createdAt: Date | string;
+  totalCents: number;
+  items: SalesStatsLineSnapshot[];
+};
+
+export type SalesStatsTrend = "up" | "down" | "flat" | "new";
+
+export type SalesStatsTopItem = {
+  key: string;
+  label: string;
+  catalogCode?: string;
+  quantity: number;
+  revenueCents: number;
+  orderCount: number;
+};
+
+export type SalesStatsMonth = {
+  monthKey: string;
+  label: string;
+  revenueCents: number;
+  ordersCount: number;
+  quantity: number;
+  deltaRevenueCents: number;
+  deltaRevenuePct: number | null;
+  trend: SalesStatsTrend;
+};
+
+export type SalesStatsReport = {
+  summaryCurrentMonth: SalesStatsMonth;
+  monthlyTrend: SalesStatsMonth[];
+  topByRevenue: SalesStatsTopItem[];
+  topByQuantity: SalesStatsTopItem[];
+};
+
 type ServiceCatalogImportRow = {
   code: string;
   name: string;
   description?: string;
   basePriceCents: number;
+  quantityTiers?: string;
   active: boolean;
 };
 
@@ -182,6 +231,227 @@ export function classifyProductionQueues<T extends ProductionQueueSnapshot>(orde
 
 export function getMonthlyAgendaOrders<T extends MonthlyAgendaSnapshot>(orders: T[]) {
   return orders.filter((order) => !order.isQuote && order.mainPhase !== "CONSEGNATO" && Boolean(order.appointmentAt));
+}
+
+function getYearMonthInTimezone(date: Date | string) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    timeZone: APP_TIMEZONE
+  });
+  const parts = formatter.formatToParts(typeof date === "string" ? new Date(date) : date);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+
+  if (!year || !month) {
+    throw new Error("Impossibile determinare il mese statistico.");
+  }
+
+  return { year: Number(year), month: Number(month) };
+}
+
+function buildMonthKey(date: Date | string) {
+  const { year, month } = getYearMonthInTimezone(date);
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+function formatMonthLabel(monthKey: string) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const value = new Date(Date.UTC(year, month - 1, 1, 12, 0, 0));
+
+  return new Intl.DateTimeFormat("it-IT", {
+    month: "long",
+    year: "numeric",
+    timeZone: APP_TIMEZONE
+  }).format(value);
+}
+
+function buildRollingMonthKeys(referenceDate: Date, months: number) {
+  const { year, month } = getYearMonthInTimezone(referenceDate);
+  const currentIndex = year * 12 + (month - 1);
+
+  return Array.from({ length: months }, (_, offset) => {
+    const absoluteIndex = currentIndex - (months - 1 - offset);
+    const bucketYear = Math.floor(absoluteIndex / 12);
+    const bucketMonth = (absoluteIndex % 12) + 1;
+    const monthKey = `${bucketYear}-${String(bucketMonth).padStart(2, "0")}`;
+
+    return {
+      monthKey,
+      label: formatMonthLabel(monthKey)
+    };
+  });
+}
+
+function computeRevenueTrend(currentRevenueCents: number, previousRevenueCents: number) {
+  const deltaRevenueCents = currentRevenueCents - previousRevenueCents;
+
+  if (previousRevenueCents === 0 && currentRevenueCents > 0) {
+    return {
+      deltaRevenueCents,
+      deltaRevenuePct: null,
+      trend: "new" as const
+    };
+  }
+
+  if (previousRevenueCents === 0 && currentRevenueCents === 0) {
+    return {
+      deltaRevenueCents: 0,
+      deltaRevenuePct: null,
+      trend: "flat" as const
+    };
+  }
+
+  if (deltaRevenueCents === 0) {
+    return {
+      deltaRevenueCents: 0,
+      deltaRevenuePct: 0,
+      trend: "flat" as const
+    };
+  }
+
+  return {
+    deltaRevenueCents,
+    deltaRevenuePct: Math.round((deltaRevenueCents / previousRevenueCents) * 1000) / 10,
+    trend: deltaRevenueCents > 0 ? ("up" as const) : ("down" as const)
+  };
+}
+
+function getSalesAggregationKey(item: SalesStatsLineSnapshot) {
+  if (item.serviceCatalogId && item.serviceCatalog?.name) {
+    return {
+      key: `catalog:${item.serviceCatalog.code || item.serviceCatalogId}`,
+      label: item.serviceCatalog.name,
+      catalogCode: item.serviceCatalog.code || undefined
+    };
+  }
+
+  const normalizedLabel = normalizeOrderTitle(item.label || "Lavorazione libera") || "Lavorazione libera";
+  return {
+    key: `free:${normalizeForUniqueness(normalizedLabel)}`,
+    label: normalizedLabel
+  };
+}
+
+export function buildSalesStatsReport<T extends SalesStatsOrderSnapshot>(
+  orders: T[],
+  options?: { months?: number; referenceDate?: Date }
+): SalesStatsReport {
+  const months = Math.max(1, options?.months || 12);
+  const referenceDate = options?.referenceDate || new Date();
+  const monthSequence = buildRollingMonthKeys(referenceDate, months);
+  const monthKeySet = new Set(monthSequence.map((entry) => entry.monthKey));
+
+  const monthlyBuckets = new Map(
+    monthSequence.map((entry) => [
+      entry.monthKey,
+      {
+        monthKey: entry.monthKey,
+        label: entry.label,
+        revenueCents: 0,
+        ordersCount: 0,
+        quantity: 0
+      }
+    ])
+  );
+
+  const topMap = new Map<
+    string,
+    SalesStatsTopItem & {
+      orderIds: Set<string>;
+    }
+  >();
+
+  for (const order of orders) {
+    if (order.isQuote) {
+      continue;
+    }
+
+    const monthKey = buildMonthKey(order.createdAt);
+    if (!monthKeySet.has(monthKey)) {
+      continue;
+    }
+
+    const bucket = monthlyBuckets.get(monthKey);
+    if (!bucket) {
+      continue;
+    }
+
+    bucket.revenueCents += Math.max(0, order.totalCents);
+    bucket.ordersCount += 1;
+    bucket.quantity += order.items.reduce((sum, item) => sum + Math.max(0, item.quantity || 0), 0);
+
+    for (const item of order.items) {
+      const { key, label, catalogCode } = getSalesAggregationKey(item);
+      const current = topMap.get(key) || {
+        key,
+        label,
+        catalogCode,
+        quantity: 0,
+        revenueCents: 0,
+        orderCount: 0,
+        orderIds: new Set<string>()
+      };
+
+      current.quantity += Math.max(0, item.quantity || 0);
+      current.revenueCents += Math.max(0, item.lineTotalCents || 0);
+      current.orderIds.add(order.id);
+      topMap.set(key, current);
+    }
+  }
+
+  const monthlyTrend = monthSequence.map((entry, index) => {
+    const current = monthlyBuckets.get(entry.monthKey) || {
+      monthKey: entry.monthKey,
+      label: entry.label,
+      revenueCents: 0,
+      ordersCount: 0,
+      quantity: 0
+    };
+    const previous = index > 0 ? monthlyBuckets.get(monthSequence[index - 1].monthKey) : undefined;
+    const trend = computeRevenueTrend(current.revenueCents, previous?.revenueCents || 0);
+
+    return {
+      ...current,
+      ...trend
+    };
+  });
+
+  const topItems = [...topMap.values()].map(({ orderIds, ...entry }) => ({
+    ...entry,
+    orderCount: orderIds.size
+  }));
+
+  const topByRevenue = [...topItems].sort((left, right) => {
+    if (right.revenueCents !== left.revenueCents) {
+      return right.revenueCents - left.revenueCents;
+    }
+
+    if (right.quantity !== left.quantity) {
+      return right.quantity - left.quantity;
+    }
+
+    return left.label.localeCompare(right.label, "it-IT");
+  });
+
+  const topByQuantity = [...topItems].sort((left, right) => {
+    if (right.quantity !== left.quantity) {
+      return right.quantity - left.quantity;
+    }
+
+    if (right.revenueCents !== left.revenueCents) {
+      return right.revenueCents - left.revenueCents;
+    }
+
+    return left.label.localeCompare(right.label, "it-IT");
+  });
+
+  return {
+    summaryCurrentMonth: monthlyTrend[monthlyTrend.length - 1],
+    monthlyTrend,
+    topByRevenue,
+    topByQuantity
+  };
 }
 
 export function normalizeOrderTitle(title: string) {
@@ -909,7 +1179,13 @@ async function ensureServiceCodes() {
   }
 }
 
-export async function createService(code: string, name: string, description: string | undefined, basePriceCents: number) {
+export async function createService(
+  code: string,
+  name: string,
+  description: string | undefined,
+  basePriceCents: number,
+  quantityTiers?: string
+) {
   const cleanName = name.trim();
   if (!cleanName) {
     throw new Error("Il nome servizio e obbligatorio.");
@@ -929,7 +1205,8 @@ export async function createService(code: string, name: string, description: str
       code: normalizedCode,
       name: cleanName,
       description: description?.trim() || undefined,
-      basePriceCents: Math.max(0, basePriceCents)
+      basePriceCents: Math.max(0, basePriceCents),
+      quantityTiers: normalizeQuantityTiers(quantityTiers)
     }
   });
 }
@@ -940,6 +1217,7 @@ export async function updateServiceCatalogEntry(input: {
   name: string;
   description?: string;
   basePriceCents: number;
+  quantityTiers?: string;
   active: boolean;
 }) {
   const cleanName = input.name.trim();
@@ -966,6 +1244,7 @@ export async function updateServiceCatalogEntry(input: {
       name: cleanName,
       description: input.description?.trim() || undefined,
       basePriceCents: Math.max(0, input.basePriceCents),
+      quantityTiers: normalizeQuantityTiers(input.quantityTiers),
       active: input.active
     }
   });
@@ -988,6 +1267,7 @@ export async function syncServiceCatalogEntries(rows: ServiceCatalogImportRow[])
             name: row.name,
             description: row.description,
             basePriceCents: row.basePriceCents,
+            quantityTiers: normalizeQuantityTiers(row.quantityTiers),
             active: row.active
           }
         });
@@ -1001,6 +1281,7 @@ export async function syncServiceCatalogEntries(rows: ServiceCatalogImportRow[])
           name: row.name,
           description: row.description,
           basePriceCents: row.basePriceCents,
+          quantityTiers: normalizeQuantityTiers(row.quantityTiers),
           active: row.active
         }
       });
@@ -1070,6 +1351,35 @@ export async function getDashboardData() {
     readyOrders,
     balanceOrders
   };
+}
+
+export async function getSalesStats(options?: { months?: number; referenceDate?: Date }) {
+  const orders = await prisma.order.findMany({
+    where: operationalOrderWhere(),
+    select: {
+      id: true,
+      isQuote: true,
+      createdAt: true,
+      totalCents: true,
+      items: {
+        select: {
+          label: true,
+          quantity: true,
+          lineTotalCents: true,
+          serviceCatalogId: true,
+          serviceCatalog: {
+            select: {
+              code: true,
+              name: true
+            }
+          }
+        }
+      }
+    },
+    orderBy: { createdAt: "asc" }
+  });
+
+  return buildSalesStatsReport(orders, options);
 }
 
 export async function getOrdersList(filters: {

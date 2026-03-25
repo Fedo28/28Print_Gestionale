@@ -3,7 +3,12 @@
 import { Customer, ServiceCatalog } from "@prisma/client";
 import { useState } from "react";
 import { invoiceStatusLabels, priorityLabels } from "@/lib/constants";
-import { computeDiscountedUnitPrice, discountModeLabels, type DiscountModeValue } from "@/lib/pricing";
+import {
+  computeDiscountedUnitPrice,
+  discountModeLabels,
+  getTieredUnitPrice,
+  type DiscountModeValue
+} from "@/lib/pricing";
 
 type CustomerWithOrders = Customer & { orders: { id: string }[] };
 
@@ -19,6 +24,7 @@ type ItemState = {
   finishing: string;
   notes: string;
   serviceCatalogId: string;
+  priceOverridden: boolean;
 };
 
 const emptyItem = (): ItemState => ({
@@ -32,7 +38,8 @@ const emptyItem = (): ItemState => ({
   material: "",
   finishing: "",
   notes: "",
-  serviceCatalogId: ""
+  serviceCatalogId: "",
+  priceOverridden: false
 });
 
 function parseDisplayPriceToCents(value: string) {
@@ -75,6 +82,15 @@ export function OrderForm({
   const [items, setItems] = useState<ItemState[]>([emptyItem(), emptyItem()]);
   const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId);
 
+  function getCatalogPriceDisplay(service: ServiceCatalog | undefined, quantity: number) {
+    if (!service) {
+      return "";
+    }
+
+    const cents = getTieredUnitPrice(service.basePriceCents, quantity, service.quantityTiers);
+    return (cents / 100).toFixed(2).replace(".", ",");
+  }
+
   const itemsPayload = JSON.stringify(
     items
       .map((item) => {
@@ -87,6 +103,7 @@ export function OrderForm({
           ...item,
           label: item.label || service?.name || "",
           serviceCatalogId: item.serviceCatalogId || undefined,
+          priceOverridden: undefined,
           catalogBasePriceCents,
           discountValue,
           unitPriceCents
@@ -312,15 +329,16 @@ export function OrderForm({
                           current.map((entry, itemIndex) =>
                             itemIndex === index
                               ? {
-                                  ...entry,
-                                  serviceCatalogId: event.target.value,
-                                  label: service ? service.name : entry.label,
-                                  unitPrice: service ? (service.basePriceCents / 100).toFixed(2).replace(".", ",") : entry.unitPrice,
-                                  discountMode: service ? "NONE" : entry.discountMode,
-                                  discountValue: service ? "" : entry.discountValue
-                                }
-                              : entry
-                          )
+                                ...entry,
+                                serviceCatalogId: event.target.value,
+                                label: service ? service.name : entry.label,
+                                unitPrice: service ? getCatalogPriceDisplay(service, entry.quantity) : entry.unitPrice,
+                                discountMode: service ? "NONE" : entry.discountMode,
+                                discountValue: service ? "" : entry.discountValue,
+                                priceOverridden: false
+                              }
+                            : entry
+                        )
                         );
                       }}
                       value={item.serviceCatalogId}
@@ -352,15 +370,29 @@ export function OrderForm({
                     <input
                       id={`quantity-${index}`}
                       min={1}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const nextQuantity = Number.parseInt(event.target.value || "1", 10) || 1;
+
                         setItems((current) =>
-                          current.map((entry, itemIndex) =>
-                            itemIndex === index
-                              ? { ...entry, quantity: Number.parseInt(event.target.value || "1", 10) || 1 }
-                              : entry
-                          )
-                        )
-                      }
+                          current.map((entry, itemIndex) => {
+                            if (itemIndex !== index) {
+                              return entry;
+                            }
+
+                            const service = services.find((serviceEntry) => serviceEntry.id === entry.serviceCatalogId);
+
+                            if (!service || entry.priceOverridden) {
+                              return { ...entry, quantity: nextQuantity };
+                            }
+
+                            return {
+                              ...entry,
+                              quantity: nextQuantity,
+                              unitPrice: getCatalogPriceDisplay(service, nextQuantity)
+                            };
+                          })
+                        );
+                      }}
                       type="number"
                       value={item.quantity}
                     />
@@ -372,13 +404,23 @@ export function OrderForm({
                       onChange={(event) =>
                         setItems((current) =>
                           current.map((entry, itemIndex) =>
-                            itemIndex === index ? { ...entry, unitPrice: event.target.value } : entry
+                            itemIndex === index ? { ...entry, unitPrice: event.target.value, priceOverridden: true } : entry
                           )
                         )
                       }
                       placeholder="0,00"
                       value={item.unitPrice}
                     />
+                    {item.serviceCatalogId
+                      ? (() => {
+                          const service = services.find((entry) => entry.id === item.serviceCatalogId);
+                          if (!service?.quantityTiers) {
+                            return null;
+                          }
+
+                          return <p className="hint order-line-tier-hint">Scaglioni: {service.quantityTiers}</p>;
+                        })()
+                      : null}
                   </div>
                   <div className="field order-line-discount-mode">
                     <label htmlFor={`discountMode-${index}`}>Sconto</label>

@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import * as XLSX from "xlsx";
 import { readSession } from "@/lib/auth-core";
 import { normalizeServiceCode, syncServiceCatalogEntries } from "@/lib/orders";
+import { normalizeQuantityTiers } from "@/lib/pricing";
 
 function normalizeHeader(value: string) {
   return value
@@ -73,6 +74,7 @@ export async function POST(request: NextRequest) {
       name: string;
       description?: string;
       basePriceCents: number;
+      quantityTiers?: string;
       active: boolean;
     }> = [];
     const seenCodes = new Set<string>();
@@ -95,11 +97,14 @@ export async function POST(request: NextRequest) {
         }
 
         seenCodes.add(code);
-        validRows.push({
+      validRows.push({
           code,
           name,
           description: String(row.description || "").trim() || undefined,
           basePriceCents: parseBasePriceToCents(row.base_price || row.prezzo_base),
+          quantityTiers: normalizeQuantityTiers(
+            String(row.quantity_tiers || row.scaglioni_quantita || row.scaglioni || "").trim()
+          ),
           active: parseActiveValue(row.active)
         });
       } catch (error) {

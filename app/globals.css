@@ -928,6 +928,168 @@ button.success {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.stats-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.stats-main-grid {
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
+  align-items: start;
+}
+
+.stats-top-grid {
+  align-items: start;
+}
+
+.stats-metric-card {
+  min-height: 152px;
+  display: grid;
+  gap: 10px;
+  align-content: space-between;
+}
+
+.stats-metric-card strong {
+  font-size: clamp(1.8rem, 3vw, 2.35rem);
+  line-height: 1;
+}
+
+.stats-metric-brand {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.14)),
+    radial-gradient(circle at top right, rgba(127, 101, 255, 0.24), transparent 34%);
+}
+
+.stats-metric-success,
+.stats-metric-up,
+.stats-metric-new {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.14)),
+    radial-gradient(circle at top right, rgba(47, 125, 91, 0.2), transparent 34%);
+}
+
+.stats-metric-down {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.14)),
+    radial-gradient(circle at top right, rgba(166, 85, 90, 0.18), transparent 34%);
+}
+
+.stats-metric-neutral {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.14)),
+    radial-gradient(circle at top right, rgba(103, 217, 227, 0.18), transparent 34%);
+}
+
+.stats-trend-card,
+.stats-top-card {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.stats-period-meta {
+  display: grid;
+  gap: 4px;
+  text-align: right;
+}
+
+.stats-trend-list,
+.stats-top-list {
+  display: grid;
+  gap: 12px;
+}
+
+.stats-trend-item,
+.stats-top-item {
+  gap: 10px;
+}
+
+.stats-trend-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stats-trend-values {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.stats-delta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 0.84rem;
+  font-weight: 800;
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+.stats-delta-up,
+.stats-delta-new {
+  background: linear-gradient(135deg, rgba(47, 125, 91, 0.16), rgba(255, 255, 255, 0.2));
+  color: var(--success);
+}
+
+.stats-delta-down {
+  background: linear-gradient(135deg, rgba(166, 85, 90, 0.16), rgba(255, 255, 255, 0.2));
+  color: var(--danger);
+}
+
+.stats-delta-flat {
+  background: linear-gradient(135deg, rgba(103, 113, 143, 0.14), rgba(255, 255, 255, 0.2));
+  color: var(--muted);
+}
+
+.stats-top-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.stats-top-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  background: rgba(127, 101, 255, 0.14);
+  color: var(--brand-dark);
+  font-weight: 900;
+}
+
+.stats-top-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stats-top-aside {
+  display: grid;
+  gap: 4px;
+  text-align: right;
+}
+
+.stats-code-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(127, 101, 255, 0.1);
+  color: var(--brand-dark);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
 .compact-kicker {
   display: inline-flex;
   width: fit-content;
@@ -1311,6 +1473,10 @@ button.success {
   font-weight: 800;
 }
 
+.order-line-tier-hint {
+  margin-top: 2px;
+}
+
 .order-line-grid .order-line-notes {
   grid-column: 1 / -1;
 }
@@ -1500,6 +1666,58 @@ button.success {
   gap: 14px;
 }
 
+.settings-catalog-search-shell {
+  gap: 18px;
+}
+
+.settings-catalog-search-field {
+  gap: 12px;
+}
+
+.settings-catalog-search-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+
+.settings-catalog-suggestions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.settings-catalog-suggestion {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid rgba(121, 139, 178, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.52);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color 140ms ease, transform 140ms ease, background 140ms ease;
+}
+
+.settings-catalog-suggestion:hover,
+.settings-catalog-suggestion:focus-visible {
+  border-color: rgba(127, 101, 255, 0.28);
+  background: rgba(255, 255, 255, 0.74);
+  transform: translateY(-1px);
+}
+
+.settings-catalog-suggestion-name {
+  font-weight: 700;
+}
+
+.settings-catalog-suggestion-meta {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.settings-catalog-search-empty {
+  padding: 18px 20px;
+}
+
 .service-admin-item .form-grid {
   align-items: end;
 }
@@ -1544,6 +1762,12 @@ button.success {
   white-space: nowrap;
 }
 
+@media (max-width: 900px) {
+  .settings-catalog-suggestions {
+    grid-template-columns: 1fr;
+  }
+}
+
 .order-item-pricing {
   font-weight: 700;
 }
@@ -1552,6 +1776,10 @@ button.success {
   display: grid;
   gap: 6px;
   justify-items: end;
+}
+
+.ready-whatsapp-control.compact {
+  justify-items: center;
 }
 
 .ready-whatsapp-button {
@@ -1563,6 +1791,18 @@ button.success {
 .ready-whatsapp-button .glyph {
   width: 18px;
   height: 18px;
+}
+
+.orders-table-whatsapp-cell {
+  width: 88px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.orders-table-whatsapp-cell .ready-whatsapp-button {
+  min-width: 44px;
+  width: 44px;
+  min-height: 44px;
 }
 
 .compact-section-head h3 {
@@ -1999,6 +2239,14 @@ textarea:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .stats-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stats-main-grid {
+    grid-template-columns: 1fr;
+  }
+
   .calendar-week-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -2025,6 +2273,7 @@ textarea:focus-visible {
 
   .dashboard-summary-grid,
   .dashboard-lanes-grid,
+  .stats-summary-grid,
   .calendar-week-grid,
   .calendar-month-weekdays,
   .calendar-month-grid {
@@ -2079,6 +2328,7 @@ textarea:focus-visible {
 
   .dashboard-summary-grid,
   .dashboard-lanes-grid,
+  .stats-summary-grid,
   .calendar-week-grid,
   .calendar-month-weekdays,
   .calendar-month-grid {
@@ -2165,6 +2415,23 @@ textarea:focus-visible {
 
   .active-filters-row {
     align-items: flex-start;
+  }
+
+  .stats-top-item,
+  .stats-top-copy {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-trend-head,
+  .stats-trend-values {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+
+  .stats-top-aside,
+  .stats-period-meta {
+    text-align: left;
   }
 
   .active-filters-label,
