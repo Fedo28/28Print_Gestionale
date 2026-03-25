@@ -1,6 +1,4 @@
 "use server";
-import { rm } from "fs/promises";
-import path from "path";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
@@ -30,9 +28,10 @@ import {
   updateOperationalStatus,
   updateOrder
 } from "@/lib/orders";
-import { authenticateUser, createSessionForUser, requireAuth } from "@/lib/auth";
+import { authenticateUser, createSessionForUser, describeLoginFailure, requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { saveSetting } from "@/lib/settings";
+import { cleanupOrderAttachments } from "@/lib/storage";
 
 function revalidateOperationalSurfaces(orderId?: string) {
   revalidatePath("/");
@@ -43,6 +42,10 @@ function revalidateOperationalSurfaces(orderId?: string) {
     revalidatePath(`/orders/${orderId}`);
   }
 }
+
+export type LoginActionState = {
+  error: string | null;
+};
 
 export async function createCustomerAction(formData: FormData) {
   await requireAuth();
@@ -260,19 +263,25 @@ export async function saveWhatsappTemplateAction(formData: FormData) {
 export async function deleteOrderAction(formData: FormData) {
   await requireAuth();
   const id = String(formData.get("id") || "");
-  await deleteOrder(id);
-  await rm(path.join(process.cwd(), "public", "uploads", "orders", id), {
-    recursive: true,
-    force: true
-  });
+  const order = await deleteOrder(id);
+  await cleanupOrderAttachments(order.attachments);
   revalidateOperationalSurfaces();
   redirect("/orders");
 }
 
-export async function loginAction(formData: FormData) {
-  const email = String(formData.get("email") || "");
+export async function loginAction(_: LoginActionState, formData: FormData): Promise<LoginActionState> {
+  const email = String(formData.get("email") || "").trim();
   const password = String(formData.get("password") || "");
-  const user = await authenticateUser(email, password);
-  await createSessionForUser(user);
+
+  try {
+    const user = await authenticateUser(email, password);
+    await createSessionForUser(user);
+  } catch (error) {
+    console.error("Login failed", error);
+    return {
+      error: describeLoginFailure(error)
+    };
+  }
+
   redirect("/");
 }

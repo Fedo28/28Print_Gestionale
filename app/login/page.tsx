@@ -1,11 +1,14 @@
 import { redirect } from "next/navigation";
-import { loginAction } from "@/app/actions";
-import { getSession } from "@/lib/auth";
+import { LoginForm } from "@/components/login-form";
+import { getLoginHealth, getSession } from "@/lib/auth";
 
-export default function LoginPage() {
+export default async function LoginPage() {
   if (getSession()) {
     redirect("/");
   }
+
+  const health = await getLoginHealth();
+  const isLocalDev = process.env.NODE_ENV !== "production";
 
   return (
     <div className="center-stage">
@@ -13,26 +16,18 @@ export default function LoginPage() {
         <div className="stack">
           <div>
             <h2>Accesso gestionale</h2>
-            <p className="card-muted">Login locale per il team del negozio.</p>
+            <p className="card-muted">Accesso staff per beta online e uso locale del gestionale.</p>
           </div>
-          <form action={loginAction} className="stack">
-            <div className="field full">
-              <label htmlFor="email">Email</label>
-              <input defaultValue="admin@fede.local" id="email" name="email" type="email" required />
-            </div>
-            <div className="field full">
-              <label htmlFor="password">Password</label>
-              <input defaultValue="admin123" id="password" name="password" type="password" required />
-            </div>
-            <div className="button-row">
-              <button className="primary" type="submit">
-                Accedi
-              </button>
-            </div>
-          </form>
-          <p className="hint">
-            Credenziali iniziali seed: <code>admin@fede.local</code> / <code>admin123</code>.
-          </p>
+          <LoginForm
+            defaultEmail={isLocalDev ? "admin@fede.local" : ""}
+            defaultPassword={isLocalDev ? "admin123" : ""}
+            healthMessage={health.ready ? undefined : health.message}
+          />
+          {isLocalDev ? (
+            <p className="hint">
+              Credenziali iniziali seed locale: <code>admin@fede.local</code> / <code>admin123</code>.
+            </p>
+          ) : null}
         </div>
       </section>
     </div>

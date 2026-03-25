@@ -1,12 +1,7 @@
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
 import { NextRequest, NextResponse } from "next/server";
 import { readSession } from "@/lib/auth-core";
 import { registerAttachment } from "@/lib/orders";
-
-function sanitizeFileName(fileName: string) {
-  return fileName.replace(/[^\w.-]+/g, "_");
-}
+import { deleteStoredAttachment, uploadOrderAttachment } from "@/lib/storage";
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   if (!readSession(request.cookies.get("fede_session")?.value)) {
@@ -22,15 +17,20 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   const bytes = await file.arrayBuffer();
   const buffer = Buffer.from(bytes);
-  const safeName = `${Date.now()}_${sanitizeFileName(file.name)}`;
-  const uploadDir = path.join(process.cwd(), "public", "uploads", "orders", params.id);
-  const filePath = path.join(uploadDir, safeName);
 
-  await mkdir(uploadDir, { recursive: true });
-  await writeFile(filePath, buffer);
+  const stored = await uploadOrderAttachment({
+    orderId: params.id,
+    fileName: file.name,
+    mimeType: file.type || "application/octet-stream",
+    buffer
+  });
 
-  const publicPath = `/uploads/orders/${params.id}/${safeName}`;
-  await registerAttachment(params.id, file.name, publicPath, file.type || "application/octet-stream", file.size);
+  try {
+    await registerAttachment(params.id, file.name, stored.filePath, file.type || "application/octet-stream", file.size);
+  } catch (error) {
+    await deleteStoredAttachment(stored.filePath).catch(() => undefined);
+    throw error;
+  }
 
   return NextResponse.redirect(new URL(`/orders/${params.id}`, request.url), 303);
 }

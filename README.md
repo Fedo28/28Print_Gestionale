@@ -1,154 +1,102 @@
-nom# Fede Kart
+# Fede Kart
 
-Gestionale ordini desktop-first per negozio di stampa digitale.
-
-## Cosa serve
-
-- Node.js 20 LTS
-- npm
-- Git
-
-Se usi `nvm`, il repository include il file `.nvmrc`:
-
-```bash
-nvm use
-```
-
-## 1. Scaricare il repository
-
-Puoi farlo in due modi.
-
-### Metodo A: da terminale
-
-1. Vai su GitHub e copia l'URL del repository da `Code > HTTPS`.
-2. Apri il terminale:
-   - macOS: `Terminal`
-   - Windows: `PowerShell`
-3. Esegui:
-
-```bash
-git clone <url-del-repo-github>
-cd <nome-cartella-repo>
-```
-
-### Metodo B: con GitHub Desktop
-
-1. Apri GitHub Desktop.
-2. Scegli `Clone repository`.
-3. Seleziona il repository.
-4. Apri la cartella clonata nel terminale.
-
-## 2. Installare e preparare il progetto
-
-Dalla cartella del progetto esegui:
-
-```bash
-npm install
-npm run setup
-```
-
-Lo script `npm run setup` fa tutto il necessario per il primo avvio:
-
-- crea `.env` da `.env.example` se manca
-- genera un `AUTH_SECRET` locale
-- genera Prisma Client
-- crea o aggiorna il database SQLite
-- carica i dati demo
-- prepara la cartella upload locale
-
-## 3. Avviare l'app in locale
-
-Per lo sviluppo:
-
-```bash
-npm run dev
-```
-
-Poi apri:
-
-[http://localhost:3000](http://localhost:3000)
-
-Credenziali iniziali:
-
-- Email: `admin@fede.local`
-- Password: `admin123`
-
-## 4. Test rapido dell'app
-
-Dopo il login puoi verificare subito che tutto funzioni:
-
-1. apri la dashboard
-2. entra in `Ordini`
-3. apri l'ordine demo creato dal seed
-4. controlla `Clienti`, `Calendario`, `Produzione` e `Impostazioni`
-
-Se queste pagine si aprono correttamente, il progetto e avviato bene.
-
-## 5. Verificare test e build
-
-### Eseguire i test
-
-```bash
-npm test
-```
-
-### Verificare la build locale
-
-```bash
-npm run build
-npm run start
-```
-
-Poi apri di nuovo:
-
-[http://localhost:3000](http://localhost:3000)
-
-Questo serve a controllare che l'app non funzioni solo in sviluppo, ma anche come build locale.
-
-## 6. Dove vengono salvati i dati locali
-
-- Database SQLite: `prisma/dev.db`
-- File caricati: `public/uploads/orders`
-- Configurazione locale: `.env`
-
-Questi file restano sul computer locale.
-
-## 7. Comandi utili
-
-- `npm run setup`: prepara il progetto su un clone pulito
-- `npm run dev`: avvia l'app in sviluppo
-- `npm test`: esegue i test
-- `npm run build`: crea la build locale
-- `npm run start`: avvia la build locale
-- `npm run db:generate`: rigenera Prisma Client
-- `npm run db:push`: aggiorna lo schema del database
-- `npm run db:seed`: ricarica i dati demo
-
-## 8. Se qualcosa non parte
-
-Controlla in questo ordine:
-
-1. `node -v` deve mostrare Node 20 o superiore
-2. sei dentro la cartella del progetto
-3. hai eseguito `npm install`
-4. hai eseguito `npm run setup`
-5. la porta `3000` non e gia occupata
-
-Se serve, puoi rifare il bootstrap locale senza problemi:
-
-```bash
-npm run setup
-```
+Gestionale ordini desktop-first per negozio di stampa digitale, con supporto locale e beta online su Vercel.
 
 ## Stack
 
 - Next.js 14
 - TypeScript
 - Prisma
-- SQLite
+- PostgreSQL
+- Vercel Blob
+
+## Variabili ambiente
+
+Copiando `.env.example` in `.env` trovi le chiavi da compilare:
+
+- `DATABASE_URL`: connessione PostgreSQL
+- `AUTH_SECRET`: chiave sessione
+- `BLOB_READ_WRITE_TOKEN`: token Vercel Blob
+- `ADMIN_NAME`: nome admin bootstrap produzione
+- `ADMIN_EMAIL`: email admin bootstrap produzione
+- `ADMIN_PASSWORD`: password admin bootstrap produzione
+- `LOCAL_DEMO_DATA`: se `true`, il setup locale carica anche i dati demo
+
+## Setup locale
+
+Prerequisiti:
+
+- Node.js 20+
+- npm
+- un database PostgreSQL gia disponibile
+
+Passi:
+
+```bash
+npm install
+npm run setup
+```
+
+Lo script `npm run setup`:
+
+- crea `.env` da `.env.example` se manca
+- genera un `AUTH_SECRET` locale se assente
+- prepara la cartella upload locale
+- genera Prisma Client
+- applica le migrazioni Prisma al database configurato
+- carica i dati demo solo se `LOCAL_DEMO_DATA="true"`
+
+Se vuoi anche i dati demo locali:
+
+```bash
+LOCAL_DEMO_DATA="true"
+npm run setup
+```
+
+Credenziali demo locali:
+
+- Email: `admin@fede.local`
+- Password: `admin123`
+
+## Comandi utili
+
+- `npm run dev`: sviluppo locale
+- `npm run build`: build locale
+- `npm run start`: start build locale
+- `npm test`: test
+- `npm run db:generate`: rigenera Prisma Client
+- `npm run db:migrate:dev`: crea/applica migrazioni in sviluppo
+- `npm run db:migrate:deploy`: applica migrazioni esistenti
+- `npm run db:seed:local`: inserisce dati demo locali
+- `npm run db:bootstrap:prod`: crea/aggiorna admin e impostazioni minime produzione
+- `npm run vercel-build`: build per Vercel con migrazioni e bootstrap
+
+## Deploy su Vercel
+
+Configura in Vercel le env:
+
+- `DATABASE_URL`
+- `AUTH_SECRET`
+- `BLOB_READ_WRITE_TOKEN`
+- `ADMIN_NAME`
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD`
+
+Il repository include [`vercel.json`](/Users/federicopolichetti/Desktop/28Print/vercel.json) con build command:
+
+```bash
+npm run vercel-build
+```
+
+Durante il deploy:
+
+1. Prisma applica le migrazioni con `prisma migrate deploy`
+2. viene eseguito il bootstrap produzione
+3. Next costruisce l'app
 
 ## Note operative
 
-- Il codice ordine visibile usa il formato `YYYY-MM-DD_titolo ordine`
-- l'unicita del titolo e richiesta nello stesso giorno di creazione
-- `order_code` non cambia anche se il titolo viene aggiornato dopo la creazione
+- I dati non sono piu basati su `prisma/dev.db`
+- Gli allegati online usano Vercel Blob
+- Gli allegati locali restano su `public/uploads/orders`
+- Il bootstrap produzione e idempotente: puo essere rieseguito senza duplicare l'admin

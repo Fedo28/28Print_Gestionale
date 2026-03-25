@@ -8,7 +8,7 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 const envExamplePath = path.join(projectRoot, ".env.example");
 const envPath = path.join(projectRoot, ".env");
 const uploadsRoot = path.join(projectRoot, "public", "uploads", "orders");
-const defaultDatabaseUrl = "file:./dev.db";
+const defaultDatabaseUrl = "postgresql://USER:PASSWORD@HOST:5432/fede_kart?schema=public";
 const defaultAuthSecret = "change-me-in-production";
 
 function escapeRegExp(value: string) {
@@ -57,6 +57,14 @@ async function fileExists(filePath: string) {
   }
 }
 
+function isPlaceholderDatabaseUrl(databaseUrl: string | null) {
+  if (!databaseUrl) {
+    return true;
+  }
+
+  return databaseUrl.includes("USER:PASSWORD@HOST") || !databaseUrl.startsWith("postgresql://");
+}
+
 async function ensureEnvFile() {
   let created = false;
 
@@ -90,37 +98,9 @@ async function ensureEnvFile() {
   return {
     created,
     changes,
-    databaseUrl
+    databaseUrl,
+    localDemoData: getEnvValue(content, "LOCAL_DEMO_DATA") === "true"
   };
-}
-
-function resolveSqliteFilePath(databaseUrl: string) {
-  if (!databaseUrl.startsWith("file:")) {
-    return null;
-  }
-
-  const fileTarget = databaseUrl.slice("file:".length).split("?")[0];
-  if (!fileTarget || fileTarget === ":memory:") {
-    return null;
-  }
-
-  if (path.isAbsolute(fileTarget)) {
-    return fileTarget;
-  }
-
-  return path.resolve(projectRoot, "prisma", fileTarget);
-}
-
-async function ensureLocalSqliteFile(databaseUrl: string) {
-  const databasePath = resolveSqliteFilePath(databaseUrl);
-  if (!databasePath) {
-    return null;
-  }
-
-  await mkdir(path.dirname(databasePath), { recursive: true });
-  await writeFile(databasePath, "", { flag: "a" });
-
-  return databasePath;
 }
 
 function getNpmRunner() {
@@ -169,7 +149,6 @@ async function main() {
   console.log("Preparing local environment for Fede Kart...");
 
   const envState = await ensureEnvFile();
-  const databasePath = await ensureLocalSqliteFile(envState.databaseUrl);
   await mkdir(uploadsRoot, { recursive: true });
 
   if (envState.created) {
@@ -187,21 +166,34 @@ async function main() {
   }
 
   console.log(`- DATABASE_URL: ${envState.databaseUrl}`);
-  if (databasePath) {
-    console.log(`- SQLite file: ${path.relative(projectRoot, databasePath)}`);
-  }
   console.log(`- Upload root: ${path.relative(projectRoot, uploadsRoot)}`);
 
+  if (isPlaceholderDatabaseUrl(envState.databaseUrl)) {
+    throw new Error(
+      "DATABASE_URL non configurato per Postgres. Aggiorna .env con il database online o locale prima di eseguire il setup."
+    );
+  }
+
   await runNpmScript("db:generate");
-  await runNpmScript("db:push");
-  await runNpmScript("db:seed");
+  await runNpmScript("db:migrate:deploy");
+
+  if (envState.localDemoData) {
+    await runNpmScript("db:seed:local");
+  } else {
+    console.log("\n> demo seed skipped");
+    console.log("- LOCAL_DEMO_DATA non attivo: nessun dato demo caricato.");
+  }
 
   console.log("\nLocal setup completed.");
   console.log("Next steps:");
   console.log("- Start dev server: npm run dev");
   console.log("- Start production-like local server: npm run build && npm run start");
   console.log("- Open http://localhost:3000");
-  console.log("- Seed login: admin@fede.local / admin123");
+  if (envState.localDemoData) {
+    console.log("- Seed login: admin@fede.local / admin123");
+  } else {
+    console.log("- Se vuoi i dati demo locali, imposta LOCAL_DEMO_DATA=\"true\" nel .env e rilancia npm run setup");
+  }
 }
 
 main().catch((error) => {
