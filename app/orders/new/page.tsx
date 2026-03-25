@@ -14,7 +14,7 @@ export default async function NewOrderPage() {
     <div className="stack">
       <PageHeader
         title="Nuovo ordine"
-        description="Crea un ordine completo con cliente, righe catalogo o personalizzate, consegna e acconto."
+        description="Crea un ordine completo con cliente, righe catalogo o personalizzate, consegna, appuntamento e acconto."
       />
       <OrderForm customers={customers} services={services} action={createOrderAction} />
     </div>

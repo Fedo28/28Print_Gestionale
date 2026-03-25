@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  correctPaymentAction,
   deleteOrderAction,
   markReadyAction,
   recordPaymentAction,
@@ -8,20 +9,20 @@ import {
   updateOrderAction,
   updateOrderStatusAction
 } from "@/app/actions";
-import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
 import { PageHeader } from "@/components/page-header";
+import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
 import { StatusPills } from "@/components/status-pills";
 import { requireAuth } from "@/lib/auth";
 import {
   invoiceStatusLabels,
-  mainPhaseLabels,
   operationalStatusLabels,
   paymentMethodLabels,
-  paymentStatusLabels,
   priorityLabels
 } from "@/lib/constants";
 import { formatCurrency, formatDateTime, toDateTimeLocalInput } from "@/lib/format";
+import { buildOrdersFilterHref } from "@/lib/order-filters";
 import { getOrderById } from "@/lib/orders";
+import { formatDiscountSummary } from "@/lib/pricing";
 
 export const dynamic = "force-dynamic";
 
@@ -33,21 +34,19 @@ export default async function OrderDetailPage({ params }: { params: { id: string
     notFound();
   }
 
+  const activePayments = order.payments.filter((payment) => payment.status === "ATTIVO");
+  const guidedAction = getGuidedPhaseAction(order.mainPhase);
+  const hasWhatsapp = Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""));
+
   return (
     <div className="stack">
       <PageHeader
         title={order.orderCode}
         description={`Titolo corrente: ${order.title}`}
         action={
-          <div className="button-row">
-            <Link className="button ghost" href="/orders">
-              Torna agli ordini
-            </Link>
-            <ReadyWhatsAppButton
-              hasPhone={Boolean(order.customer.whatsapp || order.customer.phone)}
-              orderId={order.id}
-            />
-          </div>
+          <Link className="button ghost" href="/orders">
+            Torna agli ordini
+          </Link>
         }
       />
 
@@ -59,7 +58,12 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                 <h3>{order.customer.name}</h3>
                 <p className="card-muted">{order.customer.phone}</p>
               </div>
-              <StatusPills phase={order.mainPhase} status={order.operationalStatus} payment={order.paymentStatus} />
+              <StatusPills
+                isQuote={order.isQuote}
+                phase={order.mainPhase}
+                status={order.operationalStatus}
+                payment={order.paymentStatus}
+              />
             </div>
 
             <div className="grid grid-4 order-metric-grid">
@@ -82,11 +86,17 @@ export default async function OrderDetailPage({ params }: { params: { id: string
             </div>
 
             <div className="toolbar status-cluster">
-              <span className="pill phase">{mainPhaseLabels[order.mainPhase]}</span>
-              <span className="pill status">{operationalStatusLabels[order.operationalStatus]}</span>
-              <span className="pill warning">{paymentStatusLabels[order.paymentStatus]}</span>
-              <span className="pill">{invoiceStatusLabels[order.invoiceStatus]}</span>
-              <span className="pill">{priorityLabels[order.priority]}</span>
+              <Link className="pill" href={buildOrdersFilterHref({ invoice: order.invoiceStatus })} prefetch={false}>
+                {invoiceStatusLabels[order.invoiceStatus]}
+              </Link>
+              <Link className="pill" href={buildOrdersFilterHref({ priority: order.priority })} prefetch={false}>
+                {priorityLabels[order.priority]}
+              </Link>
+              {order.isQuote ? (
+                <Link className="pill quote" href={buildOrdersFilterHref({ quote: "QUOTE" })} prefetch={false}>
+                  Preventivo
+                </Link>
+              ) : null}
             </div>
           </div>
         </article>
@@ -94,40 +104,52 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         <article className="card card-pad action-panel">
           <div className="stack">
             <div>
-              <h3>Ritiro e produzione</h3>
+              <h3>Prossimo passo</h3>
               <p className="card-muted">Consegna prevista {formatDateTime(order.deliveryAt)}</p>
             </div>
-            <p className="hint action-note">{order.notes || "Nessuna nota interna."}</p>
-            <div className="button-row action-row">
-              <form action={transitionPhaseAction} className="action-form">
+            <p className="hint action-note">
+              {order.isQuote
+                ? "Questo record e un preventivo: confermalo nei dettagli per farlo entrare nel flusso operativo."
+                : order.operationalStatus !== "ATTIVO"
+                  ? order.operationalNote || "Ordine sospeso senza motivo specificato."
+                  : order.notes || "Nessuna nota interna."}
+            </p>
+            {order.isQuote ? (
+              <div className="empty">Il preventivo resta fuori dal workflow operativo finche non viene confermato.</div>
+            ) : guidedAction?.kind === "transition" ? (
+              <form action={transitionPhaseAction} className="action-form action-form-wide">
                 <input name="orderId" type="hidden" value={order.id} />
-                <input name="nextPhase" type="hidden" value="CALENDARIZZATO" />
-                <button className="secondary" type="submit">
-                  Porta a calendarizzato
+                <input name="nextPhase" type="hidden" value={guidedAction.nextPhase} />
+                <button className="primary" type="submit">
+                  {guidedAction.label}
                 </button>
               </form>
-              <form action={transitionPhaseAction} className="action-form">
-                <input name="orderId" type="hidden" value={order.id} />
-                <input name="nextPhase" type="hidden" value="IN_LAVORAZIONE" />
-                <button className="secondary" type="submit">
-                  Porta in lavorazione
-                </button>
-              </form>
-              <form action={markReadyAction} className="action-form">
+            ) : guidedAction?.kind === "ready" ? (
+              <form action={markReadyAction} className="action-form action-form-wide">
                 <input name="orderId" type="hidden" value={order.id} />
                 <button className="success" type="submit">
                   Segna pronto
                 </button>
               </form>
-              <form action={transitionPhaseAction} className="action-form action-form-wide">
-                <input name="orderId" type="hidden" value={order.id} />
-                <input name="nextPhase" type="hidden" value="CONSEGNATO" />
-                <input aria-label="Nota override consegna" name="note" placeholder="Nota override se c'e saldo aperto" />
-                <button className="primary" type="submit">
-                  Segna consegnato
-                </button>
-              </form>
-            </div>
+            ) : guidedAction?.kind === "deliver" ? (
+              <div className="button-row action-row">
+                <form action={transitionPhaseAction} className="action-form action-form-wide">
+                  <input name="orderId" type="hidden" value={order.id} />
+                  <input name="nextPhase" type="hidden" value="CONSEGNATO" />
+                  <input
+                    aria-label="Nota override consegna"
+                    name="note"
+                    placeholder={order.balanceDueCents > 0 ? "Nota override obbligatoria con saldo aperto" : "Nota consegna opzionale"}
+                  />
+                  <button className="primary" type="submit">
+                    Segna consegnato
+                  </button>
+                </form>
+                <ReadyWhatsAppButton hasPhone={hasWhatsapp} orderId={order.id} />
+              </div>
+            ) : (
+              <div className="empty">Ordine gia consegnato.</div>
+            )}
           </div>
         </article>
       </section>
@@ -144,6 +166,15 @@ export default async function OrderDetailPage({ params }: { params: { id: string
             <div className="field">
               <label htmlFor="deliveryAt">Consegna</label>
               <input defaultValue={toDateTimeLocalInput(order.deliveryAt)} id="deliveryAt" name="deliveryAt" type="datetime-local" required />
+            </div>
+            <div className="field wide">
+              <label htmlFor="appointmentAt">Appuntamento programmato</label>
+              <input
+                defaultValue={order.appointmentAt ? toDateTimeLocalInput(order.appointmentAt) : ""}
+                id="appointmentAt"
+                name="appointmentAt"
+                type="datetime-local"
+              />
             </div>
             <div className="field">
               <label htmlFor="priority">Priorita</label>
@@ -165,6 +196,21 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                 ))}
               </select>
             </div>
+            <div className="field">
+              <label className="toggle-field" htmlFor="isQuote">
+                <input defaultChecked={order.isQuote} id="isQuote" name="isQuote" type="checkbox" />
+                <span>Preventivo</span>
+              </label>
+            </div>
+            <div className="field full">
+              <label htmlFor="appointmentNote">Nota appuntamento</label>
+              <input
+                defaultValue={order.appointmentNote || ""}
+                id="appointmentNote"
+                name="appointmentNote"
+                placeholder="Installazione, appuntamento cliente, lavorazione programmata"
+              />
+            </div>
             <div className="field full">
               <label htmlFor="notes">Note interne</label>
               <textarea defaultValue={order.notes || ""} id="notes" name="notes" />
@@ -181,11 +227,16 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           <div className="stack">
             <div>
               <h3>Stato operativo</h3>
-              <p className="card-muted">Blocchi e attese non alterano il codice ordine.</p>
+              <p className="card-muted">Sospensioni e attese non alterano il codice ordine.</p>
             </div>
-            <form action={updateOrderStatusAction} className="form-grid">
+            <p className="hint">
+              {order.operationalStatus === "ATTIVO"
+                ? "Ordine in lavorazione senza sospensioni attive."
+                : `Motivo corrente: ${order.operationalNote || "non indicato"}`}
+            </p>
+            <form action={updateOrderStatusAction} className="form-grid order-status-form" id="order-status-form">
               <input name="orderId" type="hidden" value={order.id} />
-              <div className="field">
+              <div className="field order-status-field">
                 <label htmlFor="operationalStatus">Stato</label>
                 <select defaultValue={order.operationalStatus} id="operationalStatus" name="operationalStatus">
                   {Object.entries(operationalStatusLabels).map(([value, label]) => (
@@ -195,22 +246,27 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                   ))}
                 </select>
               </div>
-              <div className="field wide">
+              <div className="field wide order-status-note">
                 <label htmlFor="statusNote">Nota</label>
-                <input id="statusNote" name="note" placeholder="Motivo blocco o dettaglio operativo" />
-              </div>
-              <div className="button-row">
-                <button className="secondary" type="submit">
-                  Salva stato operativo
-                </button>
+                <input
+                  defaultValue={order.operationalStatus === "ATTIVO" ? "" : order.operationalNote || ""}
+                  id="statusNote"
+                  name="note"
+                  placeholder="Motivo sospensione o dettaglio operativo"
+                />
               </div>
             </form>
-            <form action={deleteOrderAction}>
-              <input name="id" type="hidden" value={order.id} />
-              <button className="secondary" type="submit">
-                Elimina ordine
+            <div className="button-row order-status-actions">
+              <button className="secondary" form="order-status-form" type="submit">
+                Salva stato
               </button>
-            </form>
+              <form action={deleteOrderAction}>
+                <input name="id" type="hidden" value={order.id} />
+                <button className="ghost" type="submit">
+                  Elimina ordine
+                </button>
+              </form>
+            </div>
           </div>
         </section>
       </div>
@@ -228,6 +284,10 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                 <div className="subtle">
                   {item.quantity} x {formatCurrency(item.unitPriceCents)}
                 </div>
+                <div className="subtle order-item-pricing">
+                  Listino {formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}
+                  {item.discountMode !== "NONE" ? ` • ${formatDiscountSummary(item.discountMode, item.discountValue)}` : ""}
+                </div>
                 <div className="subtle">{[item.format, item.material, item.finishing].filter(Boolean).join(" - ") || "Lavorazione personalizzata"}</div>
               </article>
             ))}
@@ -236,7 +296,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
 
         <section className="card card-pad">
           <h3>Pagamenti</h3>
-          <form action={recordPaymentAction} className="form-grid">
+          <form action={recordPaymentAction} className="form-grid payment-entry-form">
             <input name="orderId" type="hidden" value={order.id} />
             <div className="field">
               <label htmlFor="amount">Importo</label>
@@ -256,7 +316,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               <label htmlFor="paymentNote">Nota</label>
               <input id="paymentNote" name="note" placeholder="Acconto, saldo, riferimento cassa" />
             </div>
-            <div className="button-row">
+            <div className="button-row payment-form-actions">
               <button className="primary" type="submit">
                 Registra pagamento
               </button>
@@ -264,10 +324,10 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           </form>
 
           <div className="mini-list">
-            {order.payments.length === 0 ? (
+            {activePayments.length === 0 ? (
               <div className="empty">Nessun pagamento registrato.</div>
             ) : (
-              order.payments.map((payment) => (
+              activePayments.map((payment) => (
                 <article className="mini-item" key={payment.id}>
                   <div className="list-header">
                     <strong>{formatCurrency(payment.amountCents)}</strong>
@@ -275,6 +335,43 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                   </div>
                   <div className="subtle">{formatDateTime(payment.createdAt)}</div>
                   <div className="subtle">{payment.note || "Nessuna nota"}</div>
+                  <form action={correctPaymentAction} className="form-grid payment-correction-form">
+                    <input name="orderId" type="hidden" value={order.id} />
+                    <input name="paymentId" type="hidden" value={payment.id} />
+                    <div className="field">
+                      <label htmlFor={`correct-amount-${payment.id}`}>Importo corretto</label>
+                      <input
+                        defaultValue={(payment.amountCents / 100).toFixed(2).replace(".", ",")}
+                        id={`correct-amount-${payment.id}`}
+                        name="amount"
+                        required
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor={`correct-method-${payment.id}`}>Metodo</label>
+                      <select defaultValue={payment.method} id={`correct-method-${payment.id}`} name="method">
+                        {Object.entries(paymentMethodLabels).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="field wide">
+                      <label htmlFor={`correct-note-${payment.id}`}>Nota correzione</label>
+                      <input
+                        defaultValue={payment.note || ""}
+                        id={`correct-note-${payment.id}`}
+                        name="note"
+                        placeholder="Motivo della correzione"
+                      />
+                    </div>
+                    <div className="button-row payment-form-actions">
+                      <button className="secondary" type="submit">
+                        Correggi pagamento
+                      </button>
+                    </div>
+                  </form>
                 </article>
               ))
             )}
@@ -325,4 +422,24 @@ export default async function OrderDetailPage({ params }: { params: { id: string
       </section>
     </div>
   );
+}
+
+function getGuidedPhaseAction(phase: import("@prisma/client").MainPhase) {
+  if (phase === "ACCETTATO") {
+    return { kind: "transition" as const, nextPhase: "CALENDARIZZATO" as const, label: "Calendarizza ordine" };
+  }
+
+  if (phase === "CALENDARIZZATO") {
+    return { kind: "transition" as const, nextPhase: "IN_LAVORAZIONE" as const, label: "Avvia lavorazione" };
+  }
+
+  if (phase === "IN_LAVORAZIONE") {
+    return { kind: "ready" as const };
+  }
+
+  if (phase === "SVILUPPO_COMPLETATO") {
+    return { kind: "deliver" as const };
+  }
+
+  return null;
 }

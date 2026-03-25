@@ -4,30 +4,45 @@ import path from "path";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  parseBooleanFlag,
   parseCurrencyToCents,
   parseDateTime,
   parseInvoiceStatus,
   parseItemsPayload,
   parseMainPhase,
+  parseOptionalDateTime,
   parseOperationalStatus,
   parsePaymentMethod,
   parsePriority
 } from "@/lib/forms";
 import {
+  correctPayment,
   createOrder,
   createService,
   deleteCustomer,
   deleteOrder,
+  updateServiceCatalogEntry,
   markOrderReady,
   recordPayment,
   transitionOrderPhase,
   updateCustomer,
+  updateOrderQuoteFlag,
   updateOperationalStatus,
   updateOrder
 } from "@/lib/orders";
 import { authenticateUser, createSessionForUser, requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { saveSetting } from "@/lib/settings";
+
+function revalidateOperationalSurfaces(orderId?: string) {
+  revalidatePath("/");
+  revalidatePath("/orders");
+  revalidatePath("/calendar");
+  revalidatePath("/production");
+  if (orderId) {
+    revalidatePath(`/orders/${orderId}`);
+  }
+}
 
 export async function createCustomerAction(formData: FormData) {
   await requireAuth();
@@ -95,17 +110,17 @@ export async function createOrderAction(formData: FormData) {
     },
     title: String(formData.get("title") || ""),
     deliveryAt: parseDateTime(formData.get("deliveryAt")?.toString() || null),
+    appointmentAt: parseOptionalDateTime(formData.get("appointmentAt")?.toString() || null),
+    appointmentNote: String(formData.get("appointmentNote") || ""),
     priority: parsePriority(formData.get("priority")?.toString() || null),
     notes: String(formData.get("notes") || ""),
     invoiceStatus: parseInvoiceStatus(formData.get("invoiceStatus")?.toString() || null),
+    isQuote: parseBooleanFlag(formData.get("isQuote")),
     items: parseItemsPayload(formData.get("itemsPayload")?.toString() || null),
     initialDepositCents: parseCurrencyToCents(formData.get("initialDeposit")?.toString() || null)
   });
 
-  revalidatePath("/");
-  revalidatePath("/orders");
-  revalidatePath("/calendar");
-  revalidatePath("/production");
+  revalidateOperationalSurfaces(order.id);
   redirect(`/orders/${order.id}`);
 }
 
@@ -116,14 +131,15 @@ export async function updateOrderAction(formData: FormData) {
     id,
     title: String(formData.get("title") || ""),
     deliveryAt: parseDateTime(formData.get("deliveryAt")?.toString() || null),
+    appointmentAt: parseOptionalDateTime(formData.get("appointmentAt")?.toString() || null),
+    appointmentNote: String(formData.get("appointmentNote") || ""),
     priority: parsePriority(formData.get("priority")?.toString() || null),
     notes: String(formData.get("notes") || ""),
-    invoiceStatus: parseInvoiceStatus(formData.get("invoiceStatus")?.toString() || null)
+    invoiceStatus: parseInvoiceStatus(formData.get("invoiceStatus")?.toString() || null),
+    isQuote: parseBooleanFlag(formData.get("isQuote"))
   });
 
-  revalidatePath(`/orders/${id}`);
-  revalidatePath("/orders");
-  revalidatePath("/");
+  revalidateOperationalSurfaces(id);
 }
 
 export async function updateOrderStatusAction(formData: FormData) {
@@ -133,10 +149,7 @@ export async function updateOrderStatusAction(formData: FormData) {
   const note = String(formData.get("note") || "");
 
   await updateOperationalStatus(orderId, status, note);
-  revalidatePath(`/orders/${orderId}`);
-  revalidatePath("/orders");
-  revalidatePath("/production");
-  revalidatePath("/");
+  revalidateOperationalSurfaces(orderId);
 }
 
 export async function transitionPhaseAction(formData: FormData) {
@@ -146,11 +159,7 @@ export async function transitionPhaseAction(formData: FormData) {
   const note = String(formData.get("note") || "");
 
   await transitionOrderPhase(orderId, nextPhase, note);
-  revalidatePath(`/orders/${orderId}`);
-  revalidatePath("/orders");
-  revalidatePath("/calendar");
-  revalidatePath("/production");
-  revalidatePath("/");
+  revalidateOperationalSurfaces(orderId);
 }
 
 export async function recordPaymentAction(formData: FormData) {
@@ -161,28 +170,77 @@ export async function recordPaymentAction(formData: FormData) {
   const note = String(formData.get("note") || "");
 
   await recordPayment(orderId, amountCents, method, note);
-  revalidatePath(`/orders/${orderId}`);
-  revalidatePath("/orders");
-  revalidatePath("/");
+  revalidateOperationalSurfaces(orderId);
+}
+
+export async function correctPaymentAction(formData: FormData) {
+  await requireAuth();
+  const orderId = String(formData.get("orderId") || "");
+  const paymentId = String(formData.get("paymentId") || "");
+  const amountCents = parseCurrencyToCents(formData.get("amount")?.toString() || null);
+  const method = parsePaymentMethod(formData.get("method")?.toString() || null);
+  const note = String(formData.get("note") || "");
+
+  await correctPayment(orderId, paymentId, amountCents, method, note);
+  revalidateOperationalSurfaces(orderId);
+}
+
+export async function quickUpdatePhaseAction(formData: FormData) {
+  await requireAuth();
+  const orderId = String(formData.get("orderId") || "");
+  const nextPhase = parseMainPhase(formData.get("nextPhase")?.toString() || null);
+  await transitionOrderPhase(orderId, nextPhase);
+  revalidateOperationalSurfaces(orderId);
+}
+
+export async function quickUpdateOperationalStatusAction(formData: FormData) {
+  await requireAuth();
+  const orderId = String(formData.get("orderId") || "");
+  const status = parseOperationalStatus(formData.get("operationalStatus")?.toString() || null);
+  await updateOperationalStatus(orderId, status);
+  revalidateOperationalSurfaces(orderId);
+}
+
+export async function quickUpdateQuoteFlagAction(formData: FormData) {
+  await requireAuth();
+  const orderId = String(formData.get("orderId") || "");
+  const isQuote = String(formData.get("isQuote") || "") === "true";
+  await updateOrderQuoteFlag(orderId, isQuote);
+  revalidateOperationalSurfaces(orderId);
 }
 
 export async function markReadyAction(formData: FormData) {
   await requireAuth();
   const orderId = String(formData.get("orderId") || "");
   await markOrderReady(orderId);
-  revalidatePath(`/orders/${orderId}`);
-  revalidatePath("/orders");
-  revalidatePath("/");
-  revalidatePath("/production");
+  revalidateOperationalSurfaces(orderId);
 }
 
 export async function createServiceAction(formData: FormData) {
   await requireAuth();
   await createService(
+    String(formData.get("code") || ""),
     String(formData.get("name") || ""),
     String(formData.get("description") || "") || undefined,
-    parseCurrencyToCents(formData.get("basePrice")?.toString() || null)
+    parseCurrencyToCents(formData.get("basePrice")?.toString() || null),
+    String(formData.get("quantityTiers") || "")
   );
+
+  revalidatePath("/settings");
+  revalidatePath("/orders/new");
+}
+
+export async function updateServiceAction(formData: FormData) {
+  await requireAuth();
+  await updateServiceCatalogEntry({
+    id: String(formData.get("id") || ""),
+    code: String(formData.get("code") || ""),
+    name: String(formData.get("name") || ""),
+    description: String(formData.get("description") || "") || undefined,
+    basePriceCents: parseCurrencyToCents(formData.get("basePrice")?.toString() || null),
+    quantityTiers: String(formData.get("quantityTiers") || ""),
+    active: parseBooleanFlag(formData.get("active"))
+  });
 
   revalidatePath("/settings");
   revalidatePath("/orders/new");
@@ -207,10 +265,7 @@ export async function deleteOrderAction(formData: FormData) {
     recursive: true,
     force: true
   });
-  revalidatePath("/");
-  revalidatePath("/orders");
-  revalidatePath("/calendar");
-  revalidatePath("/production");
+  revalidateOperationalSurfaces();
   redirect("/orders");
 }
 

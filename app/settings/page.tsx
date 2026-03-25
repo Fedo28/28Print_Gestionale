@@ -1,15 +1,16 @@
 import { createServiceAction, saveWhatsappTemplateAction } from "@/app/actions";
+import { CatalogImportForm } from "@/components/catalog-import-form";
+import { CatalogServiceSearch } from "@/components/catalog-service-search";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
-import { formatCurrency } from "@/lib/format";
-import { getServices } from "@/lib/orders";
+import { getServiceCatalogAdmin } from "@/lib/orders";
 import { getWhatsappTemplate } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   await requireAuth();
-  const [services, whatsappTemplate] = await Promise.all([getServices(), getWhatsappTemplate()]);
+  const [services, whatsappTemplate] = await Promise.all([getServiceCatalogAdmin(), getWhatsappTemplate()]);
 
   return (
     <div className="stack">
@@ -20,42 +21,45 @@ export default async function SettingsPage() {
 
       <div className="grid grid-2">
         <section className="card card-pad">
-          <div className="list-header">
-            <div>
-              <h3>Catalogo servizi</h3>
-              <p className="card-muted">Listino base da richiamare nelle righe ordine.</p>
+          <div className="stack settings-catalog-stack">
+            <div className="list-header">
+              <div>
+                <h3>Catalogo servizi</h3>
+                <p className="card-muted">Listino base modificabile, sincronizzabile da Excel e richiamabile nelle righe ordine.</p>
+              </div>
             </div>
-          </div>
-          <form action={createServiceAction} className="form-grid">
-            <div className="field wide">
-              <label htmlFor="name">Nome servizio</label>
-              <input id="name" name="name" required />
-            </div>
-            <div className="field">
-              <label htmlFor="basePrice">Prezzo base</label>
-              <input id="basePrice" name="basePrice" placeholder="0,00" />
-            </div>
-            <div className="field full">
-              <label htmlFor="description">Descrizione</label>
-              <textarea id="description" name="description" />
-            </div>
-            <div className="button-row">
-              <button className="primary" type="submit">
-                Salva servizio
-              </button>
-            </div>
-          </form>
+            <form action={createServiceAction} className="form-grid settings-service-form">
+              <div className="field">
+                <label htmlFor="code">Codice</label>
+                <input id="code" name="code" placeholder="BIGLIETTI_VISITA" required />
+              </div>
+              <div className="field wide">
+                <label htmlFor="name">Nome servizio</label>
+                <input id="name" name="name" required />
+              </div>
+              <div className="field">
+                <label htmlFor="basePrice">Prezzo base</label>
+                <input id="basePrice" name="basePrice" placeholder="0,00" />
+              </div>
+              <div className="field full">
+                <label htmlFor="description">Descrizione</label>
+                <textarea id="description" name="description" />
+              </div>
+              <div className="field full">
+                <label htmlFor="quantityTiers">Scaglioni quantita</label>
+                <input id="quantityTiers" name="quantityTiers" placeholder="1-9:0,50 | 10-49:0,30 | 50+:0,20" />
+                <p className="hint">Facoltativo. Se la quantita rientra in uno scaglione, il prezzo unitario viene preso da qui invece che dal listino base.</p>
+              </div>
+              <div className="button-row settings-form-actions">
+                <button className="primary" type="submit">
+                  Salva servizio
+                </button>
+              </div>
+            </form>
 
-          <div className="mini-list">
-            {services.map((service) => (
-              <article className="mini-item" key={service.id}>
-                <div className="list-header">
-                  <strong>{service.name}</strong>
-                  <span>{formatCurrency(service.basePriceCents)}</span>
-                </div>
-                <div className="subtle">{service.description || "Nessuna descrizione"}</div>
-              </article>
-            ))}
+            <CatalogImportForm />
+
+            <CatalogServiceSearch services={services} />
           </div>
         </section>
 
