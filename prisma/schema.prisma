@@ -46,11 +46,22 @@ enum Priority {
   URGENTE
 }
 
+enum DiscountMode {
+  NONE
+  AMOUNT
+  PERCENT
+}
+
 enum PaymentMethod {
   CONTANTI
   CARTA
   BONIFICO
   ALTRO
+}
+
+enum PaymentEntryStatus {
+  ATTIVO
+  SOSTITUITO
 }
 
 enum HistoryType {
@@ -100,9 +111,13 @@ model Order {
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   deliveryAt          DateTime
+  appointmentAt       DateTime?
+  appointmentNote     String?
   priority            Priority          @default(MEDIA)
+  isQuote             Boolean           @default(false)
   mainPhase           MainPhase         @default(ACCETTATO)
   operationalStatus   OperationalStatus @default(ATTIVO)
+  operationalNote     String?
   paymentStatus       PaymentStatus     @default(NON_PAGATO)
   invoiceStatus       InvoiceStatus     @default(DA_FATTURARE)
   totalCents          Int               @default(0)
@@ -118,6 +133,8 @@ model Order {
 
   @@unique([createdOn, titleNormalized])
   @@index([deliveryAt])
+  @@index([appointmentAt])
+  @@index([isQuote])
   @@index([mainPhase, operationalStatus])
   @@index([paymentStatus])
 }
@@ -129,6 +146,9 @@ model OrderItem {
   label            String
   description      String?
   quantity         Int             @default(1)
+  catalogBasePriceCents Int?
+  discountMode     DiscountMode    @default(NONE)
+  discountValue    Int             @default(0)
   unitPriceCents   Int             @default(0)
   lineTotalCents   Int             @default(0)
   format           String?
@@ -144,7 +164,8 @@ model OrderItem {
 
 model ServiceCatalog {
   id             String      @id @default(uuid())
-  name           String      @unique
+  code           String?     @unique
+  name           String
   description    String?
   basePriceCents Int         @default(0)
   active         Boolean     @default(true)
@@ -167,15 +188,21 @@ model Attachment {
 }
 
 model Payment {
-  id         String        @id @default(uuid())
-  orderId    String
-  amountCents Int
-  method     PaymentMethod
-  note       String?
-  createdAt  DateTime      @default(now())
-  order      Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id                 String             @id @default(uuid())
+  orderId            String
+  amountCents        Int
+  method             PaymentMethod
+  note               String?
+  status             PaymentEntryStatus @default(ATTIVO)
+  effectiveAt        DateTime           @default(now())
+  correctedPaymentId String?            @unique
+  createdAt          DateTime           @default(now())
+  order              Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  correctedPayment   Payment?           @relation("PaymentCorrection", fields: [correctedPaymentId], references: [id], onDelete: SetNull)
+  correction         Payment?           @relation("PaymentCorrection")
 
   @@index([orderId])
+  @@index([orderId, status, effectiveAt])
 }
 
 model OrderHistory {

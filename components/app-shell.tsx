@@ -26,15 +26,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside className="sidebar">
         <div className="sidebar-frame">
           <div className="brand">
-            <span className="brand-kicker">Liquid workflow</span>
             <Image
               alt="28 Print"
               className="brand-logo"
               priority
-              sizes="170px"
+              sizes="220px"
               src={brandLogo}
             />
-            <p>Workflow completo per ordini di stampa digitale, dal banco al ritiro.</p>
           </div>
 
           <nav className="nav-list">
@@ -50,12 +48,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span>Logout</span>
             </a>
           </nav>
-
-          <div className="sidebar-meta">
-            <span className="meta-label">Studio control</span>
-            <strong>Ambiente operativo unificato</strong>
-            <p>Clienti, ordini, produzione e ritiro raccolti in un solo spazio visivo.</p>
-          </div>
         </div>
       </aside>
 

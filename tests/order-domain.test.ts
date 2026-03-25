@@ -2,8 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   assertPhaseTransition,
   buildOrderCode,
+  classifyProductionQueues,
+  countUniqueOrders,
   computeBalanceDue,
+  computeOrderTotals,
+  computePaymentSummary,
   computePaymentStatus,
+  getMonthlyAgendaOrders,
+  isOperationalOrder,
+  normalizeServiceCode,
   normalizeOrderTitle,
   normalizeForUniqueness
 } from "../lib/orders";
@@ -31,6 +38,34 @@ describe("order domain", () => {
     expect(computePaymentStatus(5000, 5000, 2)).toBe("PAGATO");
   });
 
+  it("recomputes payment summary from active payments only", () => {
+    const summary = computePaymentSummary(5000, [
+      {
+        id: "payment-1",
+        amountCents: 2000,
+        status: "SOSTITUITO",
+        createdAt: new Date("2026-03-25T08:00:00.000Z")
+      },
+      {
+        id: "payment-2",
+        amountCents: 1500,
+        status: "ATTIVO",
+        createdAt: new Date("2026-03-25T08:00:00.000Z")
+      },
+      {
+        id: "payment-3",
+        amountCents: 2000,
+        status: "ATTIVO",
+        createdAt: new Date("2026-03-26T08:00:00.000Z")
+      }
+    ]);
+
+    expect(summary.depositCents).toBe(1500);
+    expect(summary.paidCents).toBe(3500);
+    expect(summary.balanceDueCents).toBe(1500);
+    expect(summary.paymentStatus).toBe("PARZIALE");
+  });
+
   it("blocks direct jumps across phases", () => {
     expect(() => assertPhaseTransition("ACCETTATO", "IN_LAVORAZIONE", 0)).toThrow(/una fase alla volta/i);
   });
@@ -41,5 +76,100 @@ describe("order domain", () => {
 
   it("allows delivery with override note", () => {
     expect(() => assertPhaseTransition("SVILUPPO_COMPLETATO", "CONSEGNATO", 1200, "Cliente paga domani")).not.toThrow();
+  });
+
+  it("excludes preventivi from operational flows", () => {
+    expect(isOperationalOrder({ isQuote: false })).toBe(true);
+    expect(isOperationalOrder({ isQuote: true })).toBe(false);
+  });
+
+  it("counts unique orders across dashboard lanes", () => {
+    expect(
+      countUniqueOrders(
+        [{ id: "order-1" }, { id: "order-2" }],
+        [{ id: "order-2" }, { id: "order-3" }],
+        [{ id: "order-3" }, { id: "order-4" }]
+      )
+    ).toBe(4);
+  });
+
+  it("classifies production queues with mutual exclusivity", () => {
+    const queues = classifyProductionQueues([
+      { id: "quote", isQuote: true, mainPhase: "ACCETTATO", operationalStatus: "ATTIVO" },
+      { id: "accepted", isQuote: false, mainPhase: "ACCETTATO", operationalStatus: "ATTIVO" },
+      { id: "scheduled", isQuote: false, mainPhase: "CALENDARIZZATO", operationalStatus: "ATTIVO" },
+      { id: "working", isQuote: false, mainPhase: "IN_LAVORAZIONE", operationalStatus: "ATTIVO" },
+      { id: "ready", isQuote: false, mainPhase: "SVILUPPO_COMPLETATO", operationalStatus: "ATTIVO" },
+      { id: "blocked-ready", isQuote: false, mainPhase: "SVILUPPO_COMPLETATO", operationalStatus: "IN_ATTESA_FILE" }
+    ]);
+
+    expect(queues.planning.map((order) => order.id)).toEqual(["accepted"]);
+    expect(queues.scheduled.map((order) => order.id)).toEqual(["scheduled"]);
+    expect(queues.working.map((order) => order.id)).toEqual(["working"]);
+    expect(queues.ready.map((order) => order.id)).toEqual(["ready"]);
+    expect(queues.blocked.map((order) => order.id)).toEqual(["blocked-ready"]);
+  });
+
+  it("filters monthly agenda on appointment date only", () => {
+    const agenda = getMonthlyAgendaOrders([
+      {
+        id: "appointment",
+        isQuote: false,
+        mainPhase: "CALENDARIZZATO",
+        appointmentAt: new Date("2026-03-28T09:00:00.000Z")
+      },
+      {
+        id: "no-appointment",
+        isQuote: false,
+        mainPhase: "CALENDARIZZATO",
+        appointmentAt: null
+      },
+      {
+        id: "quote",
+        isQuote: true,
+        mainPhase: "CALENDARIZZATO",
+        appointmentAt: new Date("2026-03-29T09:00:00.000Z")
+      },
+      {
+        id: "delivered",
+        isQuote: false,
+        mainPhase: "CONSEGNATO",
+        appointmentAt: new Date("2026-03-30T09:00:00.000Z")
+      }
+    ]);
+
+    expect(agenda.map((order) => order.id)).toEqual(["appointment"]);
+  });
+
+  it("computes order totals with amount and percent discounts", () => {
+    const totals = computeOrderTotals([
+      {
+        label: "Biglietti visita",
+        quantity: 2,
+        catalogBasePriceCents: 2500,
+        discountMode: "AMOUNT",
+        discountValue: 500,
+        unitPriceCents: 2500
+      },
+      {
+        label: "Adesivi vetrina",
+        quantity: 1,
+        catalogBasePriceCents: 10000,
+        discountMode: "PERCENT",
+        discountValue: 10,
+        unitPriceCents: 10000
+      }
+    ]);
+
+    expect(totals.items[0].unitPriceCents).toBe(2000);
+    expect(totals.items[0].lineTotalCents).toBe(4000);
+    expect(totals.items[1].unitPriceCents).toBe(9000);
+    expect(totals.items[1].lineTotalCents).toBe(9000);
+    expect(totals.totalCents).toBe(13000);
+  });
+
+  it("normalizes catalog codes for sync and manual entry", () => {
+    expect(normalizeServiceCode("Biglietti visita premium")).toBe("BIGLIETTI_VISITA_PREMIUM");
+    expect(normalizeServiceCode("Installazione / Vetrina")).toBe("INSTALLAZIONE_VETRINA");
   });
 });

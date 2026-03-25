@@ -22,15 +22,21 @@ export const mainPhaseLabels: Record<MainPhase, string> = {
   ACCETTATO: "Accettato",
   CALENDARIZZATO: "Calendarizzato",
   IN_LAVORAZIONE: "In lavorazione",
-  SVILUPPO_COMPLETATO: "Sviluppo completato",
+  SVILUPPO_COMPLETATO: "Pronto",
   CONSEGNATO: "Consegnato"
 };
 
 export const operationalStatusLabels: Record<OperationalStatus, string> = {
-  ATTIVO: "Attivo",
+  ATTIVO: "In lavorazione",
   IN_ATTESA_FILE: "In attesa file",
   IN_ATTESA_APPROVAZIONE: "In attesa approvazione"
 };
+
+export const quoteFilterLabels = {
+  ALL: "Tutti",
+  ORDER: "Solo ordini",
+  QUOTE: "Solo preventivi"
+} as const;
 
 export const paymentStatusLabels: Record<PaymentStatus, string> = {
   NON_PAGATO: "Non pagato",

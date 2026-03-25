@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
+import { QuickOrderControls } from "@/components/quick-order-controls";
 import { StatusPills } from "@/components/status-pills";
 import { requireAuth } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
@@ -14,7 +15,7 @@ function QueueColumn({
 }: {
   title: string;
   description: string;
-  orders: Awaited<ReturnType<typeof getProductionQueues>>["toStart"];
+  orders: Awaited<ReturnType<typeof getProductionQueues>>["planning"];
 }) {
   return (
     <section className="card card-pad">
@@ -31,12 +32,24 @@ function QueueColumn({
         ) : (
           orders.map((order) => (
             <article className="queue-card" key={order.id}>
-              <Link className="order-code" href={`/orders/${order.id}`}>
-                {order.orderCode}
-              </Link>
+              <div className="order-inline-head">
+                <QuickOrderControls
+                  align="start"
+                  hasWhatsapp={Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""))}
+                  orderId={order.id}
+                  phase={order.mainPhase}
+                  status={order.operationalStatus}
+                />
+                <Link className="order-code" href={`/orders/${order.id}`}>
+                  {order.orderCode}
+                </Link>
+              </div>
               <div className="subtle">
                 {order.customer.name} - {formatDateTime(order.deliveryAt)}
               </div>
+              {order.operationalStatus !== "ATTIVO" ? (
+                <div className="hint">{order.operationalNote || "Motivo sospensione non indicato"}</div>
+              ) : null}
               <StatusPills phase={order.mainPhase} status={order.operationalStatus} payment={order.paymentStatus} />
             </article>
           ))
@@ -54,13 +67,14 @@ export default async function ProductionPage() {
     <div className="stack">
       <PageHeader
         title="Produzione"
-        description="Ordini da avviare, in lavorazione, bloccati e pronti al ritiro."
+        description="Ordini da pianificare, calendarizzati, in lavorazione, sospesi e pronti al ritiro."
       />
 
       <div className="grid grid-2">
-        <QueueColumn description="Ordini pronti per partire" orders={queues.toStart} title="Da iniziare" />
+        <QueueColumn description="Ordini appena presi in carico" orders={queues.planning} title="Da pianificare" />
+        <QueueColumn description="Ordini inseriti in agenda" orders={queues.scheduled} title="Calendarizzati" />
         <QueueColumn description="Produzione attiva" orders={queues.working} title="In lavorazione" />
-        <QueueColumn description="Ordini sospesi" orders={queues.blocked} title="Bloccati" />
+        <QueueColumn description="Ordini sospesi" orders={queues.blocked} title="Sospesi" />
         <QueueColumn description="Pronti da ritirare" orders={queues.ready} title="Pronti" />
       </div>
     </div>

@@ -1,0 +1,87 @@
+import { InvoiceStatus, MainPhase, OperationalStatus, PaymentStatus, Priority } from "@prisma/client";
+
+export type QuoteFilter = "ALL" | "QUOTE" | "ORDER";
+export type PhaseFilter = MainPhase | "ALL";
+export type StatusFilter = OperationalStatus | "ALL";
+export type PaymentFilter = PaymentStatus | "ALL";
+export type InvoiceFilter = InvoiceStatus | "ALL";
+export type PriorityFilter = Priority | "ALL";
+
+export type OrderListFilters = {
+  q?: string;
+  phase?: PhaseFilter;
+  status?: StatusFilter;
+  payment?: PaymentFilter;
+  invoice?: InvoiceFilter;
+  priority?: PriorityFilter;
+  quote?: QuoteFilter;
+};
+
+const mainPhases: MainPhase[] = ["ACCETTATO", "CALENDARIZZATO", "IN_LAVORAZIONE", "SVILUPPO_COMPLETATO", "CONSEGNATO"];
+const operationalStatuses: OperationalStatus[] = ["ATTIVO", "IN_ATTESA_FILE", "IN_ATTESA_APPROVAZIONE"];
+const paymentStatuses: PaymentStatus[] = ["NON_PAGATO", "ACCONTO", "PARZIALE", "PAGATO"];
+const invoiceStatuses: InvoiceStatus[] = ["DA_FATTURARE", "FATTURATO", "NON_RICHIESTO"];
+const priorities: Priority[] = ["BASSA", "MEDIA", "ALTA", "URGENTE"];
+
+export function parsePhaseFilter(raw: string | null): PhaseFilter {
+  return raw && mainPhases.includes(raw as MainPhase) ? (raw as MainPhase) : "ALL";
+}
+
+export function parseStatusFilter(raw: string | null): StatusFilter {
+  return raw && operationalStatuses.includes(raw as OperationalStatus) ? (raw as OperationalStatus) : "ALL";
+}
+
+export function parsePaymentFilter(raw: string | null): PaymentFilter {
+  return raw && paymentStatuses.includes(raw as PaymentStatus) ? (raw as PaymentStatus) : "ALL";
+}
+
+export function parseInvoiceFilter(raw: string | null): InvoiceFilter {
+  return raw && invoiceStatuses.includes(raw as InvoiceStatus) ? (raw as InvoiceStatus) : "ALL";
+}
+
+export function parsePriorityFilter(raw: string | null): PriorityFilter {
+  return raw && priorities.includes(raw as Priority) ? (raw as Priority) : "ALL";
+}
+
+export function parseQuoteFilter(raw: string | null): QuoteFilter {
+  if (raw === "QUOTE" || raw === "ORDER") {
+    return raw;
+  }
+
+  return "ALL";
+}
+
+export function buildOrdersFilterHref(filters: OrderListFilters) {
+  const params = new URLSearchParams();
+
+  if (filters.q?.trim()) {
+    params.set("q", filters.q.trim());
+  }
+
+  if (filters.phase && filters.phase !== "ALL") {
+    params.set("phase", filters.phase);
+  }
+
+  if (filters.status && filters.status !== "ALL") {
+    params.set("status", filters.status);
+  }
+
+  if (filters.payment && filters.payment !== "ALL") {
+    params.set("payment", filters.payment);
+  }
+
+  if (filters.invoice && filters.invoice !== "ALL") {
+    params.set("invoice", filters.invoice);
+  }
+
+  if (filters.priority && filters.priority !== "ALL") {
+    params.set("priority", filters.priority);
+  }
+
+  if (filters.quote && filters.quote !== "ALL") {
+    params.set("quote", filters.quote);
+  }
+
+  const query = params.toString();
+  return query ? `/orders?${query}` : "/orders";
+}

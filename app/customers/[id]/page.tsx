@@ -98,14 +98,22 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
             customer.orders.map((order) => (
               <article className="mini-item" key={order.id}>
                 <div className="list-header">
-                  <Link href={`/orders/${order.id}`}>
+                  <Link href={`/orders/${order.id}`} prefetch={false}>
                     <strong>{order.orderCode}</strong>
                   </Link>
                   <span>{formatCurrency(order.totalCents)}</span>
                 </div>
-                <div className="subtle">{order.title}</div>
+                <div className="subtle">
+                  {order.title}
+                  {order.isQuote ? " • Preventivo" : ""}
+                </div>
                 <div className="subtle">{formatDateTime(order.deliveryAt)}</div>
-                <StatusPills phase={order.mainPhase} status={order.operationalStatus} payment={order.paymentStatus} />
+                <StatusPills
+                  isQuote={order.isQuote}
+                  phase={order.mainPhase}
+                  status={order.operationalStatus}
+                  payment={order.paymentStatus}
+                />
               </article>
             ))
           )}

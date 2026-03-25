@@ -1,5 +1,7 @@
-import { InvoiceStatus, MainPhase, OperationalStatus, PaymentMethod, Priority } from "@prisma/client";
+import { DiscountMode, InvoiceStatus, MainPhase, OperationalStatus, PaymentMethod, PaymentStatus, Priority } from "@prisma/client";
 import { normalizeOrderTitle, OrderItemInput } from "@/lib/orders";
+
+export type QuoteFilter = "ALL" | "QUOTE" | "ORDER";
 
 export function parseCurrencyToCents(raw: string | null) {
   const value = (raw || "").trim().replace(/\./g, "").replace(",", ".");
@@ -23,6 +25,20 @@ export function parseDateTime(raw: string | null) {
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) {
     throw new Error("Data consegna non valida.");
+  }
+
+  return date;
+}
+
+export function parseOptionalDateTime(raw: string | null) {
+  const value = (raw || "").trim();
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("Data appuntamento non valida.");
   }
 
   return date;
@@ -64,6 +80,15 @@ export function parsePaymentMethod(raw: string | null): PaymentMethod {
   return value;
 }
 
+export function parsePaymentStatus(raw: string | null): PaymentStatus {
+  const value = raw as PaymentStatus | null;
+  if (!value || !["NON_PAGATO", "ACCONTO", "PARZIALE", "PAGATO"].includes(value)) {
+    throw new Error("Stato pagamento non valido.");
+  }
+
+  return value;
+}
+
 export function parseMainPhase(raw: string | null): MainPhase {
   const value = raw as MainPhase | null;
   if (!value || !["ACCETTATO", "CALENDARIZZATO", "IN_LAVORAZIONE", "SVILUPPO_COMPLETATO", "CONSEGNATO"].includes(value)) {
@@ -71,6 +96,22 @@ export function parseMainPhase(raw: string | null): MainPhase {
   }
 
   return value;
+}
+
+export function parseBooleanFlag(raw: FormDataEntryValue | null) {
+  if (typeof raw !== "string") {
+    return false;
+  }
+
+  return raw === "on" || raw === "true" || raw === "1";
+}
+
+export function parseQuoteFilter(raw: string | null): QuoteFilter {
+  if (raw === "QUOTE" || raw === "ORDER") {
+    return raw;
+  }
+
+  return "ALL";
 }
 
 export function parseItemsPayload(raw: string | null): OrderItemInput[] {
@@ -83,6 +124,11 @@ export function parseItemsPayload(raw: string | null): OrderItemInput[] {
     label: normalizeOrderTitle(String(entry.label ?? "")),
     description: String(entry.description ?? ""),
     quantity: Number(entry.quantity ?? 1),
+    catalogBasePriceCents: Math.max(0, Number(entry.catalogBasePriceCents ?? entry.unitPriceCents ?? 0)),
+    discountMode: (["NONE", "AMOUNT", "PERCENT"].includes(String(entry.discountMode ?? "NONE"))
+      ? String(entry.discountMode ?? "NONE")
+      : "NONE") as DiscountMode,
+    discountValue: Math.max(0, Number(entry.discountValue ?? 0)),
     unitPriceCents: Math.max(0, Number(entry.unitPriceCents ?? 0)),
     format: String(entry.format ?? ""),
     material: String(entry.material ?? ""),
