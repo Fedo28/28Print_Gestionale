@@ -7,14 +7,18 @@ import {
   computeDiscountedUnitPrice,
   discountModeLabels,
   getTieredUnitPrice,
+  parseQuantityTiers,
+  type QuantityTier,
   type DiscountModeValue
 } from "@/lib/pricing";
 
 type CustomerWithOrders = Customer & { orders: { id: string }[] };
 
 type ItemState = {
+  serviceQuery: string;
+  photoMode: boolean;
+  photoFormat: string;
   label: string;
-  description: string;
   quantity: number;
   unitPrice: string;
   discountMode: DiscountModeValue;
@@ -28,8 +32,10 @@ type ItemState = {
 };
 
 const emptyItem = (): ItemState => ({
+  serviceQuery: "",
+  photoMode: false,
+  photoFormat: "",
   label: "",
-  description: "",
   quantity: 1,
   unitPrice: "",
   discountMode: "NONE",
@@ -69,6 +75,111 @@ function parseDiscountValue(mode: DiscountModeValue, value: string) {
   return 0;
 }
 
+function normalizeCatalogSearch(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function isPhotographyService(service: ServiceCatalog) {
+  return String(service.code || "").startsWith("FOTOGRAFIE_");
+}
+
+function getServiceSearchScore(service: ServiceCatalog, normalizedQuery: string) {
+  const normalizedName = normalizeCatalogSearch(service.name);
+  const normalizedCode = normalizeCatalogSearch(service.code || "");
+  const normalizedDescription = normalizeCatalogSearch(service.description || "");
+  const haystack = [normalizedCode, normalizedName, normalizedDescription].join(" ");
+  const terms = normalizedQuery.split(/\s+/).filter(Boolean);
+
+  if (!terms.length || !terms.every((term) => haystack.includes(term))) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+
+  if (normalizedCode === normalizedQuery) {
+    return 0;
+  }
+
+  if (normalizedName === normalizedQuery) {
+    return 1;
+  }
+
+  if (normalizedCode.startsWith(normalizedQuery)) {
+    return 2;
+  }
+
+  if (normalizedName.startsWith(normalizedQuery)) {
+    return 3;
+  }
+
+  if (normalizedName.includes(normalizedQuery)) {
+    return 4;
+  }
+
+  return 5;
+}
+
+function getServiceTiers(service: ServiceCatalog | undefined): QuantityTier[] {
+  if (!service?.quantityTiers) {
+    return [];
+  }
+
+  try {
+    return parseQuantityTiers(service.quantityTiers);
+  } catch {
+    return [];
+  }
+}
+
+function isTierSelected(tier: QuantityTier, quantity: number) {
+  return quantity >= tier.minQuantity && (tier.maxQuantity === null || quantity <= tier.maxQuantity);
+}
+
+function formatTierLabel(tier: QuantityTier) {
+  return tier.maxQuantity === null
+    ? `${tier.minQuantity}+`
+    : tier.maxQuantity === tier.minQuantity
+      ? `${tier.minQuantity}`
+      : `${tier.minQuantity}-${tier.maxQuantity}`;
+}
+
+function getPhotographyFormatOptions(services: ServiceCatalog[]) {
+  return services
+    .filter(isPhotographyService)
+    .flatMap((service) => {
+      const rawFormats = service.name.replace(/^Fotografie\s*-\s*/i, "").split("/");
+      const normalizedFormats = rawFormats
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .map((entry) => entry.replace(/\s+/g, " "));
+
+      return normalizedFormats.map((format) => ({
+        key: `${service.id}:${format}`,
+        label: format,
+        serviceId: service.id,
+        serviceName: service.name,
+        service
+      }));
+    });
+}
+
+type ServiceSuggestion =
+  | {
+      type: "service";
+      key: string;
+      label: string;
+      meta: string;
+      service: ServiceCatalog;
+    }
+  | {
+      type: "photography";
+      key: string;
+      label: string;
+      meta: string;
+    };
+
 export function OrderForm({
   customers,
   services,
@@ -80,15 +191,114 @@ export function OrderForm({
 }) {
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [items, setItems] = useState<ItemState[]>([emptyItem(), emptyItem()]);
+  const [activeServiceField, setActiveServiceField] = useState<number | null>(null);
+  const [openTierIndex, setOpenTierIndex] = useState<number | null>(null);
   const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId);
+  const photographyFormats = getPhotographyFormatOptions(services);
+  const photographyServices = services.filter(isPhotographyService);
 
   function getCatalogPriceDisplay(service: ServiceCatalog | undefined, quantity: number) {
     if (!service) {
       return "";
     }
 
-    const cents = getTieredUnitPrice(service.basePriceCents, quantity, service.quantityTiers);
+    let cents = service.basePriceCents;
+
+    try {
+      cents = getTieredUnitPrice(service.basePriceCents, quantity, service.quantityTiers);
+    } catch {
+      cents = service.basePriceCents;
+    }
+
     return (cents / 100).toFixed(2).replace(".", ",");
+  }
+
+  function getServiceSuggestions(query: string) {
+    const normalizedQuery = normalizeCatalogSearch(query);
+
+    if (!normalizedQuery) {
+      return [] as ServiceSuggestion[];
+    }
+
+    const serviceSuggestions: ServiceSuggestion[] = services
+      .filter((service) => !isPhotographyService(service))
+      .map((service) => ({
+        type: "service" as const,
+        key: service.id,
+        label: service.name,
+        meta: `${service.code || "Senza codice"} • ${(service.basePriceCents / 100).toFixed(2).replace(".", ",")} €`,
+        service,
+        score: getServiceSearchScore(service, normalizedQuery)
+      }))
+      .filter((entry) => entry.score !== Number.MAX_SAFE_INTEGER)
+      .sort(
+        (left, right) =>
+          left.score - right.score ||
+          left.service.name.localeCompare(right.service.name, "it") ||
+          (left.service.code || "").localeCompare(right.service.code || "", "it")
+      )
+      .slice(0, 6)
+      .map(({ score: _score, ...entry }) => entry);
+
+    const photographyScore = photographyServices.length
+      ? Math.min(...photographyServices.map((service) => getServiceSearchScore(service, normalizedQuery)))
+      : Number.MAX_SAFE_INTEGER;
+
+    if (photographyScore !== Number.MAX_SAFE_INTEGER) {
+      serviceSuggestions.unshift({
+        type: "photography",
+        key: "photography-group",
+        label: "Fotografie",
+        meta: "Seleziona il taglio foto nella colonna accanto"
+      });
+    }
+
+    return serviceSuggestions.slice(0, 6);
+  }
+
+  function selectServiceForRow(index: number, service: ServiceCatalog) {
+    setItems((current) =>
+      current.map((entry, itemIndex) =>
+        itemIndex === index
+          ? {
+              ...entry,
+              serviceCatalogId: service.id,
+              serviceQuery: service.name,
+              photoMode: false,
+              photoFormat: "",
+              label: service.name,
+              unitPrice: getCatalogPriceDisplay(service, entry.quantity),
+              discountMode: "NONE",
+              discountValue: "",
+              priceOverridden: false
+            }
+          : entry
+      )
+    );
+    setActiveServiceField(null);
+  }
+
+  function selectPhotographyForRow(index: number) {
+    setItems((current) =>
+      current.map((entry, itemIndex) =>
+        itemIndex === index
+          ? {
+              ...entry,
+              serviceQuery: "Fotografie",
+              photoMode: true,
+              photoFormat: "",
+              label: "Fotografie",
+              serviceCatalogId: "",
+              unitPrice: "",
+              discountMode: "NONE",
+              discountValue: "",
+              priceOverridden: false,
+              format: ""
+            }
+          : entry
+      )
+    );
+    setActiveServiceField(null);
   }
 
   const itemsPayload = JSON.stringify(
@@ -101,7 +311,9 @@ export function OrderForm({
 
         return {
           ...item,
-          label: item.label || service?.name || "",
+          photoMode: undefined,
+          photoFormat: undefined,
+          label: item.label || item.serviceQuery || service?.name || "",
           serviceCatalogId: item.serviceCatalogId || undefined,
           priceOverridden: undefined,
           catalogBasePriceCents,
@@ -109,7 +321,7 @@ export function OrderForm({
           unitPriceCents
         };
       })
-      .filter((item) => item.label.trim())
+      .filter((item) => item.label.trim() && (!item.serviceQuery || item.serviceQuery !== "Fotografie" || Boolean(item.serviceCatalogId)))
   );
   const previewTotalCents = items.reduce((sum, item) => {
     const unitPriceCents = computeDiscountedUnitPrice(
@@ -119,7 +331,7 @@ export function OrderForm({
     );
     return sum + (Number.isFinite(unitPriceCents) ? unitPriceCents : 0) * Math.max(1, item.quantity || 1);
   }, 0);
-  const filledRows = items.filter((item) => item.label.trim() || item.description.trim()).length;
+  const filledRows = items.filter((item) => item.label.trim() || item.notes.trim()).length;
 
   return (
     <form action={action} className="stack">
@@ -276,7 +488,7 @@ export function OrderForm({
         <div className="list-header">
           <div>
             <h3>Righe lavorazione</h3>
-            <p className="card-muted">Impostate come una copia commissione: numero riga, descrizione e dettagli rapidi.</p>
+            <p className="card-muted">Impostate come una copia commissione: numero riga, articolo, quantita, prezzo e note rapide.</p>
           </div>
           <button
             className="ghost"
@@ -293,6 +505,16 @@ export function OrderForm({
 
         <div className="order-lines-stack">
           {items.map((item, index) => {
+            const selectedService = services.find((entry) => entry.id === item.serviceCatalogId);
+            const suggestions = getServiceSuggestions(item.serviceQuery);
+            const parsedTiers = getServiceTiers(selectedService);
+            const selectedPhotographyOption = photographyFormats.find((entry) => entry.serviceId === item.serviceCatalogId && entry.label === item.photoFormat);
+            const isPhotographyRow = item.photoMode || item.serviceQuery === "Fotografie" || Boolean(selectedPhotographyOption);
+            const showSuggestions =
+              activeServiceField === index &&
+              item.serviceQuery.trim().length > 0 &&
+              (!selectedService || normalizeCatalogSearch(item.serviceQuery) !== normalizeCatalogSearch(selectedService.name) || isPhotographyRow);
+            const hasTierEntries = parsedTiers.length > 0;
             const lineFinalCents = computeDiscountedUnitPrice(
               parseDisplayPriceToCents(item.unitPrice),
               item.discountMode,
@@ -319,52 +541,177 @@ export function OrderForm({
                   ) : null}
                 </div>
                 <div className="form-grid order-line-grid">
-                  <div className="field wide order-line-service">
-                    <label htmlFor={`service-${index}`}>Servizio</label>
-                    <select
+                  <div className={`field wide order-line-service${isPhotographyRow ? " order-line-service-photo" : ""}`}>
+                    <label htmlFor={`service-${index}`}>Articolo / servizio</label>
+                    <input
+                      autoComplete="off"
                       id={`service-${index}`}
                       onChange={(event) => {
-                        const service = services.find((entry) => entry.id === event.target.value);
+                        const nextValue = event.target.value;
+                        const normalizedNextValue = normalizeCatalogSearch(nextValue);
+                        const matchesSelectedService =
+                          selectedService && normalizedNextValue === normalizeCatalogSearch(selectedService.name);
+
                         setItems((current) =>
                           current.map((entry, itemIndex) =>
                             itemIndex === index
-                              ? {
-                                ...entry,
-                                serviceCatalogId: event.target.value,
-                                label: service ? service.name : entry.label,
-                                unitPrice: service ? getCatalogPriceDisplay(service, entry.quantity) : entry.unitPrice,
-                                discountMode: service ? "NONE" : entry.discountMode,
-                                discountValue: service ? "" : entry.discountValue,
-                                priceOverridden: false
-                              }
-                            : entry
-                        )
-                        );
-                      }}
-                      value={item.serviceCatalogId}
-                    >
-                      <option value="">Lavorazione personalizzata</option>
-                      {services.map((service) => (
-                        <option key={service.id} value={service.id}>
-                          {service.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="field wide order-line-description">
-                    <label htmlFor={`label-${index}`}>Descrizione</label>
-                    <input
-                      id={`label-${index}`}
-                      onChange={(event) =>
-                        setItems((current) =>
-                          current.map((entry, itemIndex) =>
-                            itemIndex === index ? { ...entry, label: event.target.value } : entry
+                                ? {
+                                    ...entry,
+                                    serviceQuery: nextValue,
+                                    photoMode: matchesSelectedService ? entry.photoMode : false,
+                                    photoFormat: matchesSelectedService ? entry.photoFormat : "",
+                                    label: nextValue,
+                                    serviceCatalogId: matchesSelectedService ? entry.serviceCatalogId : "",
+                                    unitPrice: matchesSelectedService ? entry.unitPrice : entry.priceOverridden ? entry.unitPrice : "",
+                                    priceOverridden: matchesSelectedService ? entry.priceOverridden : entry.priceOverridden,
+                                    format: matchesSelectedService ? entry.format : ""
+                                }
+                              : entry
                           )
-                        )
-                      }
-                      value={item.label}
+                        );
+                        setActiveServiceField(index);
+                        if (!event.target.value.trim()) {
+                          setOpenTierIndex((current) => (current === index ? null : current));
+                        }
+                      }}
+                      onBlur={() => {
+                        window.setTimeout(() => {
+                          setActiveServiceField((current) => (current === index ? null : current));
+                        }, 120);
+                      }}
+                      onFocus={() => setActiveServiceField(index)}
+                      placeholder="Scrivi per cercare nel catalogo o inserire una voce libera"
+                      value={item.serviceQuery}
                     />
+                    <div className="order-line-service-tools">
+                      {hasTierEntries ? <span className="pill order-line-tier-badge">Prezzo a scaglioni</span> : null}
+                      <button
+                        className="ghost order-line-tier-toggle"
+                        disabled={!hasTierEntries}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          if (!hasTierEntries) {
+                            return;
+                          }
+
+                          setOpenTierIndex((current) => (current === index ? null : index));
+                        }}
+                        type="button"
+                      >
+                        Scaglioni
+                      </button>
+                    </div>
+                    {showSuggestions ? (
+                      <div className="order-line-suggestions">
+                        {suggestions.map((suggestion) => (
+                          <button
+                            className="order-line-suggestion"
+                            key={suggestion.key}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              if (suggestion.type === "photography") {
+                                selectPhotographyForRow(index);
+                                return;
+                              }
+
+                              selectServiceForRow(index, suggestion.service);
+                            }}
+                            onMouseDown={(event) => event.preventDefault()}
+                            type="button"
+                          >
+                            <strong>{suggestion.label}</strong>
+                            <span>{suggestion.meta}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    {hasTierEntries && openTierIndex === index ? (
+                      <div className="order-line-tier-panel">
+                        {parsedTiers.map((tier) => (
+                          <button
+                            className={`order-line-tier-chip${isTierSelected(tier, item.quantity) && !item.priceOverridden ? " is-selected" : ""}`}
+                            key={`${index}-${tier.minQuantity}-${tier.maxQuantity ?? "plus"}`}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              if (!selectedService) {
+                                return;
+                              }
+
+                              setItems((current) =>
+                                current.map((entry, itemIndex) =>
+                                  itemIndex === index
+                                    ? {
+                                        ...entry,
+                                        quantity: tier.minQuantity,
+                                        unitPrice: (tier.unitPriceCents / 100).toFixed(2).replace(".", ","),
+                                        priceOverridden: false
+                                      }
+                                    : entry
+                                )
+                              );
+                            }}
+                            type="button"
+                          >
+                            <strong>{formatTierLabel(tier)}</strong>
+                            <span>{(tier.unitPriceCents / 100).toFixed(2).replace(".", ",")} €</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
+                  {isPhotographyRow ? (
+                    <div className="field order-line-photo-format">
+                      <label htmlFor={`photo-format-${index}`}>Taglio foto</label>
+                      <select
+                        id={`photo-format-${index}`}
+                        onChange={(event) => {
+                          const nextOption = photographyFormats.find((entry) => entry.key === event.target.value);
+
+                          setItems((current) =>
+                            current.map((entry, itemIndex) => {
+                              if (itemIndex !== index) {
+                                return entry;
+                              }
+
+                              if (!nextOption) {
+                                return {
+                                  ...entry,
+                                  photoMode: true,
+                                  photoFormat: "",
+                                  serviceCatalogId: "",
+                                  unitPrice: "",
+                                  format: "",
+                                  priceOverridden: false
+                                };
+                              }
+
+                              return {
+                                ...entry,
+                                serviceQuery: "Fotografie",
+                                photoMode: true,
+                                photoFormat: nextOption.label,
+                                label: "Fotografie",
+                                serviceCatalogId: nextOption.serviceId,
+                                format: nextOption.label,
+                                unitPrice: getCatalogPriceDisplay(nextOption.service, entry.quantity),
+                                discountMode: "NONE",
+                                discountValue: "",
+                                priceOverridden: false
+                              };
+                            })
+                          );
+                        }}
+                        value={selectedPhotographyOption?.key || ""}
+                      >
+                        <option value="">Seleziona formato</option>
+                        {photographyFormats.map((option) => (
+                          <option key={option.key} value={option.key}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null}
                   <div className="field order-line-qty">
                     <label htmlFor={`quantity-${index}`}>Qta</label>
                     <input
@@ -411,16 +758,6 @@ export function OrderForm({
                       placeholder="0,00"
                       value={item.unitPrice}
                     />
-                    {item.serviceCatalogId
-                      ? (() => {
-                          const service = services.find((entry) => entry.id === item.serviceCatalogId);
-                          if (!service?.quantityTiers) {
-                            return null;
-                          }
-
-                          return <p className="hint order-line-tier-hint">Scaglioni: {service.quantityTiers}</p>;
-                        })()
-                      : null}
                   </div>
                   <div className="field order-line-discount-mode">
                     <label htmlFor={`discountMode-${index}`}>Sconto</label>
@@ -472,62 +809,18 @@ export function OrderForm({
                       value={new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(lineFinalCents / 100)}
                     />
                   </div>
-                  <div className="field order-line-format">
-                    <label htmlFor={`format-${index}`}>Formato</label>
-                    <input
-                      id={`format-${index}`}
-                      onChange={(event) =>
-                        setItems((current) =>
-                          current.map((entry, itemIndex) =>
-                            itemIndex === index ? { ...entry, format: event.target.value } : entry
-                          )
-                        )
-                      }
-                      value={item.format}
-                    />
-                  </div>
-                  <div className="field order-line-material">
-                    <label htmlFor={`material-${index}`}>Materiale</label>
-                    <input
-                      id={`material-${index}`}
-                      onChange={(event) =>
-                        setItems((current) =>
-                          current.map((entry, itemIndex) =>
-                            itemIndex === index ? { ...entry, material: event.target.value } : entry
-                          )
-                        )
-                      }
-                      value={item.material}
-                    />
-                  </div>
-                  <div className="field order-line-finishing">
-                    <label htmlFor={`finishing-${index}`}>Finitura</label>
-                    <input
-                      id={`finishing-${index}`}
-                      onChange={(event) =>
-                        setItems((current) =>
-                          current.map((entry, itemIndex) =>
-                            itemIndex === index ? { ...entry, finishing: event.target.value } : entry
-                          )
-                        )
-                      }
-                      value={item.finishing}
-                    />
-                  </div>
                   <div className="field full order-line-notes">
-                    <label htmlFor={`description-${index}`}>Note riga</label>
+                    <label htmlFor={`notes-${index}`}>Note riga</label>
                     <textarea
-                      id={`description-${index}`}
+                      id={`notes-${index}`}
                       onChange={(event) =>
                         setItems((current) =>
                           current.map((entry, itemIndex) =>
-                            itemIndex === index
-                              ? { ...entry, description: event.target.value, notes: event.target.value }
-                              : entry
+                            itemIndex === index ? { ...entry, notes: event.target.value } : entry
                           )
                         )
                       }
-                      value={item.description}
+                      value={item.notes}
                     />
                   </div>
                 </div>

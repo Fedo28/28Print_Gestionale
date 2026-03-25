@@ -1462,19 +1462,128 @@ button.success {
   grid-column: span 2;
 }
 
-.order-line-grid .order-line-service,
-.order-line-grid .order-line-description {
+.order-line-grid .order-line-service {
+  grid-column: 1 / -1;
+}
+
+.order-line-grid .order-line-service.order-line-service-photo {
+  grid-column: span 7;
+}
+
+.order-line-service-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.order-line-tier-badge {
+  color: var(--brand-dark);
+}
+
+.order-line-tier-toggle {
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+.order-line-tier-toggle:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.order-line-suggestions {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.order-line-suggestion {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid rgba(121, 139, 178, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.56);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.order-line-suggestion:hover,
+.order-line-suggestion:focus-visible {
+  border-color: rgba(127, 101, 255, 0.28);
+  background: rgba(255, 255, 255, 0.74);
+  transform: translateY(-1px);
+}
+
+.order-line-suggestion span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.order-line-tier-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.order-line-tier-chip {
+  display: inline-grid;
+  gap: 2px;
+  justify-items: center;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(121, 139, 178, 0.16);
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+  text-align: center;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease, color 140ms ease;
+}
+
+.order-line-tier-chip:hover,
+.order-line-tier-chip:focus-visible {
+  border-color: rgba(127, 101, 255, 0.28);
+  background: rgba(255, 255, 255, 0.72);
+  transform: translateY(-1px);
+}
+
+.order-line-tier-chip.is-selected {
+  border-color: rgba(127, 101, 255, 0.36);
+  background: rgba(127, 101, 255, 0.12);
+  color: var(--brand-dark);
+}
+
+.order-line-tier-chip span {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.order-line-grid .order-line-qty {
+  grid-column: span 2;
+}
+
+.order-line-grid .order-line-photo-format {
+  grid-column: span 5;
+}
+
+.order-line-grid .order-line-price,
+.order-line-grid .order-line-final {
   grid-column: span 3;
+}
+
+.order-line-grid .order-line-discount-mode,
+.order-line-grid .order-line-discount-value {
+  grid-column: span 2;
 }
 
 .order-line-grid .order-line-final input:disabled {
   opacity: 1;
   color: var(--brand-dark);
   font-weight: 800;
-}
-
-.order-line-tier-hint {
-  margin-top: 2px;
 }
 
 .order-line-grid .order-line-notes {
@@ -2260,8 +2369,11 @@ textarea:focus-visible {
     grid-template-columns: 1fr;
   }
 
-  .order-line-grid .order-line-service,
-  .order-line-grid .order-line-description {
+  .order-line-grid .order-line-service {
+    grid-column: 1 / -1;
+  }
+
+  .order-line-grid .order-line-photo-format {
     grid-column: span 4;
   }
 }
@@ -2290,6 +2402,32 @@ textarea:focus-visible {
 
   .order-line-grid .field {
     grid-column: span 3;
+  }
+
+  .order-line-grid .order-line-service,
+  .order-line-grid .order-line-notes {
+    grid-column: 1 / -1;
+  }
+
+  .order-line-grid .order-line-photo-format {
+    grid-column: span 6;
+  }
+
+  .order-line-grid .order-line-qty,
+  .order-line-grid .order-line-discount-mode,
+  .order-line-grid .order-line-discount-value {
+    grid-column: span 4;
+  }
+
+  .order-line-grid .order-line-price,
+  .order-line-grid .order-line-final {
+    grid-column: span 6;
+  }
+}
+
+@media (max-width: 760px) {
+  .order-lines-stack {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -2332,10 +2470,6 @@ textarea:focus-visible {
   .calendar-week-grid,
   .calendar-month-weekdays,
   .calendar-month-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .order-lines-stack {
     grid-template-columns: 1fr;
   }
 
