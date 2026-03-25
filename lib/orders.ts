@@ -1068,7 +1068,10 @@ export async function registerAttachment(orderId: string, fileName: string, file
 
 export async function deleteOrder(id: string) {
   const order = await prisma.order.findUnique({
-    where: { id }
+    where: { id },
+    include: {
+      attachments: true
+    }
   });
 
   if (!order) {
