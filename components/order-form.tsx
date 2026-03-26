@@ -196,6 +196,7 @@ export function OrderForm({
   const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId);
   const photographyFormats = getPhotographyFormatOptions(services);
   const photographyServices = services.filter(isPhotographyService);
+  const isCatalogEmpty = services.length === 0;
 
   function getCatalogPriceDisplay(service: ServiceCatalog | undefined, quantity: number) {
     if (!service) {
@@ -501,6 +502,12 @@ export function OrderForm({
             Aggiungi riga
           </button>
         </div>
+        {isCatalogEmpty ? (
+          <div className="empty">
+            Il catalogo servizi e vuoto in questo ambiente: i suggerimenti non compariranno finche il listino non viene
+            bootstrapato o importato da Impostazioni.
+          </div>
+        ) : null}
         <input name="itemsPayload" type="hidden" value={itemsPayload} />
 
         <div className="order-lines-stack">
@@ -603,26 +610,37 @@ export function OrderForm({
                     </div>
                     {showSuggestions ? (
                       <div className="order-line-suggestions">
-                        {suggestions.map((suggestion) => (
-                          <button
-                            className="order-line-suggestion"
-                            key={suggestion.key}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              if (suggestion.type === "photography") {
-                                selectPhotographyForRow(index);
-                                return;
-                              }
+                        {suggestions.length > 0 ? (
+                          suggestions.map((suggestion) => (
+                            <button
+                              className="order-line-suggestion"
+                              key={suggestion.key}
+                              onClick={(event) => {
+                                event.preventDefault();
+                                if (suggestion.type === "photography") {
+                                  selectPhotographyForRow(index);
+                                  return;
+                                }
 
-                              selectServiceForRow(index, suggestion.service);
-                            }}
-                            onMouseDown={(event) => event.preventDefault()}
-                            type="button"
-                          >
-                            <strong>{suggestion.label}</strong>
-                            <span>{suggestion.meta}</span>
-                          </button>
-                        ))}
+                                selectServiceForRow(index, suggestion.service);
+                              }}
+                              onMouseDown={(event) => event.preventDefault()}
+                              type="button"
+                            >
+                              <strong>{suggestion.label}</strong>
+                              <span>{suggestion.meta}</span>
+                            </button>
+                          ))
+                        ) : (
+                          <div className="order-line-suggestion order-line-empty-state">
+                            <strong>{isCatalogEmpty ? "Catalogo servizi vuoto" : "Nessun servizio trovato"}</strong>
+                            <span>
+                              {isCatalogEmpty
+                                ? "Importa il listino da Impostazioni o verifica che il bootstrap del template Excel sia andato a buon fine."
+                                : "Prova con codice, nome o una parola piu specifica del servizio."}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     ) : null}
                     {hasTierEntries && openTierIndex === index ? (

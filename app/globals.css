@@ -1522,6 +1522,10 @@ button.success {
   font-size: 0.84rem;
 }
 
+.order-line-empty-state {
+  cursor: default;
+}
+
 .order-line-tier-panel {
   display: flex;
   flex-wrap: wrap;

@@ -28,6 +28,16 @@ export default async function SettingsPage() {
                 <p className="card-muted">Listino base modificabile, sincronizzabile da Excel e richiamabile nelle righe ordine.</p>
               </div>
             </div>
+            <p className="hint">
+              Il primo deploy produzione carica automaticamente il template Excel incluso nel progetto se il catalogo e
+              vuoto. Da questa schermata puoi comunque reimportare il file in qualsiasi momento.
+            </p>
+            {services.length === 0 ? (
+              <div className="empty">
+                Il catalogo servizi e ancora vuoto in questo ambiente. Se il deploy e appena stato creato, rifai il
+                bootstrap oppure importa manualmente il file Excel da qui.
+              </div>
+            ) : null}
             <form action={createServiceAction} className="form-grid settings-service-form">
               <div className="field">
                 <label htmlFor="code">Codice</label>

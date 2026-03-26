@@ -1,5 +1,11 @@
+import path from "path";
+import { fileURLToPath } from "url";
 import { prisma } from "../lib/prisma";
 import { hashPassword } from "../lib/auth-core";
+import {
+  bootstrapServiceCatalogTemplateIfEmpty,
+  importServiceCatalogWorkbookFile
+} from "../lib/service-catalog-import";
 
 function requireEnv(name: string) {
   const value = process.env[name]?.trim();
@@ -9,6 +15,9 @@ function requireEnv(name: string) {
 
   return value;
 }
+
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const catalogTemplatePath = path.join(projectRoot, "catalogo_servizi_template.xlsx");
 
 async function main() {
   const adminName = requireEnv("ADMIN_NAME");
@@ -41,6 +50,13 @@ async function main() {
       key: "whatsappTemplate",
       value: "Ciao {nome_cliente}, il tuo ordine {order_code} e pronto per il ritiro."
     }
+  });
+
+  await bootstrapServiceCatalogTemplateIfEmpty({
+    templatePath: catalogTemplatePath,
+    countServices: () => prisma.serviceCatalog.count(),
+    importWorkbookFile: importServiceCatalogWorkbookFile,
+    logger: console
   });
 
   console.log("Production bootstrap completed.");
