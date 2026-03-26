@@ -1254,45 +1254,58 @@ export async function updateServiceCatalogEntry(input: {
 }
 
 export async function syncServiceCatalogEntries(rows: ServiceCatalogImportRow[]) {
-  let created = 0;
-  let updated = 0;
+  if (!rows.length) {
+    return { created: 0, updated: 0 };
+  }
 
-  await prisma.$transaction(async (tx) => {
-    for (const row of rows) {
-      const existing = await tx.serviceCatalog.findUnique({
-        where: { code: row.code }
-      });
-
-      if (existing) {
-        await tx.serviceCatalog.update({
-          where: { id: existing.id },
-          data: {
-            name: row.name,
-            description: row.description,
-            basePriceCents: row.basePriceCents,
-            quantityTiers: normalizeQuantityTiers(row.quantityTiers),
-            active: row.active
-          }
-        });
-        updated += 1;
-        continue;
+  const existingServices = await prisma.serviceCatalog.findMany({
+    where: {
+      code: {
+        in: rows.map((row) => row.code)
       }
-
-      await tx.serviceCatalog.create({
-        data: {
-          code: row.code,
-          name: row.name,
-          description: row.description,
-          basePriceCents: row.basePriceCents,
-          quantityTiers: normalizeQuantityTiers(row.quantityTiers),
-          active: row.active
-        }
-      });
-      created += 1;
+    },
+    select: {
+      id: true,
+      code: true
     }
   });
 
-  return { created, updated };
+  const existingByCode = new Map(existingServices.map((service) => [service.code, service.id]));
+  const rowsToCreate = rows.filter((row) => !existingByCode.has(row.code));
+  const rowsToUpdate = rows.filter((row) => existingByCode.has(row.code));
+
+  if (rowsToCreate.length > 0) {
+    await prisma.serviceCatalog.createMany({
+      data: rowsToCreate.map((row) => ({
+        code: row.code,
+        name: row.name,
+        description: row.description,
+        basePriceCents: row.basePriceCents,
+        quantityTiers: normalizeQuantityTiers(row.quantityTiers),
+        active: row.active
+      }))
+    });
+  }
+
+  for (const row of rowsToUpdate) {
+    const serviceId = existingByCode.get(row.code);
+    if (!serviceId) {
+      continue;
+    }
+
+    await prisma.serviceCatalog.update({
+      where: { id: serviceId },
+      data: {
+        name: row.name,
+        description: row.description,
+        basePriceCents: row.basePriceCents,
+        quantityTiers: normalizeQuantityTiers(row.quantityTiers),
+        active: row.active
+      }
+    });
+  }
+
+  return { created: rowsToCreate.length, updated: rowsToUpdate.length };
 }
 
 export async function getDashboardData() {
