@@ -5,6 +5,8 @@ import { readSession } from "@/lib/auth-core";
 import { normalizeServiceCode, syncServiceCatalogEntries } from "@/lib/orders";
 import { normalizeQuantityTiers } from "@/lib/pricing";
 
+export const runtime = "nodejs";
+
 function normalizeHeader(value: string) {
   return value
     .trim()

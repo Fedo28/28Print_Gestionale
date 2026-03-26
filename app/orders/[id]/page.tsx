@@ -23,6 +23,8 @@ import { formatCurrency, formatDateTime, toDateTimeLocalInput } from "@/lib/form
 import { buildOrdersFilterHref } from "@/lib/order-filters";
 import { getOrderById } from "@/lib/orders";
 import { formatDiscountSummary } from "@/lib/pricing";
+import { resolveAttachmentStorageMode } from "@/lib/storage";
+import { AttachmentUploadForm } from "@/components/attachment-upload-form";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +39,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
   const activePayments = order.payments.filter((payment) => payment.status === "ATTIVO");
   const guidedAction = getGuidedPhaseAction(order.mainPhase);
   const hasWhatsapp = Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""));
+  const useDirectUpload = process.env.NODE_ENV === "production" && resolveAttachmentStorageMode() === "blob";
 
   return (
     <div className="stack">
@@ -380,17 +383,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
 
         <section className="card card-pad">
           <h3>Allegati</h3>
-          <form
-            action={`/api/orders/${order.id}/attachments`}
-            className="stack"
-            encType="multipart/form-data"
-            method="post"
-          >
-            <input name="file" required type="file" />
-            <button className="secondary" type="submit">
-              Carica allegato
-            </button>
-          </form>
+          <AttachmentUploadForm orderId={order.id} useDirectUpload={useDirectUpload} />
           <div className="mini-list">
             {order.attachments.length === 0 ? (
               <div className="empty">Nessun file caricato.</div>

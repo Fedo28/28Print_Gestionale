@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "postinstall": "prisma generate",
+    "deploy:check-env": "tsx --tsconfig tsconfig.json scripts/validate-production-env.ts",
     "setup": "tsx --tsconfig tsconfig.json scripts/setup-local.ts",
     "db:generate": "prisma generate",
     "db:migrate:dev": "prisma migrate dev",
@@ -17,18 +18,16 @@
     "db:seed": "tsx --tsconfig tsconfig.json prisma/seed.ts",
     "db:seed:local": "tsx --tsconfig tsconfig.json prisma/seed.ts",
     "db:bootstrap:prod": "tsx --tsconfig tsconfig.json scripts/bootstrap-production.ts",
-    "vercel-build": "prisma migrate deploy && tsx --tsconfig tsconfig.json scripts/bootstrap-production.ts && next build",
+    "vercel-build": "npm run deploy:check-env && prisma migrate deploy && tsx --tsconfig tsconfig.json scripts/bootstrap-production.ts && next build",
     "test": "vitest run"
-  },
-  "prisma": {
-    "seed": "tsx --tsconfig tsconfig.json prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.1",
     "@vercel/blob": "^2.3.1",
-    "next": "14.2.25",
+    "next": "^14.2.35",
     "react": "18.3.1",
     "react-dom": "18.3.1",
+    "sharp": "^0.34.5",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

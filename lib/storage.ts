@@ -1,6 +1,7 @@
 import { del, put } from "@vercel/blob";
 import { mkdir, rm, unlink, writeFile } from "fs/promises";
 import path from "path";
+import { sanitizeAttachmentFileName } from "@/lib/attachment-utils";
 
 export type AttachmentStorageMode = "local" | "blob";
 
@@ -14,10 +15,6 @@ type UploadAttachmentInput = {
   mimeType?: string;
   buffer: Buffer;
 };
-
-function sanitizeFileName(fileName: string) {
-  return fileName.replace(/[^\w.-]+/g, "_");
-}
 
 function getLocalUploadsRoot() {
   return path.join(process.cwd(), "public", "uploads", "orders");
@@ -52,7 +49,7 @@ function ensureBlobStorageConfigured() {
 }
 
 async function uploadToLocalStorage({ orderId, fileName, buffer }: UploadAttachmentInput) {
-  const safeName = `${Date.now()}_${sanitizeFileName(fileName)}`;
+  const safeName = `${Date.now()}_${sanitizeAttachmentFileName(fileName)}`;
   const uploadDir = path.join(getLocalUploadsRoot(), orderId);
   const filePath = path.join(uploadDir, safeName);
 
@@ -67,7 +64,7 @@ async function uploadToLocalStorage({ orderId, fileName, buffer }: UploadAttachm
 
 async function uploadToBlobStorage({ orderId, fileName, mimeType, buffer }: UploadAttachmentInput) {
   ensureBlobStorageConfigured();
-  const safeName = `${Date.now()}_${sanitizeFileName(fileName)}`;
+  const safeName = `${Date.now()}_${sanitizeAttachmentFileName(fileName)}`;
   const pathname = `orders/${orderId}/${safeName}`;
   const result = await put(pathname, buffer, {
     access: "public",
