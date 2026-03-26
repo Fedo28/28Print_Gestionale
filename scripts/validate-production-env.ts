@@ -13,7 +13,9 @@ function isMissing(value?: string) {
 
 function isPlaceholder(name: (typeof requiredEnvNames)[number], value: string) {
   if (name === "DATABASE_URL") {
-    return value.includes("USER:PASSWORD@HOST") || !value.startsWith("postgresql://");
+    const isPlaceholderValue = value.includes("USER:PASSWORD@HOST");
+    const hasValidProtocol = value.startsWith("postgres://") || value.startsWith("postgresql://");
+    return isPlaceholderValue || !hasValidProtocol;
   }
 
   if (name === "AUTH_SECRET") {
