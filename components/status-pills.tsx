@@ -1,43 +1,72 @@
 import Link from "next/link";
 import { MainPhase, OperationalStatus, PaymentStatus } from "@prisma/client";
-import { mainPhaseLabels, operationalStatusLabels, paymentStatusLabels } from "@/lib/constants";
+import type { ReactNode } from "react";
+import { mainPhaseLabels, normalizeMainPhaseForWorkflow, operationalStatusLabels, paymentStatusLabels } from "@/lib/constants";
 import { buildOrdersFilterHref } from "@/lib/order-filters";
+
+function PillLink({
+  href,
+  className,
+  children,
+  linked
+}: {
+  href: string;
+  className: string;
+  children: ReactNode;
+  linked: boolean;
+}) {
+  return linked ? (
+    <Link className={className} href={href} prefetch={false}>
+      {children}
+    </Link>
+  ) : (
+    <span className={className}>{children}</span>
+  );
+}
 
 export function StatusPills({
   phase,
   status,
   payment,
-  isQuote = false
+  isQuote = false,
+  hideNeutralStatus = false,
+  linked = true
 }: {
   phase: MainPhase;
   status: OperationalStatus;
   payment: PaymentStatus;
   isQuote?: boolean;
+  hideNeutralStatus?: boolean;
+  linked?: boolean;
 }) {
+  const visiblePhase = normalizeMainPhaseForWorkflow(phase);
+
   return (
     <div className="toolbar">
       {isQuote ? (
-        <Link className="pill quote" href={buildOrdersFilterHref({ quote: "QUOTE" })} prefetch={false}>
+        <PillLink className="pill quote" href="/quotes" linked={linked}>
           Preventivo
-        </Link>
+        </PillLink>
       ) : null}
-      <Link className="pill phase" href={buildOrdersFilterHref({ phase })} prefetch={false}>
-        {mainPhaseLabels[phase]}
-      </Link>
-      <Link
-        className={`pill ${status === "ATTIVO" ? "status" : "warning"}`}
-        href={buildOrdersFilterHref({ status })}
-        prefetch={false}
-      >
-        {operationalStatusLabels[status]}
-      </Link>
-      <Link
+      <PillLink className="pill phase" href={buildOrdersFilterHref({ phase: visiblePhase })} linked={linked}>
+        {mainPhaseLabels[visiblePhase]}
+      </PillLink>
+      {hideNeutralStatus && status === "ATTIVO" ? null : (
+        <PillLink
+          className={`pill ${status === "ATTIVO" ? "status" : "warning"}`}
+          href={buildOrdersFilterHref({ status })}
+          linked={linked}
+        >
+          {operationalStatusLabels[status]}
+        </PillLink>
+      )}
+      <PillLink
         className={`pill ${payment === "PAGATO" ? "status" : payment === "NON_PAGATO" ? "danger" : "warning"}`}
         href={buildOrdersFilterHref({ payment })}
-        prefetch={false}
+        linked={linked}
       >
         {paymentStatusLabels[payment]}
-      </Link>
+      </PillLink>
     </div>
   );
 }

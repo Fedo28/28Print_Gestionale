@@ -1,7 +1,9 @@
 import { InvoiceStatus, MainPhase, OperationalStatus, PaymentStatus, Priority } from "@prisma/client";
+import { normalizeMainPhaseForWorkflow, visibleMainPhases } from "@/lib/constants";
+import type { VisibleMainPhase } from "@/lib/constants";
 
 export type QuoteFilter = "ALL" | "QUOTE" | "ORDER";
-export type PhaseFilter = MainPhase | "ALL";
+export type PhaseFilter = VisibleMainPhase | "ALL";
 export type StatusFilter = OperationalStatus | "ALL";
 export type PaymentFilter = PaymentStatus | "ALL";
 export type InvoiceFilter = InvoiceStatus | "ALL";
@@ -17,14 +19,19 @@ export type OrderListFilters = {
   quote?: QuoteFilter;
 };
 
-const mainPhases: MainPhase[] = ["ACCETTATO", "CALENDARIZZATO", "IN_LAVORAZIONE", "SVILUPPO_COMPLETATO", "CONSEGNATO"];
+const mainPhases = visibleMainPhases as PhaseFilter[];
 const operationalStatuses: OperationalStatus[] = ["ATTIVO", "IN_ATTESA_FILE", "IN_ATTESA_APPROVAZIONE"];
 const paymentStatuses: PaymentStatus[] = ["NON_PAGATO", "ACCONTO", "PARZIALE", "PAGATO"];
 const invoiceStatuses: InvoiceStatus[] = ["DA_FATTURARE", "FATTURATO", "NON_RICHIESTO"];
 const priorities: Priority[] = ["BASSA", "MEDIA", "ALTA", "URGENTE"];
 
 export function parsePhaseFilter(raw: string | null): PhaseFilter {
-  return raw && mainPhases.includes(raw as MainPhase) ? (raw as MainPhase) : "ALL";
+  if (!raw) {
+    return "ALL";
+  }
+
+  const normalized = normalizeMainPhaseForWorkflow(raw as MainPhase) as PhaseFilter;
+  return mainPhases.includes(normalized) ? normalized : "ALL";
 }
 
 export function parseStatusFilter(raw: string | null): StatusFilter {
@@ -59,7 +66,7 @@ export function buildOrdersFilterHref(filters: OrderListFilters) {
   }
 
   if (filters.phase && filters.phase !== "ALL") {
-    params.set("phase", filters.phase);
+    params.set("phase", normalizeMainPhaseForWorkflow(filters.phase));
   }
 
   if (filters.status && filters.status !== "ALL") {

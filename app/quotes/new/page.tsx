@@ -1,4 +1,4 @@
-import { createOrderAction } from "@/app/actions";
+import { createQuoteAction } from "@/app/actions";
 import { OrderForm } from "@/components/order-form";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
@@ -6,17 +6,17 @@ import { getCustomers, getServices } from "@/lib/orders";
 
 export const dynamic = "force-dynamic";
 
-export default async function NewOrderPage() {
+export default async function NewQuotePage() {
   await requireAuth();
   const [customers, services] = await Promise.all([getCustomers(), getServices()]);
 
   return (
     <div className="stack">
       <PageHeader
-        title="Nuovo ordine"
-        description="Crea un ordine operativo completo con cliente, righe catalogo o personalizzate, consegna, appuntamento e acconto."
+        title="Nuovo preventivo"
+        description="Crea un preventivo dedicato senza sporcare il flusso ordini operativo."
       />
-      <OrderForm action={createOrderAction} customers={customers} kind="order" services={services} />
+      <OrderForm action={createQuoteAction} customers={customers} kind="quote" services={services} />
     </div>
   );
 }

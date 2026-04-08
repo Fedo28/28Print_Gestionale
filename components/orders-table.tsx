@@ -83,6 +83,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                   <td>{priorityLabels[order.priority]}</td>
                   <td>
                     <StatusPills
+                      hideNeutralStatus
                       isQuote={order.isQuote}
                       phase={order.mainPhase}
                       status={order.operationalStatus}

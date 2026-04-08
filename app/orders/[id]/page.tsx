@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  confirmQuoteAction,
   correctPaymentAction,
   deleteOrderAction,
   markReadyAction,
@@ -47,8 +48,8 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         title={order.orderCode}
         description={`Titolo corrente: ${order.title}`}
         action={
-          <Link className="button ghost" href="/orders">
-            Torna agli ordini
+          <Link className="button ghost" href={order.isQuote ? "/quotes" : "/orders"}>
+            {order.isQuote ? "Torna ai preventivi" : "Torna agli ordini"}
           </Link>
         }
       />
@@ -62,6 +63,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                 <p className="card-muted">{order.customer.phone}</p>
               </div>
               <StatusPills
+                linked={!order.isQuote}
                 isQuote={order.isQuote}
                 phase={order.mainPhase}
                 status={order.operationalStatus}
@@ -89,14 +91,22 @@ export default async function OrderDetailPage({ params }: { params: { id: string
             </div>
 
             <div className="toolbar status-cluster">
-              <Link className="pill" href={buildOrdersFilterHref({ invoice: order.invoiceStatus })} prefetch={false}>
-                {invoiceStatusLabels[order.invoiceStatus]}
-              </Link>
-              <Link className="pill" href={buildOrdersFilterHref({ priority: order.priority })} prefetch={false}>
-                {priorityLabels[order.priority]}
-              </Link>
               {order.isQuote ? (
-                <Link className="pill quote" href={buildOrdersFilterHref({ quote: "QUOTE" })} prefetch={false}>
+                <span className="pill">{invoiceStatusLabels[order.invoiceStatus]}</span>
+              ) : (
+                <Link className="pill" href={buildOrdersFilterHref({ invoice: order.invoiceStatus })} prefetch={false}>
+                  {invoiceStatusLabels[order.invoiceStatus]}
+                </Link>
+              )}
+              {order.isQuote ? (
+                <span className="pill">{priorityLabels[order.priority]}</span>
+              ) : (
+                <Link className="pill" href={buildOrdersFilterHref({ priority: order.priority })} prefetch={false}>
+                  {priorityLabels[order.priority]}
+                </Link>
+              )}
+              {order.isQuote ? (
+                <Link className="pill quote" href="/quotes" prefetch={false}>
                   Preventivo
                 </Link>
               ) : null}
@@ -118,7 +128,12 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                   : order.notes || "Nessuna nota interna."}
             </p>
             {order.isQuote ? (
-              <div className="empty">Il preventivo resta fuori dal workflow operativo finche non viene confermato.</div>
+              <form action={confirmQuoteAction} className="action-form action-form-wide">
+                <input name="orderId" type="hidden" value={order.id} />
+                <button className="primary" type="submit">
+                  Conferma come ordine
+                </button>
+              </form>
             ) : guidedAction?.kind === "transition" ? (
               <form action={transitionPhaseAction} className="action-form action-form-wide">
                 <input name="orderId" type="hidden" value={order.id} />
@@ -230,11 +245,11 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           <div className="stack">
             <div>
               <h3>Stato operativo</h3>
-              <p className="card-muted">Sospensioni e attese non alterano il codice ordine.</p>
+              <p className="card-muted">Usalo solo per blocchi o attese: la fase principale resta il riferimento del lavoro.</p>
             </div>
             <p className="hint">
               {order.operationalStatus === "ATTIVO"
-                ? "Ordine in lavorazione senza sospensioni attive."
+                ? "Nessun blocco operativo attivo."
                 : `Motivo corrente: ${order.operationalNote || "non indicato"}`}
             </p>
             <form action={updateOrderStatusAction} className="form-grid order-status-form" id="order-status-form">
@@ -419,14 +434,10 @@ export default async function OrderDetailPage({ params }: { params: { id: string
 
 function getGuidedPhaseAction(phase: import("@prisma/client").MainPhase) {
   if (phase === "ACCETTATO") {
-    return { kind: "transition" as const, nextPhase: "CALENDARIZZATO" as const, label: "Calendarizza ordine" };
-  }
-
-  if (phase === "CALENDARIZZATO") {
     return { kind: "transition" as const, nextPhase: "IN_LAVORAZIONE" as const, label: "Avvia lavorazione" };
   }
 
-  if (phase === "IN_LAVORAZIONE") {
+  if (phase === "CALENDARIZZATO" || phase === "IN_LAVORAZIONE") {
     return { kind: "ready" as const };
   }
 

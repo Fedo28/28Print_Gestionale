@@ -8,7 +8,7 @@ import {
   quickUpdateQuoteFlagAction
 } from "@/app/actions";
 import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
-import { mainPhaseLabels, operationalStatusLabels } from "@/lib/constants";
+import { mainPhaseLabels, normalizeMainPhaseForWorkflow, operationalStatusLabels } from "@/lib/constants";
 import { getSelectablePhaseTargets } from "@/lib/order-phase-transitions";
 
 export type QuickOrderControlProps = {
@@ -61,6 +61,7 @@ export function QuickOrderControlForms({
   const phaseFormRef = useRef<HTMLFormElement>(null);
   const statusFormRef = useRef<HTMLFormElement>(null);
   const quoteFormRef = useRef<HTMLFormElement>(null);
+  const visiblePhase = normalizeMainPhaseForWorkflow(phase);
   const selectablePhases = getSelectablePhaseTargets(phase);
 
   return (
@@ -73,7 +74,7 @@ export function QuickOrderControlForms({
         <select
           aria-label="Fase ordine"
           className="quick-select"
-          defaultValue={phase}
+          defaultValue={visiblePhase}
           id={`quick-phase-${orderId}`}
           name="nextPhase"
           onChange={() => phaseFormRef.current?.requestSubmit()}

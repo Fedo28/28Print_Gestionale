@@ -1793,6 +1793,63 @@ button.success {
   gap: 10px 16px;
 }
 
+.customer-autocomplete-field {
+  gap: 12px;
+}
+
+.customer-autocomplete-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+
+.customer-autocomplete-hint {
+  margin: 0;
+}
+
+.customer-autocomplete-suggestions {
+  display: grid;
+  gap: 10px;
+}
+
+.customer-autocomplete-suggestion {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid rgba(121, 139, 178, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.56);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.customer-autocomplete-suggestion:hover,
+.customer-autocomplete-suggestion:focus-visible,
+.customer-autocomplete-suggestion.is-selected {
+  border-color: rgba(127, 101, 255, 0.28);
+  background: rgba(255, 255, 255, 0.74);
+  transform: translateY(-1px);
+}
+
+.customer-autocomplete-suggestion span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.customer-autocomplete-empty {
+  padding: 16px 18px;
+}
+
+.customer-selection-card {
+  gap: 10px;
+}
+
+.customer-directory-item-highlighted {
+  border-color: rgba(127, 101, 255, 0.28);
+  box-shadow: 0 12px 30px rgba(127, 101, 255, 0.08);
+}
+
 .settings-catalog-suggestions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

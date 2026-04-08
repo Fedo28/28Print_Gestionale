@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { createCustomerAction } from "@/app/actions";
+import { CustomersDirectory } from "@/components/customers-directory";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
 import { buildCustomersFilterHref, parseCustomerTypeFilter } from "@/lib/customer-filters";
 import { customerTypeLabels } from "@/lib/constants";
-import { formatDate } from "@/lib/format";
 import { getCustomers } from "@/lib/orders";
 
 export const dynamic = "force-dynamic";
@@ -134,26 +134,7 @@ export default async function CustomersPage({ searchParams }: Props) {
             </div>
           ) : null}
 
-          <div className="mini-list">
-            {customers.length === 0 ? (
-              <div className="empty">Nessun cliente inserito.</div>
-            ) : (
-              customers.map((customer) => (
-                <article className="mini-item" key={customer.id}>
-                  <div className="list-header">
-                    <Link href={`/customers/${customer.id}`}>
-                      <strong>{customer.name}</strong>
-                    </Link>
-                    <span className="pill">{customerTypeLabels[customer.type]}</span>
-                  </div>
-                  <div className="subtle">{customer.orders.length} ordini</div>
-                  <div className="subtle">{customer.phone}</div>
-                  <div className="subtle">{customer.email || customer.whatsapp || "Nessun contatto secondario"}</div>
-                  <div className="subtle">Ultimo ordine: {customer.orders[0] ? formatDate(customer.orders[0].createdAt) : "Nessuno"}</div>
-                </article>
-              ))
-            )}
-          </div>
+          <CustomersDirectory customers={customers} />
         </section>
       </div>
     </div>

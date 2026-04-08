@@ -9,7 +9,7 @@ import {
   operationalStatusLabels,
   paymentStatusLabels,
   priorityLabels,
-  quoteFilterLabels
+  visibleMainPhases
 } from "@/lib/constants";
 import {
   buildOrdersFilterHref,
@@ -17,7 +17,6 @@ import {
   parsePaymentFilter,
   parsePhaseFilter,
   parsePriorityFilter,
-  parseQuoteFilter,
   parseStatusFilter
 } from "@/lib/order-filters";
 import { getOrdersList } from "@/lib/orders";
@@ -32,7 +31,6 @@ type Props = {
     payment?: PaymentStatus | "ALL" | string;
     invoice?: InvoiceStatus | "ALL" | string;
     priority?: Priority | "ALL" | string;
-    quote?: string;
   };
 };
 
@@ -44,8 +42,7 @@ export default async function OrdersPage({ searchParams }: Props) {
     status: parseStatusFilter(searchParams?.status || null),
     payment: parsePaymentFilter(searchParams?.payment || null),
     invoice: parseInvoiceFilter(searchParams?.invoice || null),
-    priority: parsePriorityFilter(searchParams?.priority || null),
-    quote: parseQuoteFilter(searchParams?.quote || null)
+    priority: parsePriorityFilter(searchParams?.priority || null)
   };
   const orders = await getOrdersList({
     query: filters.q,
@@ -54,7 +51,7 @@ export default async function OrdersPage({ searchParams }: Props) {
     payment: filters.payment,
     invoice: filters.invoice,
     priority: filters.priority,
-    quote: filters.quote
+    quote: "ORDER"
   });
   const activeFilters = [
     filters.q
@@ -99,20 +96,13 @@ export default async function OrdersPage({ searchParams }: Props) {
           href: buildOrdersFilterHref({ ...filters, priority: "ALL" })
         }
       : null,
-    filters.quote !== "ALL"
-      ? {
-          key: "quote",
-          label: `Tipo: ${quoteFilterLabels[filters.quote]}`,
-          href: buildOrdersFilterHref({ ...filters, quote: "ALL" })
-        }
-      : null
   ].filter((entry): entry is { key: string; label: string; href: string } => Boolean(entry));
 
   return (
     <div className="stack">
       <PageHeader
         title="Ordini"
-        description="Ricerca per codice, titolo, cliente e telefono. Ordinamento per consegna e priorita."
+        description="Ricerca per codice, titolo, cliente e telefono sugli ordini confermati. Ordinamento per consegna e priorita."
         action={
           <Link className="button primary" href="/orders/new">
             Nuovo ordine
@@ -133,9 +123,9 @@ export default async function OrdersPage({ searchParams }: Props) {
           <div className="filters-field">
             <select aria-label="Fase" defaultValue={filters.phase} name="phase">
               <option value="ALL">Tutte le fasi</option>
-              {Object.entries(mainPhaseLabels).map(([value, label]) => (
+              {visibleMainPhases.map((value) => (
                 <option key={value} value={value}>
-                  {label}
+                  {mainPhaseLabels[value]}
                 </option>
               ))}
             </select>
@@ -174,15 +164,6 @@ export default async function OrdersPage({ searchParams }: Props) {
             <select aria-label="Priorita" defaultValue={filters.priority} name="priority">
               <option value="ALL">Tutte le priorita</option>
               {Object.entries(priorityLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="filters-field">
-            <select aria-label="Tipo ordine" defaultValue={filters.quote} name="quote">
-              {Object.entries(quoteFilterLabels).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>

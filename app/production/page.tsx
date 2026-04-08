@@ -67,12 +67,11 @@ export default async function ProductionPage() {
     <div className="stack">
       <PageHeader
         title="Produzione"
-        description="Ordini da pianificare, calendarizzati, in lavorazione, sospesi e pronti al ritiro."
+        description="Flusso rapido di laboratorio: da avviare, in lavorazione, sospesi e pronti."
       />
 
       <div className="grid grid-2">
-        <QueueColumn description="Ordini appena presi in carico" orders={queues.planning} title="Da pianificare" />
-        <QueueColumn description="Ordini inseriti in agenda" orders={queues.scheduled} title="Calendarizzati" />
+        <QueueColumn description="Ordini confermati e pronti da partire" orders={queues.planning} title="Da avviare" />
         <QueueColumn description="Produzione attiva" orders={queues.working} title="In lavorazione" />
         <QueueColumn description="Ordini sospesi" orders={queues.blocked} title="Sospesi" />
         <QueueColumn description="Pronti da ritirare" orders={queues.ready} title="Pronti" />

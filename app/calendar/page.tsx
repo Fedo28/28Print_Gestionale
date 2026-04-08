@@ -40,11 +40,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
     <div className="stack">
       <PageHeader
         title="Calendario"
-        description={
-          view === "month"
-            ? "Agenda mensile di appuntamenti e lavorazioni programmate."
-            : "Consegne organizzate in vista giornaliera e settimanale."
-        }
+        description="Programmazione interna basata sugli appuntamenti e sulle lavorazioni pianificate."
         action={
           <div className="calendar-toolbar">
             <nav className="calendar-view-switch" aria-label="Selettore vista calendario">
@@ -111,7 +107,7 @@ function DayCalendar({ entries }: { entries: Awaited<ReturnType<typeof getCalend
   return (
     <div className="calendar-day-list">
       {entries.length === 0 ? (
-        <div className="empty">Nessuna consegna prevista per questa giornata.</div>
+        <div className="empty">Nessun appuntamento programmato per questa giornata.</div>
       ) : (
         entries.map((order) => (
           <article className="calendar-event-card" key={order.id}>
@@ -130,8 +126,9 @@ function DayCalendar({ entries }: { entries: Awaited<ReturnType<typeof getCalend
                 <strong>{formatCurrency(order.totalCents)}</strong>
               </div>
               <div className="subtle">
-                {order.customer.name} • {formatDateTime(order.deliveryAt)}
+                {order.customer.name} • {formatDateTime(order.appointmentAt || order.deliveryAt)}
               </div>
+              <div className="hint">Consegna prevista {formatDateTime(order.deliveryAt)}</div>
             </div>
             <StatusPills phase={order.mainPhase} status={order.operationalStatus} payment={order.paymentStatus} />
           </article>
@@ -174,7 +171,7 @@ function WeekCalendar({
                   <Link className="calendar-mini-event" href={`/orders/${order.id}`} prefetch={false}>
                     <strong>{order.orderCode}</strong>
                     <span>{order.customer.name}</span>
-                    <span>{timeLabel(order.deliveryAt)}</span>
+                    <span>{timeLabel(order.appointmentAt || order.deliveryAt)}</span>
                   </Link>
                 </div>
               ))
@@ -295,7 +292,7 @@ function isSameDay(left: Date | string, right: Date) {
 }
 
 function getDayEntries(orders: Awaited<ReturnType<typeof getCalendarOrders>>, focusDate: Date) {
-  return orders.filter((order) => isSameDay(order.deliveryAt, focusDate));
+  return orders.filter((order) => order.appointmentAt && isSameDay(order.appointmentAt, focusDate));
 }
 
 function getWeekDays(orders: Awaited<ReturnType<typeof getCalendarOrders>>, focusDate: Date) {
@@ -306,7 +303,7 @@ function getWeekDays(orders: Awaited<ReturnType<typeof getCalendarOrders>>, focu
     return {
       key: formatDateKey(date),
       date,
-      entries: orders.filter((order) => isSameDay(order.deliveryAt, date))
+      entries: orders.filter((order) => order.appointmentAt && isSameDay(order.appointmentAt, date))
     };
   });
 }
@@ -353,7 +350,7 @@ function getNavigation(view: CalendarView, focusDate: Date) {
   if (view === "day") {
     return {
       title: formatDate(focusDate),
-      subtitle: "Consegne e ritiri previsti nella giornata selezionata.",
+      subtitle: "Appuntamenti e lavorazioni programmati nella giornata selezionata.",
       prevHref: buildCalendarHref("day", addDays(focusDate, -1)),
       nextHref: buildCalendarHref("day", addDays(focusDate, 1)),
       todayHref: buildCalendarHref("day", startOfDay(new Date()))
@@ -365,7 +362,7 @@ function getNavigation(view: CalendarView, focusDate: Date) {
     const end = addDays(start, 6);
     return {
       title: `${formatDate(start)} - ${formatDate(end)}`,
-      subtitle: "Settimana completa, utile per distribuire il carico di produzione.",
+      subtitle: "Settimana completa per distribuire appuntamenti, installazioni e lavorazioni.",
       prevHref: buildCalendarHref("week", addDays(start, -7)),
       nextHref: buildCalendarHref("week", addDays(start, 7)),
       todayHref: buildCalendarHref("week", startOfDay(new Date()))

@@ -11,7 +11,7 @@ import {
   Prisma,
   Priority
 } from "@prisma/client";
-import { APP_TIMEZONE, mainPhaseLabels, operationalStatusLabels, phaseOrder } from "@/lib/constants";
+import { APP_TIMEZONE, mainPhaseLabels, normalizeMainPhaseForWorkflow, operationalStatusLabels, phaseOrder } from "@/lib/constants";
 import { canTransitionPhase } from "@/lib/order-phase-transitions";
 import { formatDateKey } from "@/lib/format";
 import { clampDiscountValue, computeDiscountedUnitPrice, normalizeQuantityTiers } from "@/lib/pricing";
@@ -109,7 +109,6 @@ type ProductionQueueSnapshot = {
 
 export type ProductionQueues<T> = {
   planning: T[];
-  scheduled: T[];
   working: T[];
   blocked: T[];
   ready: T[];
@@ -196,7 +195,6 @@ export function countUniqueOrders(...lists: OrderIdentity[][]) {
 export function classifyProductionQueues<T extends ProductionQueueSnapshot>(orders: T[]): ProductionQueues<T> {
   const queues: ProductionQueues<T> = {
     planning: [],
-    scheduled: [],
     working: [],
     blocked: [],
     ready: []
@@ -212,18 +210,15 @@ export function classifyProductionQueues<T extends ProductionQueueSnapshot>(orde
       continue;
     }
 
-    if (order.mainPhase === "SVILUPPO_COMPLETATO") {
+    const normalizedPhase = normalizeMainPhaseForWorkflow(order.mainPhase);
+
+    if (normalizedPhase === "SVILUPPO_COMPLETATO") {
       queues.ready.push(order);
       continue;
     }
 
-    if (order.mainPhase === "IN_LAVORAZIONE") {
+    if (normalizedPhase === "IN_LAVORAZIONE") {
       queues.working.push(order);
-      continue;
-    }
-
-    if (order.mainPhase === "CALENDARIZZATO") {
-      queues.scheduled.push(order);
       continue;
     }
 
@@ -546,8 +541,8 @@ export function assertPhaseTransition(
   balanceDueCents: number,
   overrideWithNote?: string
 ) {
-  const currentIndex = phaseOrder.indexOf(currentPhase);
-  const nextIndex = phaseOrder.indexOf(nextPhase);
+  const currentIndex = phaseOrder.indexOf(normalizeMainPhaseForWorkflow(currentPhase));
+  const nextIndex = phaseOrder.indexOf(normalizeMainPhaseForWorkflow(nextPhase));
 
   if (currentIndex === -1 || nextIndex === -1) {
     throw new Error("Fase ordine non valida.");
@@ -558,7 +553,7 @@ export function assertPhaseTransition(
   }
 
   if (!canTransitionPhase(currentPhase, nextPhase)) {
-    throw new Error("Puoi saltare direttamente solo fino a Pronto; per le altre fasi procedi in sequenza.");
+    throw new Error("Procedi in sequenza: Da avviare, In lavorazione, Pronto, Consegnato.");
   }
 
   if (nextPhase === "CONSEGNATO" && balanceDueCents > 0 && !overrideWithNote?.trim()) {
@@ -585,6 +580,21 @@ function getHistoryDescription(type: HistoryType, value: string) {
     default:
       return value;
   }
+}
+
+function getQuoteTransitionPatch(currentIsQuote: boolean, nextIsQuote: boolean) {
+  if (currentIsQuote && !nextIsQuote) {
+    return {
+      isQuote: false,
+      mainPhase: "ACCETTATO" as MainPhase,
+      operationalStatus: "ATTIVO" as OperationalStatus,
+      operationalNote: null
+    };
+  }
+
+  return {
+    isQuote: nextIsQuote
+  };
 }
 
 async function ensureCustomer(tx: Prisma.TransactionClient, input: CreateOrderInput) {
@@ -769,7 +779,7 @@ export async function updateOrder(input: UpdateOrderInput) {
         priority: input.priority,
         notes: input.notes?.trim() || undefined,
         invoiceStatus: input.invoiceStatus,
-        isQuote: nextIsQuote
+        ...getQuoteTransitionPatch(order.isQuote, nextIsQuote)
       }
     });
 
@@ -871,19 +881,20 @@ export async function transitionOrderPhase(orderId: string, nextPhase: MainPhase
     throw new Error("Ordine non trovato.");
   }
 
-  assertPhaseTransition(order.mainPhase, nextPhase, order.balanceDueCents, overrideNote);
+  const normalizedNextPhase = normalizeMainPhaseForWorkflow(nextPhase);
+  assertPhaseTransition(order.mainPhase, normalizedNextPhase, order.balanceDueCents, overrideNote);
 
   return prisma.$transaction(async (tx) => {
     const updated = await tx.order.update({
       where: { id: orderId },
-      data: { mainPhase: nextPhase }
+      data: { mainPhase: normalizedNextPhase }
     });
 
     await tx.orderHistory.create({
       data: {
         orderId,
         type: "PHASE_CHANGED",
-        description: `Fase ordine aggiornata a ${mainPhaseLabels[nextPhase]}`,
+        description: `Fase ordine aggiornata a ${mainPhaseLabels[normalizedNextPhase]}`,
         details: overrideNote?.trim() || undefined
       }
     });
@@ -1029,7 +1040,7 @@ export async function updateOrderQuoteFlag(orderId: string, isQuote: boolean) {
   return prisma.$transaction(async (tx) => {
     const updated = await tx.order.update({
       where: { id: orderId },
-      data: { isQuote }
+      data: getQuoteTransitionPatch(order.isQuote, isQuote)
     });
 
     await tx.orderHistory.create({
@@ -1426,7 +1437,14 @@ export async function getOrdersList(filters: {
             ]
           }
         : {}),
-      ...(filters.phase && filters.phase !== "ALL" ? { mainPhase: filters.phase } : {}),
+      ...(filters.phase && filters.phase !== "ALL"
+        ? {
+            mainPhase:
+              filters.phase === "IN_LAVORAZIONE"
+                ? { in: ["IN_LAVORAZIONE", "CALENDARIZZATO"] }
+                : filters.phase
+          }
+        : {}),
       ...(filters.status && filters.status !== "ALL" ? { operationalStatus: filters.status } : {}),
       ...(filters.payment && filters.payment !== "ALL" ? { paymentStatus: filters.payment } : {}),
       ...(filters.invoice && filters.invoice !== "ALL" ? { invoiceStatus: filters.invoice } : {}),
@@ -1470,9 +1488,13 @@ export async function getOrderById(id: string) {
 
 export async function getCalendarOrders() {
   return prisma.order.findMany({
-    where: operationalOrderWhere(),
+    where: {
+      ...operationalOrderWhere(),
+      mainPhase: { not: "CONSEGNATO" },
+      appointmentAt: { not: null }
+    },
     include: { customer: true },
-    orderBy: [{ deliveryAt: "asc" }, { priority: "desc" }]
+    orderBy: [{ appointmentAt: "asc" }, { priority: "desc" }]
   });
 }
 

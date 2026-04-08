@@ -37,11 +37,38 @@ import { cleanupOrderAttachments } from "@/lib/storage";
 function revalidateOperationalSurfaces(orderId?: string) {
   revalidatePath("/");
   revalidatePath("/orders");
+  revalidatePath("/quotes");
   revalidatePath("/calendar");
   revalidatePath("/production");
   if (orderId) {
     revalidatePath(`/orders/${orderId}`);
   }
+}
+
+function parseOrderFormInput(formData: FormData, options?: { forceQuote?: boolean }) {
+  return {
+    customerId: String(formData.get("customerId") || "").trim() || undefined,
+    customer: {
+      type: parseCustomerType(formData.get("customerType")?.toString() || null),
+      name: String(formData.get("customerName") || ""),
+      phone: String(formData.get("customerPhone") || ""),
+      whatsapp: String(formData.get("customerWhatsapp") || ""),
+      email: String(formData.get("customerEmail") || ""),
+      taxCode: String(formData.get("customerTaxCode") || ""),
+      vatNumber: String(formData.get("customerVatNumber") || ""),
+      notes: String(formData.get("customerNotes") || "")
+    },
+    title: String(formData.get("title") || ""),
+    deliveryAt: parseDateTime(formData.get("deliveryAt")?.toString() || null),
+    appointmentAt: parseOptionalDateTime(formData.get("appointmentAt")?.toString() || null),
+    appointmentNote: String(formData.get("appointmentNote") || ""),
+    priority: parsePriority(formData.get("priority")?.toString() || null),
+    notes: String(formData.get("notes") || ""),
+    invoiceStatus: parseInvoiceStatus(formData.get("invoiceStatus")?.toString() || null),
+    isQuote: options?.forceQuote ?? parseBooleanFlag(formData.get("isQuote")),
+    items: parseItemsPayload(formData.get("itemsPayload")?.toString() || null),
+    initialDepositCents: parseCurrencyToCents(formData.get("initialDeposit")?.toString() || null)
+  };
 }
 
 export type LoginActionState = {
@@ -103,29 +130,15 @@ export async function deleteCustomerAction(formData: FormData) {
 
 export async function createOrderAction(formData: FormData) {
   await requireAuth();
-  const order = await createOrder({
-    customerId: String(formData.get("customerId") || "").trim() || undefined,
-    customer: {
-      type: parseCustomerType(formData.get("customerType")?.toString() || null),
-      name: String(formData.get("customerName") || ""),
-      phone: String(formData.get("customerPhone") || ""),
-      whatsapp: String(formData.get("customerWhatsapp") || ""),
-      email: String(formData.get("customerEmail") || ""),
-      taxCode: String(formData.get("customerTaxCode") || ""),
-      vatNumber: String(formData.get("customerVatNumber") || ""),
-      notes: String(formData.get("customerNotes") || "")
-    },
-    title: String(formData.get("title") || ""),
-    deliveryAt: parseDateTime(formData.get("deliveryAt")?.toString() || null),
-    appointmentAt: parseOptionalDateTime(formData.get("appointmentAt")?.toString() || null),
-    appointmentNote: String(formData.get("appointmentNote") || ""),
-    priority: parsePriority(formData.get("priority")?.toString() || null),
-    notes: String(formData.get("notes") || ""),
-    invoiceStatus: parseInvoiceStatus(formData.get("invoiceStatus")?.toString() || null),
-    isQuote: parseBooleanFlag(formData.get("isQuote")),
-    items: parseItemsPayload(formData.get("itemsPayload")?.toString() || null),
-    initialDepositCents: parseCurrencyToCents(formData.get("initialDeposit")?.toString() || null)
-  });
+  const order = await createOrder(parseOrderFormInput(formData));
+
+  revalidateOperationalSurfaces(order.id);
+  redirect(`/orders/${order.id}`);
+}
+
+export async function createQuoteAction(formData: FormData) {
+  await requireAuth();
+  const order = await createOrder(parseOrderFormInput(formData, { forceQuote: true }));
 
   revalidateOperationalSurfaces(order.id);
   redirect(`/orders/${order.id}`);
@@ -214,6 +227,14 @@ export async function quickUpdateQuoteFlagAction(formData: FormData) {
   const isQuote = String(formData.get("isQuote") || "") === "true";
   await updateOrderQuoteFlag(orderId, isQuote);
   revalidateOperationalSurfaces(orderId);
+}
+
+export async function confirmQuoteAction(formData: FormData) {
+  await requireAuth();
+  const orderId = String(formData.get("orderId") || "");
+  await updateOrderQuoteFlag(orderId, false);
+  revalidateOperationalSurfaces(orderId);
+  redirect(`/orders/${orderId}`);
 }
 
 export async function markReadyAction(formData: FormData) {

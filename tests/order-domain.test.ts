@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { mainPhaseLabels } from "../lib/constants";
 import {
   assertPhaseTransition,
   buildOrderCode,
@@ -15,6 +16,7 @@ import {
   normalizeOrderTitle,
   normalizeForUniqueness
 } from "../lib/orders";
+import { parsePhaseFilter } from "../lib/order-filters";
 import { getSelectablePhaseTargets } from "../lib/order-phase-transitions";
 import { getTieredUnitPrice, normalizeQuantityTiers, parseQuantityTiers } from "../lib/pricing";
 
@@ -70,7 +72,7 @@ describe("order domain", () => {
   });
 
   it("blocks direct jumps across phases", () => {
-    expect(() => assertPhaseTransition("ACCETTATO", "IN_LAVORAZIONE", 0)).toThrow(/procedi in sequenza/i);
+    expect(() => assertPhaseTransition("ACCETTATO", "SVILUPPO_COMPLETATO", 0)).toThrow(/procedi in sequenza/i);
   });
 
   it("blocks delivery with open balance without note", () => {
@@ -81,14 +83,18 @@ describe("order domain", () => {
     expect(() => assertPhaseTransition("SVILUPPO_COMPLETATO", "CONSEGNATO", 1200, "Cliente paga domani")).not.toThrow();
   });
 
-  it("allows jumping directly to ready", () => {
-    expect(() => assertPhaseTransition("ACCETTATO", "SVILUPPO_COMPLETATO", 0)).not.toThrow();
+  it("keeps legacy calendarizzato hidden but compatible", () => {
     expect(getSelectablePhaseTargets("CALENDARIZZATO")).toEqual([
       "ACCETTATO",
-      "CALENDARIZZATO",
       "IN_LAVORAZIONE",
       "SVILUPPO_COMPLETATO"
     ]);
+  });
+
+  it("normalizes legacy phase filters and user-facing labels", () => {
+    expect(parsePhaseFilter("CALENDARIZZATO")).toBe("IN_LAVORAZIONE");
+    expect(mainPhaseLabels.ACCETTATO).toBe("Da avviare");
+    expect(mainPhaseLabels.IN_LAVORAZIONE).toBe("In lavorazione");
   });
 
   it("excludes preventivi from operational flows", () => {
@@ -117,8 +123,7 @@ describe("order domain", () => {
     ]);
 
     expect(queues.planning.map((order) => order.id)).toEqual(["accepted"]);
-    expect(queues.scheduled.map((order) => order.id)).toEqual(["scheduled"]);
-    expect(queues.working.map((order) => order.id)).toEqual(["working"]);
+    expect(queues.working.map((order) => order.id)).toEqual(["scheduled", "working"]);
     expect(queues.ready.map((order) => order.id)).toEqual(["ready"]);
     expect(queues.blocked.map((order) => order.id)).toEqual(["blocked-ready"]);
   });
@@ -128,19 +133,19 @@ describe("order domain", () => {
       {
         id: "appointment",
         isQuote: false,
-        mainPhase: "CALENDARIZZATO",
+        mainPhase: "IN_LAVORAZIONE",
         appointmentAt: new Date("2026-03-28T09:00:00.000Z")
       },
       {
         id: "no-appointment",
         isQuote: false,
-        mainPhase: "CALENDARIZZATO",
+        mainPhase: "ACCETTATO",
         appointmentAt: null
       },
       {
         id: "quote",
         isQuote: true,
-        mainPhase: "CALENDARIZZATO",
+        mainPhase: "IN_LAVORAZIONE",
         appointmentAt: new Date("2026-03-29T09:00:00.000Z")
       },
       {

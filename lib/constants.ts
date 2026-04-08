@@ -8,6 +8,8 @@ import {
   Priority
 } from "@prisma/client";
 
+export type VisibleMainPhase = Exclude<MainPhase, "CALENDARIZZATO">;
+
 export const APP_TIMEZONE = "Europe/Rome";
 export const DEFAULT_WHATSAPP_TEMPLATE =
   "Ciao {nome_cliente}, il tuo ordine {order_code} e pronto per il ritiro.";
@@ -25,15 +27,15 @@ export const customerTypeLabels: Record<CustomerType, string> = {
 };
 
 export const mainPhaseLabels: Record<MainPhase, string> = {
-  ACCETTATO: "Accettato",
-  CALENDARIZZATO: "Calendarizzato",
+  ACCETTATO: "Da avviare",
+  CALENDARIZZATO: "In lavorazione",
   IN_LAVORAZIONE: "In lavorazione",
   SVILUPPO_COMPLETATO: "Pronto",
   CONSEGNATO: "Consegnato"
 };
 
 export const operationalStatusLabels: Record<OperationalStatus, string> = {
-  ATTIVO: "In lavorazione",
+  ATTIVO: "Operativo",
   IN_ATTESA_FILE: "In attesa file",
   IN_ATTESA_APPROVAZIONE: "In attesa approvazione"
 };
@@ -64,10 +66,10 @@ export const paymentMethodLabels: Record<PaymentMethod, string> = {
   ALTRO: "Altro"
 };
 
-export const phaseOrder: MainPhase[] = [
-  "ACCETTATO",
-  "CALENDARIZZATO",
-  "IN_LAVORAZIONE",
-  "SVILUPPO_COMPLETATO",
-  "CONSEGNATO"
-];
+export const phaseOrder: VisibleMainPhase[] = ["ACCETTATO", "IN_LAVORAZIONE", "SVILUPPO_COMPLETATO", "CONSEGNATO"];
+
+export const visibleMainPhases: VisibleMainPhase[] = phaseOrder;
+
+export function normalizeMainPhaseForWorkflow(phase: MainPhase): VisibleMainPhase {
+  return phase === "CALENDARIZZATO" ? "IN_LAVORAZIONE" : phase;
+}

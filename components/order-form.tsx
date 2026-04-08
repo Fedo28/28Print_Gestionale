@@ -2,6 +2,7 @@
 
 import { Customer, CustomerType, ServiceCatalog } from "@prisma/client";
 import { useState } from "react";
+import { CustomerAutocomplete } from "@/components/customer-autocomplete";
 import { customerTypeLabels, invoiceStatusLabels, priorityLabels } from "@/lib/constants";
 import {
   computeDiscountedUnitPrice,
@@ -180,16 +181,21 @@ type ServiceSuggestion =
       meta: string;
     };
 
+type OrderFormMode = "order" | "quote";
+
 export function OrderForm({
   customers,
   services,
-  action
+  action,
+  kind = "order"
 }: {
   customers: CustomerWithOrders[];
   services: ServiceCatalog[];
   action: (formData: FormData) => void | Promise<void>;
+  kind?: OrderFormMode;
 }) {
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [customerQuery, setCustomerQuery] = useState("");
   const [items, setItems] = useState<ItemState[]>([emptyItem(), emptyItem()]);
   const [activeServiceField, setActiveServiceField] = useState<number | null>(null);
   const [openTierIndex, setOpenTierIndex] = useState<number | null>(null);
@@ -198,6 +204,7 @@ export function OrderForm({
   const photographyServices = services.filter(isPhotographyService);
   const isCatalogEmpty = services.length === 0;
   const defaultCustomerType: CustomerType = "PUBBLICO";
+  const isQuoteMode = kind === "quote";
 
   function getCatalogPriceDisplay(service: ServiceCatalog | undefined, quantity: number) {
     if (!service) {
@@ -337,13 +344,17 @@ export function OrderForm({
 
   return (
     <form action={action} className="stack">
+      {selectedCustomerId ? <input name="customerId" type="hidden" value={selectedCustomerId} /> : null}
+      {isQuoteMode ? <input name="isQuote" type="hidden" value="true" /> : null}
       <section className="card card-pad order-sheet-hero">
         <div className="order-sheet-head">
           <div className="stack compact-stack">
-            <span className="compact-kicker">Scheda ordine</span>
-            <h3>Copia commissione digitale</h3>
+            <span className="compact-kicker">{isQuoteMode ? "Scheda preventivo" : "Scheda ordine"}</span>
+            <h3>{isQuoteMode ? "Preventivo rapido da banco" : "Copia commissione digitale"}</h3>
             <p className="card-muted">
-              Modulo rapido da banco: cliente, consegna, acconto e righe lavorazione tutte nella stessa scheda.
+              {isQuoteMode
+                ? "Stesso flusso compatto degli ordini, ma dedicato ai preventivi per non mescolare il lavoro operativo."
+                : "Modulo rapido da banco: cliente, consegna, acconto e righe lavorazione tutte nella stessa scheda."}
             </p>
           </div>
           <div className="order-sheet-summary">
@@ -372,25 +383,54 @@ export function OrderForm({
           <div className="stack">
             <div>
               <h3>Cliente</h3>
-              <p className="card-muted">Seleziona un cliente o inseriscilo al volo come sulla copia commissione.</p>
+              <p className="card-muted">Cerca un cliente gia registrato oppure inseriscilo al volo come sulla copia commissione.</p>
             </div>
             <div className="form-grid">
-              <div className="field full">
-                <label htmlFor="customerId">Cliente esistente</label>
-                <select
-                  id="customerId"
-                  name="customerId"
-                  onChange={(event) => setSelectedCustomerId(event.target.value)}
-                  value={selectedCustomerId}
-                >
-                  <option value="">Nuovo cliente</option>
-                  {customers.map((customer) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name} - {customer.phone} - {customerTypeLabels[customer.type]}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <CustomerAutocomplete
+                customers={customers.map((customer) => ({
+                  ...customer,
+                  orderCount: customer.orders.length
+                }))}
+                helperText="Scrivi nome, telefono, email, codice fiscale o partita IVA per trovare subito il cliente giusto."
+                label="Cerca cliente esistente"
+                onQueryChange={(value) => {
+                  setCustomerQuery(value);
+                  if (selectedCustomerId) {
+                    setSelectedCustomerId("");
+                  }
+                }}
+                onSelect={(customer) => {
+                  setSelectedCustomerId(customer.id);
+                  setCustomerQuery(customer.name);
+                }}
+                placeholder="Es. Rossi, +39 333..., info@azienda.it, IT123..."
+                query={customerQuery}
+                selectedCustomerId={selectedCustomerId}
+              />
+
+              {selectedCustomer ? (
+                <div className="mini-item customer-selection-card field full">
+                  <div className="list-header">
+                    <div>
+                      <strong>{selectedCustomer.name}</strong>
+                      <div className="subtle">{customerTypeLabels[selectedCustomer.type]}</div>
+                    </div>
+                    <button
+                      className="ghost"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        setSelectedCustomerId("");
+                        setCustomerQuery("");
+                      }}
+                      type="button"
+                    >
+                      Nuovo cliente
+                    </button>
+                  </div>
+                  <div className="subtle">{selectedCustomer.phone}</div>
+                  <div className="subtle">{selectedCustomer.email || selectedCustomer.whatsapp || "Nessun contatto secondario"}</div>
+                </div>
+              ) : null}
 
               {selectedCustomerId ? null : (
                 <>
@@ -441,8 +481,12 @@ export function OrderForm({
         <section className="card card-pad order-sheet-panel">
           <div className="stack">
             <div>
-              <h3>Dati ordine</h3>
-              <p className="card-muted">Campi essenziali per prendere in carico l’ordine senza perdere tempo.</p>
+              <h3>{isQuoteMode ? "Dati preventivo" : "Dati ordine"}</h3>
+              <p className="card-muted">
+                {isQuoteMode
+                  ? "Campi essenziali per preparare un preventivo completo senza mischiarlo al flusso operativo."
+                  : "Campi essenziali per prendere in carico l’ordine senza perdere tempo."}
+              </p>
             </div>
             <div className="form-grid">
               <div className="field full">
@@ -480,12 +524,6 @@ export function OrderForm({
               <div className="field">
                 <label htmlFor="initialDeposit">Acconto iniziale</label>
                 <input id="initialDeposit" name="initialDeposit" placeholder="0,00" />
-              </div>
-              <div className="field">
-                <label className="toggle-field" htmlFor="isQuote">
-                  <input id="isQuote" name="isQuote" type="checkbox" />
-                  <span>Preventivo</span>
-                </label>
               </div>
               <div className="field full">
                 <label htmlFor="appointmentNote">Nota appuntamento</label>
@@ -871,7 +909,7 @@ export function OrderForm({
 
       <div className="button-row">
         <button className="primary" type="submit">
-          Crea ordine
+          {isQuoteMode ? "Crea preventivo" : "Crea ordine"}
         </button>
       </div>
     </form>
