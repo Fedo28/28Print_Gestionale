@@ -42,6 +42,7 @@ import { cleanupOrderAttachments, deleteStoredAttachment, uploadBillboardBooking
 import {
   createStaffUser,
   getStaffInviteConfig,
+  normalizeStaffAccessBaseUrl,
   sendStaffInviteEmail,
   updateOwnStaffNickname
 } from "@/lib/staff-users";
@@ -102,6 +103,11 @@ export type AccessProfileActionState = {
   error: string | null;
   successMessage: string | null;
   updatedNickname: string | null;
+};
+
+export type StaffInviteSettingsActionState = {
+  error: string | null;
+  successMessage: string | null;
 };
 
 export async function createCustomerAction(formData: FormData) {
@@ -387,6 +393,51 @@ export async function saveWhatsappTemplateAction(formData: FormData) {
 
   await saveSetting("whatsappTemplate", template);
   revalidatePath("/settings");
+}
+
+export async function saveStaffInviteSettingsAction(
+  _: StaffInviteSettingsActionState,
+  formData: FormData
+): Promise<StaffInviteSettingsActionState> {
+  await requireAdmin();
+
+  const accessBaseUrl = String(formData.get("accessBaseUrl") || "").trim();
+  const subject = String(formData.get("subject") || "").trim();
+  const template = String(formData.get("template") || "").trim();
+
+  if (!subject) {
+    return {
+      error: "L'oggetto della mail e obbligatorio.",
+      successMessage: null
+    };
+  }
+
+  if (!template) {
+    return {
+      error: "La bozza del messaggio e obbligatoria.",
+      successMessage: null
+    };
+  }
+
+  if (accessBaseUrl && !normalizeStaffAccessBaseUrl(accessBaseUrl)) {
+    return {
+      error: "L'URL base di accesso non e valido.",
+      successMessage: null
+    };
+  }
+
+  await Promise.all([
+    saveSetting("staffAccessBaseUrl", accessBaseUrl),
+    saveSetting("staffInviteEmailSubject", subject),
+    saveSetting("staffInviteEmailTemplate", template)
+  ]);
+
+  revalidatePath("/settings/staff");
+
+  return {
+    error: null,
+    successMessage: "Bozza invito aggiornata."
+  };
 }
 
 export async function createStaffUserAction(

@@ -24,7 +24,7 @@ export function normalizeStaffNickname(raw: string) {
   return raw.trim().toLowerCase();
 }
 
-function normalizeStaffAccessBaseUrl(raw: string) {
+export function normalizeStaffAccessBaseUrl(raw: string) {
   const value = raw.trim();
   if (!value) {
     return null;
