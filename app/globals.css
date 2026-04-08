@@ -1272,6 +1272,57 @@ button.success {
     radial-gradient(circle at top right, rgba(47, 125, 91, 0.12), transparent 40%);
 }
 
+.billboard-summary-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.billboard-asset-grid {
+  display: grid;
+  gap: 12px;
+  max-height: 780px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.billboard-asset-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.38), rgba(255, 255, 255, 0.16)),
+    rgba(255, 255, 255, 0.18);
+}
+
+.billboard-asset-card.occupied {
+  border-color: rgba(155, 122, 47, 0.28);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.16)),
+    radial-gradient(circle at top right, rgba(155, 122, 47, 0.12), transparent 40%);
+}
+
+.billboard-booking-chip {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0.22)),
+    radial-gradient(circle at top right, rgba(127, 101, 255, 0.14), transparent 40%);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.billboard-booking-chip span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.billboard-booking-note {
+  color: var(--text) !important;
+  line-height: 1.35;
+}
+
 .quick-order-menu {
   position: relative;
   flex: 0 0 auto;
@@ -2499,6 +2550,10 @@ textarea:focus-visible {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .billboard-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .calendar-summary-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
@@ -2543,6 +2598,7 @@ textarea:focus-visible {
   }
 
   .dashboard-summary-grid,
+  .billboard-summary-grid,
   .calendar-summary-grid,
   .dashboard-lanes-grid,
   .stats-summary-grid,
@@ -2629,6 +2685,7 @@ textarea:focus-visible {
   }
 
   .dashboard-summary-grid,
+  .billboard-summary-grid,
   .calendar-summary-grid,
   .dashboard-lanes-grid,
   .stats-summary-grid,

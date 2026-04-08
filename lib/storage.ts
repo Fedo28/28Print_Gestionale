@@ -9,15 +9,17 @@ type StoredAttachment = {
   filePath: string;
 };
 
+type AttachmentScope = "orders" | "billboards";
+
 type UploadAttachmentInput = {
-  orderId: string;
+  entityId: string;
   fileName: string;
   mimeType?: string;
   buffer: Buffer;
 };
 
-function getLocalUploadsRoot() {
-  return path.join(process.cwd(), "public", "uploads", "orders");
+function getLocalUploadsRoot(scope: AttachmentScope) {
+  return path.join(process.cwd(), "public", "uploads", scope);
 }
 
 function isBlobUrl(filePath: string) {
@@ -48,9 +50,9 @@ function ensureBlobStorageConfigured() {
   }
 }
 
-async function uploadToLocalStorage({ orderId, fileName, buffer }: UploadAttachmentInput) {
+async function uploadToLocalStorage(scope: AttachmentScope, { entityId, fileName, buffer }: UploadAttachmentInput) {
   const safeName = `${Date.now()}_${sanitizeAttachmentFileName(fileName)}`;
-  const uploadDir = path.join(getLocalUploadsRoot(), orderId);
+  const uploadDir = path.join(getLocalUploadsRoot(scope), entityId);
   const filePath = path.join(uploadDir, safeName);
 
   await mkdir(uploadDir, { recursive: true });
@@ -58,14 +60,14 @@ async function uploadToLocalStorage({ orderId, fileName, buffer }: UploadAttachm
 
   return {
     mode: "local" as const,
-    filePath: `/uploads/orders/${orderId}/${safeName}`
+    filePath: `/uploads/${scope}/${entityId}/${safeName}`
   };
 }
 
-async function uploadToBlobStorage({ orderId, fileName, mimeType, buffer }: UploadAttachmentInput) {
+async function uploadToBlobStorage(scope: AttachmentScope, { entityId, fileName, mimeType, buffer }: UploadAttachmentInput) {
   ensureBlobStorageConfigured();
   const safeName = `${Date.now()}_${sanitizeAttachmentFileName(fileName)}`;
-  const pathname = `orders/${orderId}/${safeName}`;
+  const pathname = `${scope}/${entityId}/${safeName}`;
   const result = await put(pathname, buffer, {
     access: "public",
     addRandomSuffix: false,
@@ -81,10 +83,19 @@ async function uploadToBlobStorage({ orderId, fileName, mimeType, buffer }: Uplo
 export async function uploadOrderAttachment(input: UploadAttachmentInput) {
   const mode = resolveAttachmentStorageMode();
   if (mode === "blob") {
-    return uploadToBlobStorage(input);
+    return uploadToBlobStorage("orders", input);
   }
 
-  return uploadToLocalStorage(input);
+  return uploadToLocalStorage("orders", input);
+}
+
+export async function uploadBillboardBookingPdf(input: UploadAttachmentInput) {
+  const mode = resolveAttachmentStorageMode();
+  if (mode === "blob") {
+    return uploadToBlobStorage("billboards", input);
+  }
+
+  return uploadToLocalStorage("billboards", input);
 }
 
 export async function deleteStoredAttachment(filePath: string) {
@@ -118,7 +129,7 @@ export async function cleanupOrderAttachments(attachments: StoredAttachment[]) {
   if (localAttachments.length > 0) {
     const orderId = localAttachments[0]?.filePath.split("/")[3];
     if (orderId) {
-      await rm(path.join(getLocalUploadsRoot(), orderId), {
+      await rm(path.join(getLocalUploadsRoot("orders"), orderId), {
         recursive: true,
         force: true
       }).catch(() => undefined);

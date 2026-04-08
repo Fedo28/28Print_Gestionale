@@ -69,6 +69,12 @@ enum PaymentEntryStatus {
   SOSTITUITO
 }
 
+enum BillboardAssetKind {
+  CARTELLONE
+  MONITOR
+  VELA_ITINERANTE
+}
+
 enum HistoryType {
   CREATED
   UPDATED
@@ -102,6 +108,7 @@ model Customer {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   orders     Order[]
+  billboardBookings BillboardBooking[]
 
   @@index([name])
   @@index([phone])
@@ -231,4 +238,42 @@ model AppSetting {
   value     String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model BillboardAsset {
+  id        String             @id @default(uuid())
+  code      String             @unique
+  name      String
+  kind      BillboardAssetKind @default(CARTELLONE)
+  location  String?
+  sortOrder Int                @default(0)
+  active    Boolean            @default(true)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  bookings  BillboardBooking[]
+
+  @@index([kind, active])
+  @@index([sortOrder])
+}
+
+model BillboardBooking {
+  id               String         @id @default(uuid())
+  billboardAssetId String
+  customerId       String
+  startsAt         DateTime
+  endsAt           DateTime
+  note             String?
+  pdfFileName      String?
+  pdfFilePath      String?
+  pdfMimeType      String?
+  pdfSizeBytes     Int?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  billboardAsset   BillboardAsset @relation(fields: [billboardAssetId], references: [id], onDelete: Restrict)
+  customer         Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  @@index([billboardAssetId, startsAt, endsAt])
+  @@index([customerId, startsAt])
+  @@index([startsAt])
+  @@index([endsAt])
 }

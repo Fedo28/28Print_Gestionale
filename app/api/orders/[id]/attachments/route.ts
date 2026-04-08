@@ -100,7 +100,7 @@ async function handleServerUpload(request: NextRequest, orderId: string) {
     const buffer = Buffer.from(bytes);
 
     const stored = await uploadOrderAttachment({
-      orderId,
+      entityId: orderId,
       fileName: file.name,
       mimeType: file.type || "application/octet-stream",
       buffer

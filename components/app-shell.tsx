@@ -12,6 +12,7 @@ const navItems = [
   { href: "/orders", label: "Ordini" },
   { href: "/quotes", label: "Preventivi" },
   { href: "/calendar", label: "Calendario" },
+  { href: "/billboards", label: "Cartelloni" },
   { href: "/production", label: "Produzione" },
   { href: "/stats", label: "Statistiche" },
   { href: "/settings", label: "Impostazioni" }

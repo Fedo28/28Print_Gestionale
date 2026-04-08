@@ -1,6 +1,8 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { ATTACHMENT_MAX_SIZE_BYTES, formatAttachmentMaxSize } from "@/lib/attachment-utils";
+import { createBillboardBooking, parseBillboardBookingDate } from "@/lib/billboards";
 import {
   parseCustomerType,
   parseBooleanFlag,
@@ -14,6 +16,7 @@ import {
   parsePaymentMethod,
   parsePriority
 } from "@/lib/forms";
+import { formatDateKey } from "@/lib/format";
 import {
   correctPayment,
   createOrder,
@@ -32,7 +35,7 @@ import {
 import { authenticateUser, createSessionForUser, describeLoginFailure, requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { saveSetting } from "@/lib/settings";
-import { cleanupOrderAttachments } from "@/lib/storage";
+import { cleanupOrderAttachments, deleteStoredAttachment, uploadBillboardBookingPdf } from "@/lib/storage";
 
 function revalidateOperationalSurfaces(orderId?: string) {
   revalidatePath("/");
@@ -43,6 +46,10 @@ function revalidateOperationalSurfaces(orderId?: string) {
   if (orderId) {
     revalidatePath(`/orders/${orderId}`);
   }
+}
+
+function revalidateBillboardSurfaces() {
+  revalidatePath("/billboards");
 }
 
 function parseOrderFormInput(formData: FormData, options?: { forceQuote?: boolean }) {
@@ -99,6 +106,7 @@ export async function createCustomerAction(formData: FormData) {
 
   revalidatePath("/customers");
   revalidatePath("/orders/new");
+  revalidateBillboardSurfaces();
 }
 
 export async function updateCustomerAction(formData: FormData) {
@@ -242,6 +250,80 @@ export async function markReadyAction(formData: FormData) {
   const orderId = String(formData.get("orderId") || "");
   await markOrderReady(orderId);
   revalidateOperationalSurfaces(orderId);
+}
+
+export async function createBillboardBookingAction(formData: FormData) {
+  await requireAuth();
+
+  const billboardAssetId = String(formData.get("billboardAssetId") || "").trim();
+  const customerId = String(formData.get("customerId") || "").trim();
+
+  if (!billboardAssetId) {
+    throw new Error("Seleziona un impianto pubblicitario.");
+  }
+
+  if (!customerId) {
+    throw new Error("Seleziona un cliente.");
+  }
+
+  const startsAt = parseBillboardBookingDate(formData.get("startsAt")?.toString() || null, "Data inizio");
+  const endsAt = parseBillboardBookingDate(formData.get("endsAt")?.toString() || null, "Data fine");
+  const note = String(formData.get("note") || "");
+  const pdfEntry = formData.get("pdf");
+  let storedPdf:
+    | {
+        fileName: string;
+        filePath: string;
+        mimeType: string;
+        sizeBytes: number;
+      }
+    | null = null;
+
+  if (pdfEntry instanceof File && pdfEntry.size > 0) {
+    if (pdfEntry.size > ATTACHMENT_MAX_SIZE_BYTES) {
+      throw new Error(`PDF troppo grande. Limite ${formatAttachmentMaxSize()}.`);
+    }
+
+    const mimeType = pdfEntry.type || "application/pdf";
+    if (mimeType !== "application/pdf" && !pdfEntry.name.toLowerCase().endsWith(".pdf")) {
+      throw new Error("Puoi allegare solo file PDF.");
+    }
+
+    const buffer = Buffer.from(await pdfEntry.arrayBuffer());
+    const stored = await uploadBillboardBookingPdf({
+      entityId: billboardAssetId,
+      fileName: pdfEntry.name,
+      mimeType,
+      buffer
+    });
+
+    storedPdf = {
+      fileName: pdfEntry.name,
+      filePath: stored.filePath,
+      mimeType,
+      sizeBytes: pdfEntry.size
+    };
+  }
+
+  try {
+    const booking = await createBillboardBooking({
+      billboardAssetId,
+      customerId,
+      startsAt,
+      endsAt,
+      note,
+      pdf: storedPdf
+    });
+
+    revalidateBillboardSurfaces();
+    redirect(`/billboards?date=${formatDateKey(booking.startsAt)}`);
+  } catch (error) {
+    if (storedPdf) {
+      await deleteStoredAttachment(storedPdf.filePath).catch(() => undefined);
+    }
+
+    throw error;
+  }
 }
 
 export async function createServiceAction(formData: FormData) {
