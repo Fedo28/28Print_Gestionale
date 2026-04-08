@@ -2533,6 +2533,10 @@ button.success {
   white-space: pre-wrap;
 }
 
+.staff-invite-preview-body {
+  white-space: pre-line;
+}
+
 .staff-user-card {
   gap: 14px;
 }

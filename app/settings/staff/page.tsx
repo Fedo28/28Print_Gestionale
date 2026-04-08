@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import Link from "next/link";
+import { StaffInviteSettingsForm } from "@/components/staff-invite-settings-form";
 import { StaffProfileForm } from "@/components/staff-profile-form";
 import { PageHeader } from "@/components/page-header";
 import { requireAdmin } from "@/lib/auth";
@@ -79,7 +80,10 @@ export default async function StaffSettingsPage() {
           <div className="list-header">
             <div>
               <h3>Invito email</h3>
-              <p className="card-muted">Bozza usata anche per l'invio automatico quando il provider mail e attivo.</p>
+              <p className="card-muted">
+                Puoi personalizzare oggetto, testo e dominio del link. La profilazione usera questa bozza anche per
+                l'invio automatico quando il provider mail e attivo.
+              </p>
             </div>
             <div className="staff-user-pills">
               <span className={`pill ${inviteConfig.accessLoginUrl ? "status" : "warning"}`}>
@@ -103,31 +107,24 @@ export default async function StaffSettingsPage() {
             </div>
           ) : null}
 
-          <div className="stack staff-invite-preview">
-            <div className="field full">
-              <label htmlFor="staff-invite-subject">Oggetto</label>
-              <input id="staff-invite-subject" readOnly value={preview.subject} />
-            </div>
-            <div className="field full">
-              <label htmlFor="staff-invite-body">Bozza messaggio</label>
-              <textarea id="staff-invite-body" readOnly value={preview.body} />
-            </div>
-            <div className="mini-item">
-              <strong>Link previsto</strong>
-              <div className="subtle">{preview.accessLoginUrl || "Da configurare nel prossimo passaggio"}</div>
-            </div>
-          </div>
+          <StaffInviteSettingsForm
+            accessBaseUrl={inviteConfig.accessBaseUrl || ""}
+            previewAccessLoginUrl={preview.accessLoginUrl}
+            previewBody={preview.body}
+            subject={inviteConfig.subject}
+            template={inviteConfig.template}
+          />
         </section>
       </div>
 
-        <section className="card card-pad">
-          <div className="list-header">
-            <div>
-              <h3>Staff registrato</h3>
-              <p className="card-muted">Elenco profili gia creati, con stato reale del link e dell'invio mail.</p>
-            </div>
-            <Link className="button ghost" href="/settings">
-              Torna a impostazioni
+      <section className="card card-pad">
+        <div className="list-header">
+          <div>
+            <h3>Staff registrato</h3>
+            <p className="card-muted">Elenco profili gia creati, con stato reale del link e dell'invio mail.</p>
+          </div>
+          <Link className="button ghost" href="/settings">
+            Torna a impostazioni
           </Link>
         </div>
 

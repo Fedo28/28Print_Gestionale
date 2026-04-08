@@ -94,9 +94,7 @@ export function StaffInviteSettingsForm({
 
       <div className="mini-item">
         <strong>Anteprima attuale</strong>
-        <div className="subtle" style={{ whiteSpace: "pre-line" }}>
-          {previewBody}
-        </div>
+        <div className="subtle staff-invite-preview-body">{previewBody}</div>
       </div>
 
       <div className="mini-item">
