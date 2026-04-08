@@ -1,4 +1,5 @@
-import { BillboardAssetKind } from "@prisma/client";
+import { BillboardAssetKind, BillboardBookingStatus } from "@prisma/client";
+import { billboardAssetKindLabels } from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 
 export type BillboardPdfUpload = {
@@ -11,8 +12,11 @@ export type BillboardPdfUpload = {
 export type CreateBillboardBookingInput = {
   billboardAssetId: string;
   customerId: string;
+  status?: BillboardBookingStatus;
   startsAt: Date;
   endsAt: Date;
+  priceCents?: number;
+  paidCents?: number;
   note?: string;
   pdf?: BillboardPdfUpload | null;
 };
@@ -80,6 +84,16 @@ export function bookingIncludesDate(
   );
 }
 
+export function calculateBillboardBookingBalanceCents(priceCents: number, paidCents: number) {
+  const safePrice = Math.max(0, Math.round(priceCents));
+  const safePaid = Math.max(0, Math.round(paidCents));
+  return Math.max(0, safePrice - safePaid);
+}
+
+export function reservesBillboardAsset(status: BillboardBookingStatus) {
+  return status !== "SCADUTO";
+}
+
 export function buildBillboardAssetSeed() {
   return DEFAULT_BILLBOARD_ASSET_DEFINITIONS.map((asset) => ({
     ...asset,
@@ -125,13 +139,16 @@ export async function getBillboardSurface(referenceDate: Date) {
   const monthStart = startOfMonth(referenceDate);
   const monthEnd = endOfMonth(referenceDate);
 
-  const [assets, monthBookings, upcomingBookings] = await Promise.all([
+  const [assets, monthBookings, upcomingBookings, historyBookings] = await Promise.all([
     prisma.billboardAsset.findMany({
       where: { active: true },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       include: {
         bookings: {
           where: {
+            status: {
+              not: "SCADUTO"
+            },
             endsAt: {
               gte: today
             }
@@ -146,6 +163,9 @@ export async function getBillboardSurface(referenceDate: Date) {
     }),
     prisma.billboardBooking.findMany({
       where: {
+        status: {
+          not: "SCADUTO"
+        },
         startsAt: {
           lte: monthEnd
         },
@@ -161,6 +181,9 @@ export async function getBillboardSurface(referenceDate: Date) {
     }),
     prisma.billboardBooking.findMany({
       where: {
+        status: {
+          not: "SCADUTO"
+        },
         endsAt: {
           gte: today
         }
@@ -171,19 +194,89 @@ export async function getBillboardSurface(referenceDate: Date) {
       },
       orderBy: [{ startsAt: "asc" }, { createdAt: "asc" }],
       take: 18
+    }),
+    prisma.billboardBooking.findMany({
+      include: {
+        customer: true,
+        billboardAsset: true
+      },
+      orderBy: [{ startsAt: "desc" }, { createdAt: "desc" }]
     })
   ]);
+
+  const customerHistoryMap = new Map<
+    string,
+    {
+      customer: (typeof historyBookings)[number]["customer"];
+      bookingCount: number;
+      confirmedCount: number;
+      optionCount: number;
+      totalValueCents: number;
+      totalPaidCents: number;
+      totalBalanceDueCents: number;
+      latestStartsAt: Date;
+      latestEndsAt: Date;
+      latestAssets: string[];
+    }
+  >();
+
+  for (const booking of historyBookings) {
+    const current = customerHistoryMap.get(booking.customerId);
+    if (!current) {
+      customerHistoryMap.set(booking.customerId, {
+        customer: booking.customer,
+        bookingCount: 1,
+        confirmedCount: booking.status === "CONFERMATO" ? 1 : 0,
+        optionCount: booking.status === "OPZIONATO" ? 1 : 0,
+        totalValueCents: booking.priceCents,
+        totalPaidCents: booking.paidCents,
+        totalBalanceDueCents: booking.balanceDueCents,
+        latestStartsAt: booking.startsAt,
+        latestEndsAt: booking.endsAt,
+        latestAssets: [booking.billboardAsset.name]
+      });
+      continue;
+    }
+
+    current.bookingCount += 1;
+    current.confirmedCount += booking.status === "CONFERMATO" ? 1 : 0;
+    current.optionCount += booking.status === "OPZIONATO" ? 1 : 0;
+    current.totalValueCents += booking.priceCents;
+    current.totalPaidCents += booking.paidCents;
+    current.totalBalanceDueCents += booking.balanceDueCents;
+
+    if (!current.latestAssets.includes(booking.billboardAsset.name) && current.latestAssets.length < 3) {
+      current.latestAssets.push(booking.billboardAsset.name);
+    }
+  }
+
+  const customerHistory = Array.from(customerHistoryMap.values()).sort(
+    (left, right) =>
+      right.latestStartsAt.getTime() - left.latestStartsAt.getTime() ||
+      right.totalValueCents - left.totalValueCents ||
+      left.customer.name.localeCompare(right.customer.name, "it")
+  );
 
   return {
     assets,
     monthBookings,
-    upcomingBookings
+    upcomingBookings,
+    customerHistory
   };
 }
 
 export async function createBillboardBooking(input: CreateBillboardBookingInput) {
   if (input.endsAt.getTime() < input.startsAt.getTime()) {
     throw new Error("La data fine non puo essere precedente alla data inizio.");
+  }
+
+  const status = input.status || "CONFERMATO";
+  const priceCents = Math.round(input.priceCents ?? 0);
+  const paidCents = Math.round(input.paidCents ?? 0);
+  const balanceDueCents = calculateBillboardBookingBalanceCents(priceCents, paidCents);
+
+  if (priceCents < 0 || paidCents < 0) {
+    throw new Error("Prezzo e incassato devono essere valori positivi.");
   }
 
   return prisma.$transaction(async (tx) => {
@@ -203,28 +296,37 @@ export async function createBillboardBooking(input: CreateBillboardBookingInput)
       throw new Error("Cliente non trovato.");
     }
 
-    const overlappingBooking = await tx.billboardBooking.findFirst({
-      where: {
-        billboardAssetId: input.billboardAssetId,
-        startsAt: {
-          lte: input.endsAt
-        },
-        endsAt: {
-          gte: input.startsAt
+    if (reservesBillboardAsset(status)) {
+      const overlappingBooking = await tx.billboardBooking.findFirst({
+        where: {
+          billboardAssetId: input.billboardAssetId,
+          status: {
+            not: "SCADUTO"
+          },
+          startsAt: {
+            lte: input.endsAt
+          },
+          endsAt: {
+            gte: input.startsAt
+          }
         }
-      }
-    });
+      });
 
-    if (overlappingBooking) {
-      throw new Error("Questo impianto e gia prenotato nel periodo indicato.");
+      if (overlappingBooking) {
+        throw new Error("Questo impianto e gia prenotato nel periodo indicato.");
+      }
     }
 
     return tx.billboardBooking.create({
       data: {
         billboardAssetId: input.billboardAssetId,
         customerId: input.customerId,
+        status,
         startsAt: input.startsAt,
         endsAt: input.endsAt,
+        priceCents,
+        paidCents,
+        balanceDueCents,
         note: input.note?.trim() || undefined,
         pdfFileName: input.pdf?.fileName,
         pdfFilePath: input.pdf?.filePath,
@@ -240,12 +342,5 @@ export async function createBillboardBooking(input: CreateBillboardBookingInput)
 }
 
 export function getBillboardKindLabel(kind: BillboardAssetKind) {
-  switch (kind) {
-    case "MONITOR":
-      return "Monitor";
-    case "VELA_ITINERANTE":
-      return "Vela itinerante";
-    default:
-      return "Cartellone";
-  }
+  return billboardAssetKindLabels[kind];
 }

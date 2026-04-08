@@ -75,6 +75,12 @@ enum BillboardAssetKind {
   VELA_ITINERANTE
 }
 
+enum BillboardBookingStatus {
+  OPZIONATO
+  CONFERMATO
+  SCADUTO
+}
+
 enum HistoryType {
   CREATED
   UPDATED
@@ -264,8 +270,12 @@ model BillboardBooking {
   id               String         @id @default(uuid())
   billboardAssetId String
   customerId       String
+  status           BillboardBookingStatus @default(CONFERMATO)
   startsAt         DateTime
   endsAt           DateTime
+  priceCents       Int            @default(0)
+  paidCents        Int            @default(0)
+  balanceDueCents  Int            @default(0)
   note             String?
   pdfFileName      String?
   pdfFilePath      String?
@@ -280,4 +290,5 @@ model BillboardBooking {
   @@index([customerId, startsAt])
   @@index([startsAt])
   @@index([endsAt])
+  @@index([status, startsAt])
 }

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { ATTACHMENT_MAX_SIZE_BYTES, formatAttachmentMaxSize } from "@/lib/attachment-utils";
 import { createBillboardBooking, parseBillboardBookingDate } from "@/lib/billboards";
 import {
+  parseBillboardBookingStatus,
   parseCustomerType,
   parseBooleanFlag,
   parseCurrencyToCents,
@@ -296,6 +297,9 @@ export async function createBillboardBookingAction(formData: FormData) {
 
   const startsAt = parseBillboardBookingDate(formData.get("startsAt")?.toString() || null, "Data inizio");
   const endsAt = parseBillboardBookingDate(formData.get("endsAt")?.toString() || null, "Data fine");
+  const status = parseBillboardBookingStatus(formData.get("status")?.toString() || null);
+  const priceCents = parseCurrencyToCents(formData.get("price")?.toString() || null);
+  const paidCents = parseCurrencyToCents(formData.get("paid")?.toString() || null);
   const note = String(formData.get("note") || "");
   const pdfEntry = formData.get("pdf");
   let storedPdf:
@@ -337,8 +341,11 @@ export async function createBillboardBookingAction(formData: FormData) {
     const booking = await createBillboardBooking({
       billboardAssetId,
       customerId,
+      status,
       startsAt,
       endsAt,
+      priceCents,
+      paidCents,
       note,
       pdf: storedPdf
     });

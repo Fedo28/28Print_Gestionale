@@ -1,4 +1,6 @@
 import {
+  BillboardAssetKind,
+  BillboardBookingStatus,
   CustomerType,
   InvoiceStatus,
   MainPhase,
@@ -36,6 +38,18 @@ export const priorityLabels: Record<Priority, string> = {
 export const customerTypeLabels: Record<CustomerType, string> = {
   PUBBLICO: "Pubblico",
   AZIENDA: "Azienda"
+};
+
+export const billboardAssetKindLabels: Record<BillboardAssetKind, string> = {
+  CARTELLONE: "Cartellone",
+  MONITOR: "Monitor",
+  VELA_ITINERANTE: "Vela itinerante"
+};
+
+export const billboardBookingStatusLabels: Record<BillboardBookingStatus, string> = {
+  OPZIONATO: "Opzionato",
+  CONFERMATO: "Confermato",
+  SCADUTO: "Scaduto"
 };
 
 export const userRoleLabels: Record<UserRole, string> = {

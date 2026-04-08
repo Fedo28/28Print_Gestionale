@@ -1,9 +1,21 @@
 "use client";
 
 import { Customer, CustomerType, ServiceCatalog } from "@prisma/client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CustomerAutocomplete } from "@/components/customer-autocomplete";
 import { customerTypeLabels, invoiceStatusLabels, priorityLabels } from "@/lib/constants";
+import { formatDateTime } from "@/lib/format";
+import {
+  buildOrderDraftStorageKey,
+  buildOrderDraftSubmittedKey,
+  createEmptyOrderDraftFields,
+  hasMeaningfulOrderDraft,
+  ORDER_DRAFT_FIELD_NAMES,
+  parseOrderDraftSnapshot,
+  type OrderDraftFieldValues,
+  type OrderDraftMode,
+  type OrderDraftSnapshot
+} from "@/lib/order-drafts";
 import {
   computeDiscountedUnitPrice,
   discountModeLabels,
@@ -48,6 +60,25 @@ const emptyItem = (): ItemState => ({
   serviceCatalogId: "",
   priceOverridden: false
 });
+
+function createItemStateFromDraft(item?: Partial<OrderDraftSnapshot["items"][number]>): ItemState {
+  return {
+    serviceQuery: typeof item?.serviceQuery === "string" ? item.serviceQuery : "",
+    photoMode: Boolean(item?.photoMode),
+    photoFormat: typeof item?.photoFormat === "string" ? item.photoFormat : "",
+    label: typeof item?.label === "string" ? item.label : "",
+    quantity: typeof item?.quantity === "number" && Number.isFinite(item.quantity) ? Math.max(1, Math.round(item.quantity)) : 1,
+    unitPrice: typeof item?.unitPrice === "string" ? item.unitPrice : "",
+    discountMode: item?.discountMode === "AMOUNT" || item?.discountMode === "PERCENT" ? item.discountMode : "NONE",
+    discountValue: typeof item?.discountValue === "string" ? item.discountValue : "",
+    format: typeof item?.format === "string" ? item.format : "",
+    material: typeof item?.material === "string" ? item.material : "",
+    finishing: typeof item?.finishing === "string" ? item.finishing : "",
+    notes: typeof item?.notes === "string" ? item.notes : "",
+    serviceCatalogId: typeof item?.serviceCatalogId === "string" ? item.serviceCatalogId : "",
+    priceOverridden: Boolean(item?.priceOverridden)
+  };
+}
 
 function parseDisplayPriceToCents(value: string) {
   const normalized = value.trim().replace(/\./g, "").replace(",", ".");
@@ -194,17 +225,175 @@ export function OrderForm({
   action: (formData: FormData) => void | Promise<void>;
   kind?: OrderFormMode;
 }) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const autosaveTimerRef = useRef<number | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [customerQuery, setCustomerQuery] = useState("");
   const [items, setItems] = useState<ItemState[]>([emptyItem(), emptyItem()]);
   const [activeServiceField, setActiveServiceField] = useState<number | null>(null);
   const [openTierIndex, setOpenTierIndex] = useState<number | null>(null);
+  const [draftHydrated, setDraftHydrated] = useState(false);
+  const [draftRestoredAt, setDraftRestoredAt] = useState<string | null>(null);
+  const [lastDraftSavedAt, setLastDraftSavedAt] = useState<string | null>(null);
+  const [hasSavedDraft, setHasSavedDraft] = useState(false);
   const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId);
   const photographyFormats = getPhotographyFormatOptions(services);
   const photographyServices = services.filter(isPhotographyService);
   const isCatalogEmpty = services.length === 0;
   const defaultCustomerType: CustomerType = "PUBBLICO";
   const isQuoteMode = kind === "quote";
+  const draftStorageKey = buildOrderDraftStorageKey(kind as OrderDraftMode);
+  const submittedDraftKey = buildOrderDraftSubmittedKey(kind as OrderDraftMode);
+
+  function readDraftFieldsFromForm(): OrderDraftFieldValues {
+    const form = formRef.current;
+    const emptyFields = createEmptyOrderDraftFields();
+
+    if (!form) {
+      return emptyFields;
+    }
+
+    const formData = new FormData(form);
+    return Object.fromEntries(
+      ORDER_DRAFT_FIELD_NAMES.map((fieldName) => [fieldName, String(formData.get(fieldName) || "")])
+    ) as OrderDraftFieldValues;
+  }
+
+  function applyDraftFields(fields: OrderDraftFieldValues) {
+    const form = formRef.current;
+    if (!form) {
+      return;
+    }
+
+    for (const fieldName of ORDER_DRAFT_FIELD_NAMES) {
+      const element = form.elements.namedItem(fieldName);
+      if (
+        element instanceof HTMLInputElement ||
+        element instanceof HTMLTextAreaElement ||
+        element instanceof HTMLSelectElement
+      ) {
+        element.value = fields[fieldName];
+      }
+    }
+  }
+
+  function clearSavedDraftStorage() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.removeItem(draftStorageKey);
+    window.sessionStorage.removeItem(submittedDraftKey);
+    setHasSavedDraft(false);
+    setLastDraftSavedAt(null);
+    setDraftRestoredAt(null);
+  }
+
+  function resetDraftAndForm() {
+    clearSavedDraftStorage();
+    formRef.current?.reset();
+    setSelectedCustomerId("");
+    setCustomerQuery("");
+    setItems([emptyItem(), emptyItem()]);
+    setActiveServiceField(null);
+    setOpenTierIndex(null);
+  }
+
+  function persistDraft() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const snapshot: OrderDraftSnapshot = {
+      version: 1,
+      kind: kind as OrderDraftMode,
+      savedAt: new Date().toISOString(),
+      selectedCustomerId,
+      customerQuery,
+      fields: readDraftFieldsFromForm(),
+      items
+    };
+
+    if (!hasMeaningfulOrderDraft(snapshot)) {
+      window.localStorage.removeItem(draftStorageKey);
+      setHasSavedDraft(false);
+      setLastDraftSavedAt(null);
+      return;
+    }
+
+    window.localStorage.setItem(draftStorageKey, JSON.stringify(snapshot));
+    setHasSavedDraft(true);
+    setLastDraftSavedAt(snapshot.savedAt);
+  }
+
+  function scheduleDraftSave() {
+    if (!draftHydrated || typeof window === "undefined") {
+      return;
+    }
+
+    if (autosaveTimerRef.current) {
+      window.clearTimeout(autosaveTimerRef.current);
+    }
+
+    autosaveTimerRef.current = window.setTimeout(() => {
+      persistDraft();
+    }, 500);
+  }
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.sessionStorage.getItem(submittedDraftKey) === "1") {
+      window.localStorage.removeItem(draftStorageKey);
+      window.sessionStorage.removeItem(submittedDraftKey);
+      setDraftHydrated(true);
+      setHasSavedDraft(false);
+      setLastDraftSavedAt(null);
+      setDraftRestoredAt(null);
+      return;
+    }
+
+    const draft = parseOrderDraftSnapshot(window.localStorage.getItem(draftStorageKey));
+    if (!draft || draft.kind !== kind) {
+      setDraftHydrated(true);
+      return;
+    }
+
+    const nextSelectedCustomerId =
+      draft.selectedCustomerId && customers.some((customer) => customer.id === draft.selectedCustomerId)
+        ? draft.selectedCustomerId
+        : "";
+
+    setSelectedCustomerId(nextSelectedCustomerId);
+    setCustomerQuery(draft.customerQuery);
+    setItems(draft.items.length > 0 ? draft.items.map((item) => createItemStateFromDraft(item)) : [emptyItem(), emptyItem()]);
+    setHasSavedDraft(true);
+    setLastDraftSavedAt(draft.savedAt);
+    setDraftRestoredAt(draft.savedAt);
+
+    window.setTimeout(() => {
+      applyDraftFields(draft.fields);
+      setDraftHydrated(true);
+    }, 0);
+  }, [customers, draftStorageKey, kind, submittedDraftKey]);
+
+  useEffect(() => {
+    if (!draftHydrated) {
+      return;
+    }
+
+    scheduleDraftSave();
+  }, [draftHydrated, selectedCustomerId, customerQuery, items]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined" && autosaveTimerRef.current) {
+        window.clearTimeout(autosaveTimerRef.current);
+      }
+    };
+  }, []);
 
   function getCatalogPriceDisplay(service: ServiceCatalog | undefined, quantity: number) {
     if (!service) {
@@ -343,7 +532,18 @@ export function OrderForm({
   const filledRows = items.filter((item) => item.label.trim() || item.notes.trim()).length;
 
   return (
-    <form action={action} className="stack">
+    <form
+      action={action}
+      className="stack"
+      onChangeCapture={() => scheduleDraftSave()}
+      onInputCapture={() => scheduleDraftSave()}
+      onSubmit={() => {
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(submittedDraftKey, "1");
+        }
+      }}
+      ref={formRef}
+    >
       {selectedCustomerId ? <input name="customerId" type="hidden" value={selectedCustomerId} /> : null}
       {isQuoteMode ? <input name="isQuote" type="hidden" value="true" /> : null}
       <section className="card card-pad order-sheet-hero">
@@ -375,6 +575,30 @@ export function OrderForm({
               <strong>{new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(previewTotalCents / 100)}</strong>
             </div>
           </div>
+        </div>
+        <div className="order-draft-banner">
+          <div className="compact-stack">
+            <strong>{hasSavedDraft ? "Bozza attiva" : "Autosalvataggio pronto"}</strong>
+            <span className="subtle">
+              {draftRestoredAt
+                ? `Bozza recuperata automaticamente da ${formatDateTime(draftRestoredAt)}`
+                : lastDraftSavedAt
+                  ? `Ultimo autosalvataggio ${formatDateTime(lastDraftSavedAt)}`
+                  : "Compilo e salvo da solo la scheda mentre lavori."}
+            </span>
+          </div>
+          {hasSavedDraft ? (
+            <button
+              className="ghost"
+              onClick={(event) => {
+                event.preventDefault();
+                resetDraftAndForm();
+              }}
+              type="button"
+            >
+              Svuota bozza
+            </button>
+          ) : null}
         </div>
       </section>
 

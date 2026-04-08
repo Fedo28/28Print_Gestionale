@@ -1,9 +1,14 @@
+import { BillboardBookingStatus } from "@prisma/client";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { BillboardBookingForm } from "@/components/billboard-booking-form";
+import {
+  billboardAssetKindLabels,
+  billboardBookingStatusLabels
+} from "@/lib/constants";
 import { requireAuth } from "@/lib/auth";
-import { bookingIncludesDate, getBillboardKindLabel, getBillboardSurface } from "@/lib/billboards";
-import { formatDate, formatDateKey } from "@/lib/format";
+import { bookingIncludesDate, getBillboardSurface } from "@/lib/billboards";
+import { formatCurrency, formatDate, formatDateKey } from "@/lib/format";
 import { getCustomers } from "@/lib/orders";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +19,8 @@ type BillboardPageProps = {
   };
 };
 
+type BillboardSurface = Awaited<ReturnType<typeof getBillboardSurface>>;
+
 export default async function BillboardsPage({ searchParams }: BillboardPageProps) {
   await requireAuth();
 
@@ -22,25 +29,26 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
   const monthMatrix = buildMonthMatrix(surface.monthBookings, focusDate);
   const today = startOfDay(new Date());
   const occupiedToday = surface.assets.filter((asset) => asset.bookings.some((booking) => bookingIncludesDate(booking, today))).length;
-  const upcomingStartsThisWeek = surface.upcomingBookings.filter((booking) => {
-    const diff = startOfDay(new Date(booking.startsAt)).getTime() - today.getTime();
-    return diff >= 0 && diff <= 6 * DAY_IN_MS;
-  }).length;
+  const optionCount = surface.upcomingBookings.filter((booking) => booking.status === "OPZIONATO").length;
+  const confirmedThisMonth = surface.monthBookings.filter((booking) => booking.status === "CONFERMATO").length;
+  const monthValueCents = surface.monthBookings.reduce((sum, booking) => sum + booking.priceCents, 0);
+  const openBalanceCents = surface.upcomingBookings.reduce((sum, booking) => sum + booking.balanceDueCents, 0);
   const monthLabel = getMonthLabel(focusDate);
 
   return (
     <div className="stack">
       <PageHeader
         title="Cartelloni"
-        description="Prenotazioni pubblicitarie su cartelloni, monitor e vela itinerante. In questa prima versione calendario e inserimento stanno insieme sulla stessa pagina."
+        description="Prenotazioni pubblicitarie su cartelloni, monitor e vela itinerante con stato campagna, importi e storico clienti nello stesso spazio operativo."
       />
 
       <section className="grid billboard-summary-grid">
         <MetricCard hint="24 cartelloni, 1 monitor, 1 vela" label="Impianti attivi" tone="neutral" value={surface.assets.length} />
         <MetricCard hint="Occupati nel giorno corrente" label="Occupati oggi" tone="warning" value={occupiedToday} />
-        <MetricCard hint="Ancora disponibili oggi" label="Liberi oggi" tone="success" value={surface.assets.length - occupiedToday} />
-        <MetricCard hint={monthLabel} label="Prenotazioni nel mese" tone="brand" value={surface.monthBookings.length} />
-        <MetricCard hint="Nuove partenze nei prossimi 7 giorni" label="Partenze vicine" tone="neutral" value={upcomingStartsThisWeek} />
+        <MetricCard hint="Prenotazioni ancora da confermare" label="Opzioni aperte" tone="brand" value={optionCount} />
+        <MetricCard hint={monthLabel} label="Confermati nel mese" tone="success" value={confirmedThisMonth} />
+        <MetricCard hint="Somma di tutte le campagne nel mese" label="Valore campagne" tone="brand" value={formatCurrency(monthValueCents)} />
+        <MetricCard hint="Residui ancora da incassare sulle campagne attive" label="Da incassare" tone="warning" value={formatCurrency(openBalanceCents)} />
       </section>
 
       <div className="grid grid-2">
@@ -48,12 +56,15 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
           <div className="list-header">
             <div>
               <h3>Nuova prenotazione</h3>
-              <p className="card-muted">Seleziona cliente, impianto, periodo e allega eventualmente il PDF della campagna.</p>
+              <p className="card-muted">
+                Seleziona cliente e impianto con ricerca rapida, imposta periodo, stato commerciale e importi della campagna.
+              </p>
             </div>
           </div>
           <BillboardBookingForm
             assets={surface.assets.map((asset) => ({
               id: asset.id,
+              code: asset.code,
               name: asset.name,
               kind: asset.kind,
               location: asset.location
@@ -78,7 +89,7 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
           <div className="list-header">
             <div>
               <h3>Impianti</h3>
-              <p className="card-muted">Inventario iniziale generato automaticamente, pronto da personalizzare con i luoghi reali.</p>
+              <p className="card-muted">Inventario iniziale pronto per essere personalizzato con luoghi reali e disponibilita attive.</p>
             </div>
             <span className="pill">{surface.assets.length}</span>
           </div>
@@ -86,6 +97,7 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
             {surface.assets.map((asset) => {
               const activeBooking = asset.bookings.find((booking) => bookingIncludesDate(booking, today));
               const nextBooking = asset.bookings.find((booking) => new Date(booking.startsAt).getTime() >= today.getTime());
+              const queuedCount = Math.max(0, asset.bookings.length - (activeBooking ? 1 : nextBooking ? 1 : 0));
 
               return (
                 <article className={`billboard-asset-card${activeBooking ? " occupied" : ""}`} key={asset.id}>
@@ -93,11 +105,13 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
                     <div>
                       <strong>{asset.name}</strong>
                       <div className="subtle">
-                        {getBillboardKindLabel(asset.kind)}
-                        {asset.location ? ` • ${asset.location}` : ""}
+                        {billboardAssetKindLabels[asset.kind]}
+                        {asset.location ? ` • ${asset.location}` : " • Luogo da definire"}
                       </div>
                     </div>
-                    <span className={`pill ${activeBooking ? "warning" : "status"}`}>{activeBooking ? "Occupato" : "Libero"}</span>
+                    <span className={`pill ${activeBooking ? getBillboardStatusPillClass(activeBooking.status) : "status"}`}>
+                      {activeBooking ? billboardBookingStatusLabels[activeBooking.status] : "Libero"}
+                    </span>
                   </div>
 
                   {activeBooking ? (
@@ -106,17 +120,32 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
                       <div className="hint">
                         Dal {formatDate(activeBooking.startsAt)} al {formatDate(activeBooking.endsAt)}
                       </div>
+                      <div className="billboard-booking-financials">
+                        <span>Valore {formatCurrency(activeBooking.priceCents)}</span>
+                        <span>Residuo {formatCurrency(activeBooking.balanceDueCents)}</span>
+                      </div>
                     </div>
                   ) : nextBooking ? (
                     <div className="compact-stack">
-                      <div className="subtle">Prossimo: {nextBooking.customer.name}</div>
+                      <div className="subtle">
+                        Prossimo: {nextBooking.customer.name} • {billboardBookingStatusLabels[nextBooking.status]}
+                      </div>
                       <div className="hint">
                         Dal {formatDate(nextBooking.startsAt)} al {formatDate(nextBooking.endsAt)}
+                      </div>
+                      <div className="billboard-booking-financials">
+                        <span>Valore {formatCurrency(nextBooking.priceCents)}</span>
+                        <span>Residuo {formatCurrency(nextBooking.balanceDueCents)}</span>
                       </div>
                     </div>
                   ) : (
                     <div className="hint">Nessuna prenotazione imminente.</div>
                   )}
+
+                  <div className="billboard-asset-footer">
+                    <span className="pill">{asset.code}</span>
+                    {queuedCount > 0 ? <span className="hint">+{queuedCount} altre campagne in coda</span> : null}
+                  </div>
                 </article>
               );
             })}
@@ -129,7 +158,7 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
           <div>
             <span className="compact-kicker">Prenotazioni</span>
             <h3>{monthLabel}</h3>
-            <p className="card-muted">Calendario mensile con la copertura giornaliera degli impianti pubblicitari.</p>
+            <p className="card-muted">Calendario mensile con copertura giornaliera, stato commerciale e cliente della campagna.</p>
           </div>
           <div className="calendar-nav-actions">
             <Link className="button secondary" href={buildMonthHref(new Date(focusDate.getFullYear(), focusDate.getMonth() - 1, 1))}>
@@ -164,8 +193,13 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
                   </div>
                   <div className="calendar-month-events">
                     {day.entries.slice(0, 3).map((booking) => (
-                      <div className="billboard-booking-chip" key={booking.id}>
-                        <strong>{booking.billboardAsset.name}</strong>
+                      <div className={`billboard-booking-chip billboard-booking-chip-${booking.status.toLowerCase()}`} key={booking.id}>
+                        <div className="billboard-booking-chip-head">
+                          <strong>{booking.billboardAsset.name}</strong>
+                          <span className={`pill ${getBillboardStatusPillClass(booking.status)}`}>
+                            {billboardBookingStatusLabels[booking.status]}
+                          </span>
+                        </div>
                         <span>{booking.customer.name}</span>
                         {booking.note ? <span className="billboard-booking-note">{booking.note}</span> : null}
                       </div>
@@ -184,7 +218,7 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
         <div className="list-header">
           <div>
             <h3>Prenotazioni in programma</h3>
-            <p className="card-muted">Le prossime campagne attive o future, con eventuali PDF allegati.</p>
+            <p className="card-muted">Le campagne attive o future con stato, valori economici e allegato PDF a portata di click.</p>
           </div>
         </div>
         <div className="compact-order-list">
@@ -202,18 +236,66 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
                     Dal {formatDate(booking.startsAt)} al {formatDate(booking.endsAt)}
                   </div>
                   <div className="hint">
-                    {getBillboardKindLabel(booking.billboardAsset.kind)}
-                    {booking.billboardAsset.location ? ` • ${booking.billboardAsset.location}` : ""}
+                    {billboardAssetKindLabels[booking.billboardAsset.kind]}
+                    {booking.billboardAsset.location ? ` • ${booking.billboardAsset.location}` : " • Luogo da definire"}
                     {booking.note ? ` • ${booking.note}` : ""}
                   </div>
+                  <div className="billboard-booking-financials">
+                    <span>Valore {formatCurrency(booking.priceCents)}</span>
+                    <span>Incassato {formatCurrency(booking.paidCents)}</span>
+                    <span>Residuo {formatCurrency(booking.balanceDueCents)}</span>
+                  </div>
                 </div>
-                {booking.pdfFilePath ? (
-                  <a className="pill" href={booking.pdfFilePath} rel="noreferrer" target="_blank">
-                    PDF
-                  </a>
-                ) : (
-                  <span className="pill">Senza PDF</span>
-                )}
+                <div className="billboard-booking-side">
+                  <span className={`pill ${getBillboardStatusPillClass(booking.status)}`}>
+                    {billboardBookingStatusLabels[booking.status]}
+                  </span>
+                  {booking.pdfFilePath ? (
+                    <a className="pill" href={booking.pdfFilePath} rel="noreferrer" target="_blank">
+                      PDF
+                    </a>
+                  ) : (
+                    <span className="pill">Senza PDF</span>
+                  )}
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="card card-pad">
+        <div className="list-header">
+          <div>
+            <h3>Storico campagne cliente</h3>
+            <p className="card-muted">Vista commerciale rapida per capire chi ha gia prenotato, quanto vale e quali impianti usa di piu.</p>
+          </div>
+        </div>
+        <div className="compact-order-list">
+          {surface.customerHistory.length === 0 ? (
+            <div className="empty">Nessuno storico campagne disponibile.</div>
+          ) : (
+            surface.customerHistory.slice(0, 16).map((entry) => (
+              <article className="compact-order-item" key={entry.customer.id}>
+                <div className="compact-order-main">
+                  <div className="compact-order-head">
+                    <strong>{entry.customer.name}</strong>
+                    <span className="compact-order-aside">{entry.bookingCount} campagne</span>
+                  </div>
+                  <div className="subtle">
+                    Ultima campagna dal {formatDate(entry.latestStartsAt)} al {formatDate(entry.latestEndsAt)}
+                  </div>
+                  <div className="hint">
+                    {entry.latestAssets.join(" • ")}
+                    {entry.customer.phone ? ` • ${entry.customer.phone}` : ""}
+                  </div>
+                </div>
+                <div className="billboard-history-metrics">
+                  <span className="pill status">Confermate {entry.confirmedCount}</span>
+                  <span className="pill warning">Opzioni {entry.optionCount}</span>
+                  <strong>{formatCurrency(entry.totalValueCents)}</strong>
+                  <span className="subtle">Residuo {formatCurrency(entry.totalBalanceDueCents)}</span>
+                </div>
               </article>
             ))
           )}
@@ -230,7 +312,7 @@ function MetricCard({
   tone
 }: {
   label: string;
-  value: number;
+  value: number | string;
   hint: string;
   tone: "neutral" | "warning" | "success" | "brand";
 }) {
@@ -272,8 +354,6 @@ function endOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0, 12, 0, 0);
 }
 
-const DAY_IN_MS = 24 * 60 * 60 * 1000;
-
 function getMonthLabel(date: Date) {
   const label = new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric" }).format(date);
   return label.charAt(0).toUpperCase() + label.slice(1);
@@ -283,10 +363,7 @@ function buildMonthHref(date: Date) {
   return `/billboards?date=${formatDateKey(startOfMonth(date))}`;
 }
 
-function buildMonthMatrix(
-  bookings: Awaited<ReturnType<typeof getBillboardSurface>>["monthBookings"],
-  focusDate: Date
-) {
+function buildMonthMatrix(bookings: BillboardSurface["monthBookings"], focusDate: Date) {
   const first = startOfMonth(focusDate);
   const last = endOfMonth(focusDate);
   const gridStart = startOfWeek(first);
@@ -297,7 +374,7 @@ function buildMonthMatrix(
     date: Date;
     inMonth: boolean;
     isToday: boolean;
-    entries: typeof bookings;
+    entries: BillboardSurface["monthBookings"];
   }> = [];
 
   for (let cursor = gridStart; cursor <= gridEnd; cursor = addDays(cursor, 1)) {
@@ -336,4 +413,15 @@ function startOfWeek(date: Date) {
   const day = next.getDay();
   const offset = day === 0 ? -6 : 1 - day;
   return addDays(next, offset);
+}
+
+function getBillboardStatusPillClass(status: BillboardBookingStatus) {
+  switch (status) {
+    case "OPZIONATO":
+      return "warning";
+    case "SCADUTO":
+      return "danger";
+    default:
+      return "status";
+  }
 }

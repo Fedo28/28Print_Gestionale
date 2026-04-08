@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { MouseEvent, ReactNode } from "react";
+import { GlobalSearch } from "@/components/global-search";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   DEFAULT_THEME,
@@ -268,6 +269,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span aria-hidden className="stage-glow stage-glow-a" />
           <span aria-hidden className="stage-glow stage-glow-b" />
           <span aria-hidden className="stage-glow stage-glow-c" />
+          <div className="shell-toolbar">
+            <GlobalSearch />
+          </div>
           <main>{children}</main>
         </div>
       </div>

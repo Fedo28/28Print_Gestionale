@@ -1,17 +1,23 @@
 "use client";
 
-import { BillboardAssetKind } from "@prisma/client";
+import { BillboardAssetKind, BillboardBookingStatus } from "@prisma/client";
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { createBillboardBookingAction } from "@/app/actions";
+import {
+  BillboardAssetAutocomplete,
+  BillboardAssetAutocompleteOption
+} from "@/components/billboard-asset-autocomplete";
 import { CustomerAutocomplete, CustomerAutocompleteOption } from "@/components/customer-autocomplete";
-import { customerTypeLabels } from "@/lib/constants";
+import {
+  billboardAssetKindLabels,
+  billboardBookingStatusLabels,
+  customerTypeLabels
+} from "@/lib/constants";
+import { formatCurrency } from "@/lib/format";
 
-type BillboardAssetOption = {
-  id: string;
-  name: string;
+type BillboardAssetOption = BillboardAssetAutocompleteOption & {
   kind: BillboardAssetKind;
-  location?: string | null;
 };
 
 function SubmitButton() {
@@ -37,11 +43,20 @@ export function BillboardBookingForm({
 }) {
   const [customerQuery, setCustomerQuery] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [assetQuery, setAssetQuery] = useState("");
+  const [selectedAssetId, setSelectedAssetId] = useState("");
+  const [priceInput, setPriceInput] = useState("");
+  const [paidInput, setPaidInput] = useState("");
   const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId) || null;
+  const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) || null;
+  const pricePreviewCents = parseMoneyDraftToCents(priceInput);
+  const paidPreviewCents = parseMoneyDraftToCents(paidInput);
+  const balancePreviewCents = Math.max(0, pricePreviewCents - paidPreviewCents);
 
   return (
     <form action={createBillboardBookingAction} className="form-grid" encType="multipart/form-data">
       <input name="customerId" type="hidden" value={selectedCustomerId} />
+      <input name="billboardAssetId" type="hidden" value={selectedAssetId} />
 
       <CustomerAutocomplete
         customers={customers}
@@ -87,17 +102,49 @@ export function BillboardBookingForm({
         </div>
       ) : null}
 
-      <div className="field wide">
-        <label htmlFor="billboardAssetId">Impianto</label>
-        <select defaultValue={assets[0]?.id || ""} id="billboardAssetId" name="billboardAssetId" required>
-          {assets.map((asset) => (
-            <option key={asset.id} value={asset.id}>
-              {asset.name}
-              {asset.location ? ` • ${asset.location}` : ""}
-            </option>
-          ))}
-        </select>
-      </div>
+      <BillboardAssetAutocomplete
+        assets={assets}
+        emptyMessage="Nessun impianto corrisponde a questa ricerca. Prova con cartellone, monitor, vela o il codice impianto."
+        helperText="Scrivi nome, codice o luogo per trovare subito l'impianto giusto senza scorrere tutta la lista."
+        label="Impianto"
+        onQueryChange={(value) => {
+          setAssetQuery(value);
+          if (selectedAssetId) {
+            setSelectedAssetId("");
+          }
+        }}
+        onSelect={(asset) => {
+          setSelectedAssetId(asset.id);
+          setAssetQuery(asset.name);
+        }}
+        placeholder="Es. Cartellone 03, monitor, CARTELLONE_12"
+        query={assetQuery}
+        selectedAssetId={selectedAssetId}
+      />
+
+      {selectedAsset ? (
+        <div className="mini-item customer-selection-card field full">
+          <div className="list-header">
+            <div>
+              <strong>{selectedAsset.name}</strong>
+              <div className="subtle">{billboardAssetKindLabels[selectedAsset.kind]}</div>
+            </div>
+            <button
+              className="ghost"
+              onClick={(event) => {
+                event.preventDefault();
+                setSelectedAssetId("");
+                setAssetQuery("");
+              }}
+              type="button"
+            >
+              Cambia impianto
+            </button>
+          </div>
+          <div className="subtle">{selectedAsset.code}</div>
+          <div className="subtle">{selectedAsset.location || "Luogo da definire"}</div>
+        </div>
+      ) : null}
 
       <div className="field">
         <label htmlFor="startsAt">Dal</label>
@@ -107,6 +154,60 @@ export function BillboardBookingForm({
       <div className="field">
         <label htmlFor="endsAt">Al</label>
         <input defaultValue={defaultEndDate} id="endsAt" name="endsAt" required type="date" />
+      </div>
+
+      <div className="field">
+        <label htmlFor="status">Stato prenotazione</label>
+        <select defaultValue="CONFERMATO" id="status" name="status">
+          {(["OPZIONATO", "CONFERMATO", "SCADUTO"] as BillboardBookingStatus[]).map((status) => (
+            <option key={status} value={status}>
+              {billboardBookingStatusLabels[status]}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="field">
+        <label htmlFor="price">Valore prenotazione</label>
+        <input
+          id="price"
+          inputMode="decimal"
+          name="price"
+          onChange={(event) => setPriceInput(event.target.value)}
+          placeholder="Es. 250,00"
+          type="text"
+          value={priceInput}
+        />
+      </div>
+
+      <div className="field">
+        <label htmlFor="paid">Incassato</label>
+        <input
+          id="paid"
+          inputMode="decimal"
+          name="paid"
+          onChange={(event) => setPaidInput(event.target.value)}
+          placeholder="Es. 100,00"
+          type="text"
+          value={paidInput}
+        />
+      </div>
+
+      <div className="mini-item billboard-booking-balance-card field full">
+        <div className="list-header">
+          <div>
+            <strong>Riepilogo economico</strong>
+            <div className="subtle">Controllo veloce del valore campagna e del saldo ancora aperto.</div>
+          </div>
+          <span className={`pill ${balancePreviewCents > 0 ? "warning" : "status"}`}>
+            Saldo {formatCurrency(balancePreviewCents)}
+          </span>
+        </div>
+        <div className="billboard-booking-financials">
+          <span>Valore {formatCurrency(pricePreviewCents)}</span>
+          <span>Incassato {formatCurrency(paidPreviewCents)}</span>
+          <span>Residuo {formatCurrency(balancePreviewCents)}</span>
+        </div>
       </div>
 
       <div className="field full">
@@ -129,4 +230,18 @@ export function BillboardBookingForm({
       </div>
     </form>
   );
+}
+
+function parseMoneyDraftToCents(value: string) {
+  const normalized = value.trim().replace(/\./g, "").replace(",", ".");
+  if (!normalized) {
+    return 0;
+  }
+
+  const parsed = Number.parseFloat(normalized);
+  if (Number.isNaN(parsed) || parsed < 0) {
+    return 0;
+  }
+
+  return Math.round(parsed * 100);
 }

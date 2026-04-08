@@ -804,6 +804,8 @@ p {
 
 .shell-stage {
   position: relative;
+  display: grid;
+  gap: 20px;
   flex: 1;
   padding: 34px;
   border-radius: 44px;
@@ -821,6 +823,140 @@ p {
   border-radius: 34px;
   border: 1px solid var(--shell-inner-border);
   pointer-events: none;
+}
+
+.shell-toolbar {
+  position: relative;
+  z-index: 2;
+}
+
+.global-search {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  width: min(720px, 100%);
+}
+
+.global-search-form {
+  display: grid;
+  gap: 8px;
+}
+
+.global-search-label,
+.global-search-section-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--compact-label);
+}
+
+.global-search-field-shell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 62px;
+  padding: 0 14px 0 46px;
+  border-radius: 22px;
+  border: 1px solid var(--sheet-chip-border);
+  background: var(--sheet-chip-bg);
+  box-shadow: var(--shadow-md);
+}
+
+.global-search-field-shell input {
+  width: 100%;
+  min-height: 46px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.global-search-icon {
+  position: absolute;
+  left: 16px;
+  color: var(--muted);
+}
+
+.global-search-clear {
+  position: relative;
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  border: 1px solid var(--sheet-chip-border);
+  background: var(--chip-bg);
+  color: var(--text);
+}
+
+.global-search-clear span {
+  position: absolute;
+  width: 14px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.global-search-clear span:first-child {
+  transform: rotate(45deg);
+}
+
+.global-search-clear span:last-child {
+  transform: rotate(-45deg);
+}
+
+.global-search-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+}
+
+.global-search-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 14px;
+  max-height: min(72vh, 640px);
+  overflow: auto;
+  padding: 16px;
+  border-radius: 28px;
+  border: 1px solid var(--sheet-chip-border);
+  background: var(--shell-bg);
+  box-shadow: var(--shadow-xl);
+  z-index: 30;
+}
+
+.global-search-section {
+  display: grid;
+  gap: 8px;
+}
+
+.global-search-results {
+  display: grid;
+  gap: 8px;
+}
+
+.global-search-result {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--sheet-chip-border);
+  background: var(--sheet-chip-bg);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+  color: var(--text);
+}
+
+.global-search-result:hover {
+  transform: translateY(-1px);
+  border-color: var(--nav-link-active-border);
+  background: var(--nav-link-active-bg);
 }
 
 .mobile-topbar {
@@ -2064,7 +2200,7 @@ button.success {
 }
 
 .billboard-summary-grid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .billboard-asset-grid {
@@ -2098,6 +2234,22 @@ button.success {
   border: 1px solid var(--booking-chip-border);
 }
 
+.billboard-booking-chip-opzionato {
+  border-color: rgba(155, 122, 47, 0.32);
+  background: rgba(255, 242, 204, 0.58);
+}
+
+.billboard-booking-chip-confermato {
+  border-color: rgba(47, 125, 91, 0.24);
+}
+
+.billboard-booking-chip-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .billboard-booking-chip span {
   color: var(--muted);
   font-size: 0.8rem;
@@ -2106,6 +2258,47 @@ button.success {
 .billboard-booking-note {
   color: var(--text) !important;
   line-height: 1.35;
+}
+
+.billboard-asset-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.billboard-booking-financials {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.billboard-booking-financials span {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--signal-border);
+  background: var(--signal-bg);
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.billboard-booking-side,
+.billboard-history-metrics {
+  display: grid;
+  justify-items: flex-end;
+  align-content: center;
+  gap: 10px;
+}
+
+.billboard-history-metrics strong {
+  font-size: 1rem;
+}
+
+.billboard-booking-balance-card {
+  gap: 14px;
 }
 
 .quick-order-menu {
@@ -2265,6 +2458,19 @@ button.success {
 .order-sheet-chip {
   display: grid;
   gap: 6px;
+  padding: 14px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--sheet-chip-border);
+  background: var(--sheet-chip-bg);
+  box-shadow: var(--shadow-sm);
+}
+
+.order-draft-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
   padding: 14px 16px;
   border-radius: 20px;
   border: 1px solid var(--sheet-chip-border);
@@ -2611,17 +2817,20 @@ button.success {
   gap: 10px 16px;
 }
 
-.customer-autocomplete-field {
+.customer-autocomplete-field,
+.asset-autocomplete-field {
   gap: 12px;
 }
 
-.customer-autocomplete-meta {
+.customer-autocomplete-meta,
+.asset-autocomplete-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 10px 16px;
 }
 
-.customer-autocomplete-hint {
+.customer-autocomplete-hint,
+.asset-autocomplete-hint {
   margin: 0;
 }
 
@@ -2649,12 +2858,14 @@ button.success {
   gap: 10px;
 }
 
-.customer-autocomplete-suggestions {
+.customer-autocomplete-suggestions,
+.asset-autocomplete-suggestions {
   display: grid;
   gap: 10px;
 }
 
-.customer-autocomplete-suggestion {
+.customer-autocomplete-suggestion,
+.asset-autocomplete-suggestion {
   display: grid;
   gap: 4px;
   padding: 14px 16px;
@@ -2668,18 +2879,23 @@ button.success {
 
 .customer-autocomplete-suggestion:hover,
 .customer-autocomplete-suggestion:focus-visible,
-.customer-autocomplete-suggestion.is-selected {
+.customer-autocomplete-suggestion.is-selected,
+.asset-autocomplete-suggestion:hover,
+.asset-autocomplete-suggestion:focus-visible,
+.asset-autocomplete-suggestion.is-selected {
   border-color: var(--suggestion-hover-border);
   background: var(--suggestion-hover-bg);
   transform: translateY(-1px);
 }
 
-.customer-autocomplete-suggestion span {
+.customer-autocomplete-suggestion span,
+.asset-autocomplete-suggestion span {
   color: var(--muted);
   font-size: 0.84rem;
 }
 
-.customer-autocomplete-empty {
+.customer-autocomplete-empty,
+.asset-autocomplete-empty {
   padding: 16px 18px;
 }
 
@@ -3394,6 +3610,11 @@ textarea:focus-visible {
 
   .calendar-day-shell {
     grid-template-columns: 1fr;
+  }
+
+  .billboard-booking-side,
+  .billboard-history-metrics {
+    justify-items: flex-start;
   }
 
   .order-sheet-summary {

@@ -1,4 +1,5 @@
 import {
+  BillboardBookingStatus,
   CustomerType,
   DiscountMode,
   InvoiceStatus,
@@ -17,6 +18,15 @@ export function parseCustomerType(raw: string | null): CustomerType {
   const value = raw as CustomerType | null;
   if (!value || !["PUBBLICO", "AZIENDA"].includes(value)) {
     return "PUBBLICO";
+  }
+
+  return value;
+}
+
+export function parseBillboardBookingStatus(raw: string | null): BillboardBookingStatus {
+  const value = raw as BillboardBookingStatus | null;
+  if (!value || !["OPZIONATO", "CONFERMATO", "SCADUTO"].includes(value)) {
+    return "CONFERMATO";
   }
 
   return value;
