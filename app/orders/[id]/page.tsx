@@ -13,6 +13,8 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
 import { StatusPills } from "@/components/status-pills";
+import { AttachmentUploadForm } from "@/components/attachment-upload-form";
+import { formatAttachmentSize } from "@/lib/attachment-utils";
 import { requireAuth } from "@/lib/auth";
 import {
   invoiceStatusLabels,
@@ -25,7 +27,6 @@ import { buildOrdersFilterHref } from "@/lib/order-filters";
 import { getOrderById } from "@/lib/orders";
 import { formatDiscountSummary } from "@/lib/pricing";
 import { resolveAttachmentStorageMode } from "@/lib/storage";
-import { AttachmentUploadForm } from "@/components/attachment-upload-form";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
   const activePayments = order.payments.filter((payment) => payment.status === "ATTIVO");
   const guidedAction = getGuidedPhaseAction(order.mainPhase);
   const hasWhatsapp = Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""));
-  const useDirectUpload = process.env.NODE_ENV === "production" && resolveAttachmentStorageMode() === "blob";
+  const useDirectUpload = resolveAttachmentStorageMode() === "blob";
 
   return (
     <div className="stack">
@@ -406,7 +407,9 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               order.attachments.map((attachment) => (
                 <a className="mini-item" href={attachment.filePath} key={attachment.id} rel="noreferrer" target="_blank">
                   <strong>{attachment.fileName}</strong>
-                  <span className="subtle">{formatDateTime(attachment.createdAt)}</span>
+                  <span className="subtle">
+                    {formatAttachmentSize(attachment.sizeBytes)} • {formatDateTime(attachment.createdAt)}
+                  </span>
                 </a>
               ))
             )}

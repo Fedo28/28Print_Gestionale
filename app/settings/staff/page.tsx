@@ -16,7 +16,15 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export default async function StaffSettingsPage() {
+export default async function StaffSettingsPage({
+  searchParams
+}: {
+  searchParams?: {
+    created?: string;
+    nickname?: string;
+    invite?: string;
+  };
+}) {
   await requireAdmin();
 
   const requestBaseUrl = getRequestBaseUrl(headers());
@@ -42,6 +50,18 @@ export default async function StaffSettingsPage() {
         title="Profili Staff"
         description="Area admin per profilare i colleghi con nickname, password iniziale ed email. Il link di accesso viene ricavato dal dominio attuale o dalla configurazione deploy."
       />
+
+      {searchParams?.created ? (
+        <div className="mini-item">
+          <strong>Profilo creato per {searchParams.created}.</strong>
+          {searchParams.nickname ? <div className="subtle">Nickname pronto: @{searchParams.nickname}</div> : null}
+          <div className="subtle">
+            {searchParams.invite === "sent"
+              ? "Invito email inviato subito."
+              : "Profilo pronto. Se la mail automatica non e attiva, trovi la bozza invito qui sotto."}
+          </div>
+        </div>
+      ) : null}
 
       <section className="grid stats-grid">
         <article className="card card-pad compact-metric compact-metric-neutral">

@@ -3,6 +3,7 @@ import { mainPhaseLabels } from "../lib/constants";
 import {
   assertPhaseTransition,
   buildOrderCode,
+  buildDashboardWeekLoad,
   buildSalesStatsReport,
   classifyProductionQueues,
   countUniqueOrders,
@@ -157,6 +158,48 @@ describe("order domain", () => {
     ]);
 
     expect(agenda.map((order) => order.id)).toEqual(["appointment"]);
+  });
+
+  it("builds weekly dashboard load combining delivery and appointments", () => {
+    const week = buildDashboardWeekLoad(
+      [
+        {
+          id: "due-today",
+          deliveryAt: new Date("2026-04-08T09:00:00.000Z"),
+          appointmentAt: null,
+          mainPhase: "ACCETTATO",
+          operationalStatus: "ATTIVO"
+        },
+        {
+          id: "appointment-today",
+          deliveryAt: new Date("2026-04-10T09:00:00.000Z"),
+          appointmentAt: new Date("2026-04-08T11:00:00.000Z"),
+          mainPhase: "IN_LAVORAZIONE",
+          operationalStatus: "ATTIVO"
+        },
+        {
+          id: "blocked-tomorrow",
+          deliveryAt: new Date("2026-04-09T09:00:00.000Z"),
+          appointmentAt: null,
+          mainPhase: "IN_LAVORAZIONE",
+          operationalStatus: "IN_ATTESA_FILE"
+        },
+        {
+          id: "ready-day-three",
+          deliveryAt: new Date("2026-04-10T15:00:00.000Z"),
+          appointmentAt: null,
+          mainPhase: "SVILUPPO_COMPLETATO",
+          operationalStatus: "ATTIVO"
+        }
+      ],
+      new Date("2026-04-08T08:00:00.000Z")
+    );
+
+    expect(week).toHaveLength(7);
+    expect(week[0]?.workload).toBe(1);
+    expect(week[0]?.appointments).toBe(1);
+    expect(week[1]?.blocked).toBe(1);
+    expect(week[2]?.ready).toBe(1);
   });
 
   it("computes order totals with amount and percent discounts", () => {

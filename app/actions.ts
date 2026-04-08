@@ -469,13 +469,12 @@ export async function createStaffUserAction(
 
     revalidatePath("/settings");
     revalidatePath("/settings/staff");
-
-    return {
-      error: null,
-      successMessage: `Profilo creato per ${user.name}.`,
-      createdNickname: user.nickname,
-      inviteMessage: inviteDelivery.message
-    };
+    const params = new URLSearchParams({
+      created: user.name,
+      nickname: user.nickname,
+      invite: inviteDelivery.sent ? "sent" : "draft"
+    });
+    redirect(`/settings/staff?${params.toString()}`);
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Impossibile creare il profilo staff.",

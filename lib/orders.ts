@@ -121,6 +121,25 @@ type MonthlyAgendaSnapshot = {
   appointmentAt: Date | string | null;
 };
 
+type DashboardWeekSnapshotInput = {
+  id: string;
+  deliveryAt: Date | string;
+  appointmentAt: Date | string | null;
+  mainPhase: MainPhase;
+  operationalStatus: OperationalStatus;
+};
+
+export type DashboardWeekDayLoad = {
+  key: string;
+  date: Date;
+  shortLabel: string;
+  dayLabel: string;
+  workload: number;
+  appointments: number;
+  blocked: number;
+  ready: number;
+};
+
 type SalesStatsLineSnapshot = {
   label: string;
   quantity: number;
@@ -190,6 +209,58 @@ export function isOperationalOrder(order: { isQuote: boolean }) {
 
 export function countUniqueOrders(...lists: OrderIdentity[][]) {
   return new Set(lists.flat().map((order) => order.id)).size;
+}
+
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function isSameDay(left: Date | string, right: Date) {
+  return formatDateKey(new Date(left)) === formatDateKey(right);
+}
+
+function getDashboardDayFormatter() {
+  return new Intl.DateTimeFormat("it-IT", {
+    weekday: "short",
+    day: "2-digit",
+    timeZone: APP_TIMEZONE
+  });
+}
+
+export function buildDashboardWeekLoad(
+  orders: DashboardWeekSnapshotInput[],
+  referenceDate = new Date()
+): DashboardWeekDayLoad[] {
+  const today = startOfDay(referenceDate);
+  const formatter = getDashboardDayFormatter();
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = addDays(today, index);
+    const entries = orders.filter(
+      (order) => isSameDay(order.deliveryAt, date) || (order.appointmentAt ? isSameDay(order.appointmentAt, date) : false)
+    );
+    const label = formatter.format(date).replace(".", "");
+    const [shortLabel, dayLabel = label] = label.split(" ");
+
+    return {
+      key: formatDateKey(date),
+      date,
+      shortLabel: shortLabel ? shortLabel.toUpperCase() : label.toUpperCase(),
+      dayLabel,
+      workload: entries.filter((order) => isSameDay(order.deliveryAt, date)).length,
+      appointments: entries.filter((order) => order.appointmentAt && isSameDay(order.appointmentAt, date)).length,
+      blocked: entries.filter((order) => order.operationalStatus !== "ATTIVO" && isSameDay(order.deliveryAt, date)).length,
+      ready: entries.filter(
+        (order) => normalizeMainPhaseForWorkflow(order.mainPhase) === "SVILUPPO_COMPLETATO" && isSameDay(order.deliveryAt, date)
+      ).length
+    };
+  });
 }
 
 export function classifyProductionQueues<T extends ProductionQueueSnapshot>(orders: T[]): ProductionQueues<T> {
@@ -1326,14 +1397,17 @@ export async function syncServiceCatalogEntries(rows: ServiceCatalogImportRow[])
 
 export async function getDashboardData() {
   const now = new Date();
-  const [todayOrders, overdueOrders, blockedOrders, readyOrders, balanceOrders] = await Promise.all([
+  const todayStart = startOfDay(now);
+  const tomorrowStart = addDays(todayStart, 1);
+  const weekEnd = addDays(todayStart, 7);
+  const [todayOrders, todayAppointments, overdueOrders, blockedOrders, readyOrders, balanceOrders, toStartOrders, workingOrders, weekLoadOrders] = await Promise.all([
     prisma.order.findMany({
       where: {
         ...operationalOrderWhere(),
         mainPhase: { not: "CONSEGNATO" },
         deliveryAt: {
-          gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
-          lt: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+          gte: todayStart,
+          lt: tomorrowStart
         }
       },
       include: { customer: true },
@@ -1342,7 +1416,19 @@ export async function getDashboardData() {
     prisma.order.findMany({
       where: {
         ...operationalOrderWhere(),
-        deliveryAt: { lt: now },
+        mainPhase: { not: "CONSEGNATO" },
+        appointmentAt: {
+          gte: todayStart,
+          lt: tomorrowStart
+        }
+      },
+      include: { customer: true },
+      orderBy: [{ appointmentAt: "asc" }, { deliveryAt: "asc" }]
+    }),
+    prisma.order.findMany({
+      where: {
+        ...operationalOrderWhere(),
+        deliveryAt: { lt: todayStart },
         mainPhase: { not: "CONSEGNATO" }
       },
       include: { customer: true },
@@ -1373,15 +1459,64 @@ export async function getDashboardData() {
       },
       include: { customer: true },
       orderBy: [{ balanceDueCents: "desc" }, { deliveryAt: "asc" }]
+    }),
+    prisma.order.findMany({
+      where: {
+        ...operationalOrderWhere(),
+        mainPhase: "ACCETTATO",
+        operationalStatus: "ATTIVO"
+      },
+      include: { customer: true },
+      orderBy: [{ priority: "desc" }, { deliveryAt: "asc" }]
+    }),
+    prisma.order.findMany({
+      where: {
+        ...operationalOrderWhere(),
+        mainPhase: { in: ["IN_LAVORAZIONE", "CALENDARIZZATO"] },
+        operationalStatus: "ATTIVO"
+      },
+      include: { customer: true },
+      orderBy: [{ priority: "desc" }, { deliveryAt: "asc" }]
+    }),
+    prisma.order.findMany({
+      where: {
+        ...operationalOrderWhere(),
+        mainPhase: { not: "CONSEGNATO" },
+        OR: [
+          {
+            deliveryAt: {
+              gte: todayStart,
+              lt: weekEnd
+            }
+          },
+          {
+            appointmentAt: {
+              gte: todayStart,
+              lt: weekEnd
+            }
+          }
+        ]
+      },
+      select: {
+        id: true,
+        deliveryAt: true,
+        appointmentAt: true,
+        mainPhase: true,
+        operationalStatus: true
+      }
     })
   ]);
 
   return {
     todayOrders,
+    todayAppointments,
     overdueOrders,
     blockedOrders,
     readyOrders,
-    balanceOrders
+    balanceOrders,
+    toStartOrders,
+    workingOrders,
+    weekLoad: buildDashboardWeekLoad(weekLoadOrders, now)
   };
 }
 

@@ -1,7 +1,5 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
 import { useFormState, useFormStatus } from "react-dom";
 import { createStaffUserAction, type StaffProfileActionState } from "@/app/actions";
 import { userRoleLabels } from "@/lib/constants";
@@ -25,30 +23,12 @@ function SubmitButton() {
 
 export function StaffProfileForm() {
   const [state, formAction] = useFormState(createStaffUserAction, initialState);
-  const formRef = useRef<HTMLFormElement>(null);
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!state.successMessage) {
-      return;
-    }
-
-    formRef.current?.reset();
-    router.refresh();
-  }, [router, state.successMessage]);
 
   return (
     <div className="stack">
       {state.error ? <div className="empty">{state.error}</div> : null}
-      {state.successMessage ? (
-        <div className="mini-item">
-          <strong>{state.successMessage}</strong>
-          {state.createdNickname ? <div className="subtle">Nickname pronto: {state.createdNickname}</div> : null}
-          {state.inviteMessage ? <div className="subtle">{state.inviteMessage}</div> : null}
-        </div>
-      ) : null}
 
-      <form action={formAction} className="form-grid" ref={formRef}>
+      <form action={formAction} className="form-grid">
         <div className="field wide">
           <label htmlFor="staff-name">Nome profilo</label>
           <input id="staff-name" name="name" placeholder="Es. Marco Officina" required />

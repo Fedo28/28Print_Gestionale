@@ -20,6 +20,22 @@ export function formatAttachmentMaxSize(maxSizeInBytes = ATTACHMENT_MAX_SIZE_BYT
   return `${Math.round(maxSizeInBytes / (1024 * 1024))} MB`;
 }
 
+export function formatAttachmentSize(sizeInBytes: number) {
+  if (!Number.isFinite(sizeInBytes) || sizeInBytes <= 0) {
+    return "0 B";
+  }
+
+  if (sizeInBytes < 1024) {
+    return `${Math.round(sizeInBytes)} B`;
+  }
+
+  if (sizeInBytes < 1024 * 1024) {
+    return `${(sizeInBytes / 1024).toFixed(sizeInBytes < 10 * 1024 ? 1 : 0)} KB`;
+  }
+
+  return `${(sizeInBytes / (1024 * 1024)).toFixed(sizeInBytes < 10 * 1024 * 1024 ? 1 : 0)} MB`;
+}
+
 export function parseAttachmentClientPayload(value: string | null | undefined): AttachmentClientPayload {
   if (!value) {
     throw new Error("Dati allegato mancanti.");

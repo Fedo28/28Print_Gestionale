@@ -11,6 +11,10 @@ import { deleteStoredAttachment, resolveAttachmentStorageMode, uploadOrderAttach
 
 export const runtime = "nodejs";
 
+function isAjaxUploadRequest(request: NextRequest) {
+  return request.nextUrl.searchParams.get("ajax") === "1" || request.headers.get("x-upload-mode") === "ajax";
+}
+
 async function handleDirectBlobUpload(request: NextRequest, orderId: string) {
   if (resolveAttachmentStorageMode() !== "blob") {
     return NextResponse.json(
@@ -111,6 +115,13 @@ async function handleServerUpload(request: NextRequest, orderId: string) {
     } catch (error) {
       await deleteStoredAttachment(stored.filePath).catch(() => undefined);
       throw error;
+    }
+
+    if (isAjaxUploadRequest(request)) {
+      return NextResponse.json({
+        success: true,
+        fileName: file.name
+      });
     }
 
     return NextResponse.redirect(new URL(`/orders/${orderId}`, request.url), 303);

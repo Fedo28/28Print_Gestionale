@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ATTACHMENT_MAX_SIZE_BYTES,
   buildAttachmentBlobPath,
+  formatAttachmentSize,
   parseAttachmentClientPayload,
   sanitizeAttachmentFileName
 } from "@/lib/attachment-utils";
@@ -43,5 +44,11 @@ describe("attachment utils", () => {
 
   it("keeps the upload cap aligned with the deploy guardrail", () => {
     expect(ATTACHMENT_MAX_SIZE_BYTES).toBe(100 * 1024 * 1024);
+  });
+
+  it("formats attachment sizes for the upload ui", () => {
+    expect(formatAttachmentSize(980)).toBe("980 B");
+    expect(formatAttachmentSize(1536)).toBe("1.5 KB");
+    expect(formatAttachmentSize(5 * 1024 * 1024)).toBe("5.0 MB");
   });
 });
