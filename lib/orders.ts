@@ -1490,11 +1490,10 @@ export async function getCalendarOrders() {
   return prisma.order.findMany({
     where: {
       ...operationalOrderWhere(),
-      mainPhase: { not: "CONSEGNATO" },
-      appointmentAt: { not: null }
+      mainPhase: { not: "CONSEGNATO" }
     },
     include: { customer: true },
-    orderBy: [{ appointmentAt: "asc" }, { priority: "desc" }]
+    orderBy: [{ deliveryAt: "asc" }, { priority: "desc" }]
   });
 }
 
