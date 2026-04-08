@@ -33,15 +33,12 @@ const COMPACT_NAV_MEDIA_QUERY = "(max-width: 1180px)";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const isLoginRoute = pathname === "/login";
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeName>(DEFAULT_THEME);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const wasMobileNavOpenRef = useRef(false);
-
-  if (pathname === "/login") {
-    return <main className="auth-layout">{children}</main>;
-  }
 
   useEffect(() => {
     setIsMobileNavOpen(false);
@@ -127,6 +124,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [isMobileNavOpen]);
+
+  if (isLoginRoute) {
+    return <main className="auth-layout">{children}</main>;
+  }
 
   function handleCloseMobileNav() {
     setIsMobileNavOpen(false);
