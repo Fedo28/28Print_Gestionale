@@ -9,7 +9,8 @@ import { userRoleLabels } from "@/lib/constants";
 const initialState: StaffProfileActionState = {
   error: null,
   successMessage: null,
-  createdNickname: null
+  createdNickname: null,
+  inviteMessage: null
 };
 
 function SubmitButton() {
@@ -43,6 +44,7 @@ export function StaffProfileForm() {
         <div className="mini-item">
           <strong>{state.successMessage}</strong>
           {state.createdNickname ? <div className="subtle">Nickname pronto: {state.createdNickname}</div> : null}
+          {state.inviteMessage ? <div className="subtle">{state.inviteMessage}</div> : null}
         </div>
       ) : null}
 
@@ -81,7 +83,7 @@ export function StaffProfileForm() {
         <div className="field full">
           <label htmlFor="staff-password">Password iniziale</label>
           <input id="staff-password" name="password" required type="password" />
-          <p className="hint">Per ora la imposti tu in profilazione. Nel prossimo step collegheremo il link definitivo per l'accesso.</p>
+          <p className="hint">La imposti tu in profilazione. Dopo il primo accesso il collega puo personalizzare il nickname dalle impostazioni.</p>
         </div>
 
         <div className="button-row">

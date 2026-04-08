@@ -1,17 +1,23 @@
 import Link from "next/link";
 import { createServiceAction, saveWhatsappTemplateAction } from "@/app/actions";
+import { AccessProfileForm } from "@/components/access-profile-form";
 import { CatalogImportForm } from "@/components/catalog-import-form";
 import { CatalogServiceSearch } from "@/components/catalog-service-search";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
 import { getServiceCatalogAdmin } from "@/lib/orders";
+import { getStaffUserProfile } from "@/lib/staff-users";
 import { getWhatsappTemplate } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const session = await requireAuth();
-  const [services, whatsappTemplate] = await Promise.all([getServiceCatalogAdmin(), getWhatsappTemplate()]);
+  const [services, whatsappTemplate, currentUser] = await Promise.all([
+    getServiceCatalogAdmin(),
+    getWhatsappTemplate(),
+    getStaffUserProfile(session.userId)
+  ]);
 
   return (
     <div className="stack">
@@ -19,6 +25,19 @@ export default async function SettingsPage() {
         title="Impostazioni"
         description="Catalogo servizi e template operativi della V1."
       />
+
+      {currentUser ? (
+        <section className="card card-pad">
+          <div className="list-header">
+            <div>
+              <h3>Profilo accesso</h3>
+              <p className="card-muted">Dopo il primo accesso puoi personalizzare il nickname con cui entri nel gestionale.</p>
+            </div>
+            <span className="pill">Ruolo {session.role === "ADMIN" ? "Admin" : "Operatore"}</span>
+          </div>
+          <AccessProfileForm currentNickname={currentUser.nickname} email={currentUser.email} />
+        </section>
+      ) : null}
 
       {session.role === "ADMIN" ? (
         <section className="card card-pad">
@@ -32,7 +51,7 @@ export default async function SettingsPage() {
             </Link>
           </div>
           <p className="hint">
-            La mail di accesso e gia predisposta ma il link finale verra configurato quando decideremo dove mettere online la versione stabile.
+            Da qui gestisci profilazione colleghi, bozza invito e stato dell'invio mail.
           </p>
         </section>
       ) : null}

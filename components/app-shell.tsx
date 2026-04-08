@@ -29,7 +29,7 @@ const navItems = [
   { href: "/settings", label: "Impostazioni" }
 ];
 
-const MOBILE_NAV_MEDIA_QUERY = "(max-width: 768px)";
+const COMPACT_NAV_MEDIA_QUERY = "(max-width: 1180px)";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -71,7 +71,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       return;
     }
 
-    const mediaQuery = window.matchMedia(MOBILE_NAV_MEDIA_QUERY);
+    const mediaQuery = window.matchMedia(COMPACT_NAV_MEDIA_QUERY);
     const handleViewportChange = (event: MediaQueryListEvent) => {
       if (!event.matches) {
         setIsMobileNavOpen(false);
@@ -212,9 +212,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             ref={menuButtonRef}
             type="button"
           >
-            <span />
-            <span />
-            <span />
+            <svg aria-hidden="true" className="glyph mobile-nav-trigger-icon" viewBox="0 0 24 24">
+              <rect x="4" y="5" width="16" height="3.2" rx="1.6" fill="currentColor" />
+              <rect x="4" y="10.4" width="16" height="3.2" rx="1.6" fill="currentColor" />
+              <rect x="4" y="15.8" width="16" height="3.2" rx="1.6" fill="currentColor" />
+            </svg>
           </button>
         </div>
 

@@ -1,8 +1,11 @@
+import { headers } from "next/headers";
 import Link from "next/link";
 import { StaffProfileForm } from "@/components/staff-profile-form";
 import { PageHeader } from "@/components/page-header";
 import { requireAdmin } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
+import { getMailDeliveryConfig } from "@/lib/mail";
+import { getRequestBaseUrl } from "@/lib/request-url";
 import { userRoleLabels } from "@/lib/constants";
 import {
   buildStaffInvitationPreview,
@@ -15,7 +18,12 @@ export const dynamic = "force-dynamic";
 export default async function StaffSettingsPage() {
   await requireAdmin();
 
-  const [users, inviteConfig] = await Promise.all([getStaffUsersAdmin(), getStaffInviteConfig()]);
+  const requestBaseUrl = getRequestBaseUrl(headers());
+  const [users, inviteConfig] = await Promise.all([
+    getStaffUsersAdmin(),
+    getStaffInviteConfig({ requestBaseUrl })
+  ]);
+  const mailDelivery = getMailDeliveryConfig();
   const preview = buildStaffInvitationPreview({
     name: users[0]?.name || "Nome collega",
     nickname: users[0]?.nickname || "nome.cognome",
@@ -31,7 +39,7 @@ export default async function StaffSettingsPage() {
     <div className="stack">
       <PageHeader
         title="Profili Staff"
-        description="Area admin per profilare i colleghi con nickname, password iniziale ed email. L'invito mail e gia predisposto ma il link finale verra collegato nel prossimo step."
+        description="Area admin per profilare i colleghi con nickname, password iniziale ed email. Il link di accesso viene ricavato dal dominio attuale o dalla configurazione deploy."
       />
 
       <section className="grid stats-grid">
@@ -49,9 +57,9 @@ export default async function StaffSettingsPage() {
           <span className="compact-metric-label">Inviti da finalizzare</span>
           <strong>{pendingInviteUsers}</strong>
           <span className="hint">
-            {inviteConfig.accessLoginUrl
-              ? "Profili con invito pronto al collegamento mail."
-              : "In attesa del link ufficiale di accesso."}
+            {mailDelivery.enabled
+              ? "Le nuove profilazioni provano a inviare subito la mail."
+              : "Il link e pronto, ma serve configurare il provider mail per l'invio automatico."}
           </span>
         </article>
       </section>
@@ -71,16 +79,27 @@ export default async function StaffSettingsPage() {
           <div className="list-header">
             <div>
               <h3>Invito email</h3>
-              <p className="card-muted">Bozza pronta per il prossimo step, senza ancora fissare il link definitivo.</p>
+              <p className="card-muted">Bozza usata anche per l'invio automatico quando il provider mail e attivo.</p>
             </div>
-            <span className={`pill ${inviteConfig.accessLoginUrl ? "status" : "warning"}`}>
-              {inviteConfig.accessLoginUrl ? "URL pronto" : "URL da configurare"}
-            </span>
+            <div className="staff-user-pills">
+              <span className={`pill ${inviteConfig.accessLoginUrl ? "status" : "warning"}`}>
+                {inviteConfig.accessLoginUrl ? "Link accesso pronto" : "Link accesso assente"}
+              </span>
+              <span className={`pill ${mailDelivery.enabled ? "status" : "warning"}`}>
+                {mailDelivery.enabled ? "Mail automatica attiva" : "Provider mail da configurare"}
+              </span>
+            </div>
           </div>
 
           {!inviteConfig.accessLoginUrl ? (
             <div className="empty">
-              Il link ufficiale di accesso non e ancora configurato. La profilazione utenti e pronta, ma la mail automatica verra attivata quando decideremo la destinazione stabile.
+              Non riesco a ricavare un dominio valido per il link di accesso. Imposta STAFF_ACCESS_BASE_URL oppure usa l'app dal dominio definitivo del deploy.
+            </div>
+          ) : null}
+
+          {!mailDelivery.enabled ? (
+            <div className="empty">
+              Per inviare davvero la mail dopo la profilazione servono le env <code>RESEND_API_KEY</code> e <code>MAIL_FROM</code>. Intanto il profilo viene creato e la bozza resta pronta con il link corretto.
             </div>
           ) : null}
 
@@ -101,14 +120,14 @@ export default async function StaffSettingsPage() {
         </section>
       </div>
 
-      <section className="card card-pad">
-        <div className="list-header">
-          <div>
-            <h3>Staff registrato</h3>
-            <p className="card-muted">Elenco profili gia creati, con stato invito pronto per il deploy definitivo.</p>
-          </div>
-          <Link className="button ghost" href="/settings">
-            Torna a impostazioni
+        <section className="card card-pad">
+          <div className="list-header">
+            <div>
+              <h3>Staff registrato</h3>
+              <p className="card-muted">Elenco profili gia creati, con stato reale del link e dell'invio mail.</p>
+            </div>
+            <Link className="button ghost" href="/settings">
+              Torna a impostazioni
           </Link>
         </div>
 
@@ -134,8 +153,10 @@ export default async function StaffSettingsPage() {
                       {user.inviteSentAt
                         ? `Invito inviato ${formatDate(user.inviteSentAt)}`
                         : inviteConfig.accessLoginUrl
-                          ? "Invito pronto"
-                          : "In attesa URL"}
+                          ? mailDelivery.enabled
+                            ? "Pronto per invio automatico"
+                            : "Link pronto, mail non attiva"
+                          : "In attesa link"}
                     </span>
                   </div>
                 </div>

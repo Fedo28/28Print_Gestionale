@@ -4,6 +4,7 @@ import {
   DEFAULT_STAFF_INVITE_EMAIL_SUBJECT,
   DEFAULT_STAFF_INVITE_EMAIL_TEMPLATE
 } from "@/lib/constants";
+import { sendTextEmail } from "@/lib/mail";
 import { prisma } from "@/lib/prisma";
 import {
   getStaffAccessBaseUrl,
@@ -21,6 +22,21 @@ export type CreateStaffUserInput = {
 
 export function normalizeStaffNickname(raw: string) {
   return raw.trim().toLowerCase();
+}
+
+function normalizeStaffAccessBaseUrl(raw: string) {
+  const value = raw.trim();
+  if (!value) {
+    return null;
+  }
+
+  const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+
+  try {
+    return new URL(withProtocol).origin;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeStaffEmail(raw: string) {
@@ -79,7 +95,7 @@ function parseStaffName(raw: string) {
 }
 
 export function buildStaffAccessLoginUrl(baseUrl: string) {
-  const value = baseUrl.trim();
+  const value = normalizeStaffAccessBaseUrl(baseUrl);
   if (!value) {
     return null;
   }
@@ -91,18 +107,42 @@ export function buildStaffAccessLoginUrl(baseUrl: string) {
   }
 }
 
-export async function getStaffInviteConfig() {
+function getDefaultStaffAccessBaseUrlFromEnv() {
+  const candidates = [
+    process.env.STAFF_ACCESS_BASE_URL,
+    process.env.APP_BASE_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    process.env.VERCEL_URL
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeStaffAccessBaseUrl(candidate || "");
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return "";
+}
+
+export async function getStaffInviteConfig(options?: { requestBaseUrl?: string | null }) {
   const [accessBaseUrl, subject, template] = await Promise.all([
     getStaffAccessBaseUrl(),
     getStaffInviteEmailSubject(),
     getStaffInviteEmailTemplate()
   ]);
 
+  const resolvedAccessBaseUrl =
+    normalizeStaffAccessBaseUrl(accessBaseUrl) ||
+    normalizeStaffAccessBaseUrl(options?.requestBaseUrl || "") ||
+    getDefaultStaffAccessBaseUrlFromEnv();
+
   return {
-    accessBaseUrl,
+    accessBaseUrl: resolvedAccessBaseUrl,
     subject: subject.trim() || DEFAULT_STAFF_INVITE_EMAIL_SUBJECT,
     template: template.trim() || DEFAULT_STAFF_INVITE_EMAIL_TEMPLATE,
-    accessLoginUrl: buildStaffAccessLoginUrl(accessBaseUrl)
+    accessLoginUrl: buildStaffAccessLoginUrl(resolvedAccessBaseUrl)
   };
 }
 
@@ -159,6 +199,14 @@ function describeStaffUserMutationError(error: unknown) {
   return error instanceof Error ? error.message : "Impossibile salvare il profilo staff.";
 }
 
+function sanitizeUpdateNicknameError(error: unknown) {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    return "Questo nickname e gia in uso.";
+  }
+
+  return error instanceof Error ? error.message : "Impossibile aggiornare il nickname.";
+}
+
 export async function createStaffUser(input: CreateStaffUserInput) {
   const name = parseStaffName(input.name);
   const nickname = parseStaffNickname(input.nickname);
@@ -204,4 +252,108 @@ export async function createStaffUser(input: CreateStaffUserInput) {
   } catch (error) {
     throw new Error(describeStaffUserMutationError(error));
   }
+}
+
+export async function getStaffUserProfile(userId: string) {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      name: true,
+      nickname: true,
+      email: true,
+      role: true
+    }
+  });
+}
+
+export async function updateOwnStaffNickname(userId: string, rawNickname: string) {
+  const nickname = parseStaffNickname(rawNickname);
+  const currentUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, nickname: true }
+  });
+
+  if (!currentUser) {
+    throw new Error("Profilo utente non trovato.");
+  }
+
+  if (currentUser.nickname === nickname) {
+    return prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        nickname: true,
+        email: true
+      }
+    });
+  }
+
+  const nicknameOwner = await prisma.user.findUnique({
+    where: { nickname },
+    select: { id: true }
+  });
+
+  if (nicknameOwner && nicknameOwner.id !== userId) {
+    throw new Error("Questo nickname e gia in uso.");
+  }
+
+  try {
+    return await prisma.user.update({
+      where: { id: userId },
+      data: { nickname },
+      select: {
+        id: true,
+        name: true,
+        nickname: true,
+        email: true
+      }
+    });
+  } catch (error) {
+    throw new Error(sanitizeUpdateNicknameError(error));
+  }
+}
+
+export async function sendStaffInviteEmail(input: {
+  userId: string;
+  name: string;
+  nickname: string;
+  email: string;
+  subject?: string;
+  template?: string;
+  accessBaseUrl?: string;
+}) {
+  const preview = buildStaffInvitationPreview({
+    name: input.name,
+    nickname: input.nickname,
+    subject: input.subject,
+    template: input.template,
+    accessBaseUrl: input.accessBaseUrl
+  });
+
+  if (!preview.accessLoginUrl) {
+    return {
+      sent: false,
+      message: "Mail non inviata: link di accesso non disponibile per questo ambiente."
+    };
+  }
+
+  const delivery = await sendTextEmail({
+    to: input.email,
+    subject: preview.subject,
+    text: preview.body
+  });
+
+  if (delivery.sent) {
+    await prisma.user.update({
+      where: { id: input.userId },
+      data: {
+        invitePreparedAt: new Date(),
+        inviteSentAt: new Date()
+      }
+    });
+  }
+
+  return delivery;
 }

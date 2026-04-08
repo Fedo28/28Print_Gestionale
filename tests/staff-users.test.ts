@@ -17,6 +17,7 @@ describe("staff users", () => {
   it("builds the access login url only when a stable base url exists", () => {
     expect(buildStaffAccessLoginUrl("")).toBeNull();
     expect(buildStaffAccessLoginUrl("https://gestionale.example.com")).toBe("https://gestionale.example.com/login");
+    expect(buildStaffAccessLoginUrl("28-print-gestionale.vercel.app")).toBe("https://28-print-gestionale.vercel.app/login");
   });
 
   it("renders the invitation preview with placeholder link when url is missing", () => {

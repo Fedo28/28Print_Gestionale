@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { ATTACHMENT_MAX_SIZE_BYTES, formatAttachmentMaxSize } from "@/lib/attachment-utils";
 import { createBillboardBooking, parseBillboardBookingDate } from "@/lib/billboards";
@@ -35,9 +36,15 @@ import {
 } from "@/lib/orders";
 import { authenticateUser, createSessionForUser, describeLoginFailure, requireAdmin, requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getRequestBaseUrl } from "@/lib/request-url";
 import { saveSetting } from "@/lib/settings";
 import { cleanupOrderAttachments, deleteStoredAttachment, uploadBillboardBookingPdf } from "@/lib/storage";
-import { createStaffUser } from "@/lib/staff-users";
+import {
+  createStaffUser,
+  getStaffInviteConfig,
+  sendStaffInviteEmail,
+  updateOwnStaffNickname
+} from "@/lib/staff-users";
 
 function revalidateOperationalSurfaces(orderId?: string) {
   revalidatePath("/");
@@ -88,6 +95,13 @@ export type StaffProfileActionState = {
   error: string | null;
   successMessage: string | null;
   createdNickname: string | null;
+  inviteMessage: string | null;
+};
+
+export type AccessProfileActionState = {
+  error: string | null;
+  successMessage: string | null;
+  updatedNickname: string | null;
 };
 
 export async function createCustomerAction(formData: FormData) {
@@ -389,6 +403,18 @@ export async function createStaffUserAction(
       password: String(formData.get("password") || ""),
       role: parseUserRole(formData.get("role")?.toString() || null)
     });
+    const inviteConfig = await getStaffInviteConfig({
+      requestBaseUrl: getRequestBaseUrl(headers())
+    });
+    const inviteDelivery = await sendStaffInviteEmail({
+      userId: user.id,
+      name: user.name,
+      nickname: user.nickname,
+      email: user.email,
+      subject: inviteConfig.subject,
+      template: inviteConfig.template,
+      accessBaseUrl: inviteConfig.accessBaseUrl
+    });
 
     revalidatePath("/settings");
     revalidatePath("/settings/staff");
@@ -396,13 +422,40 @@ export async function createStaffUserAction(
     return {
       error: null,
       successMessage: `Profilo creato per ${user.name}.`,
-      createdNickname: user.nickname
+      createdNickname: user.nickname,
+      inviteMessage: inviteDelivery.message
     };
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Impossibile creare il profilo staff.",
       successMessage: null,
-      createdNickname: null
+      createdNickname: null,
+      inviteMessage: null
+    };
+  }
+}
+
+export async function updateOwnNicknameAction(
+  _: AccessProfileActionState,
+  formData: FormData
+): Promise<AccessProfileActionState> {
+  const session = await requireAuth();
+
+  try {
+    const user = await updateOwnStaffNickname(session.userId, String(formData.get("nickname") || ""));
+
+    revalidatePath("/settings");
+
+    return {
+      error: null,
+      successMessage: "Nickname aggiornato con successo.",
+      updatedNickname: user.nickname
+    };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Impossibile aggiornare il nickname.",
+      successMessage: null,
+      updatedNickname: null
     };
   }
 }
