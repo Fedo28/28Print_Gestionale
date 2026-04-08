@@ -12,6 +12,11 @@ enum UserRole {
   OPERATOR
 }
 
+enum CustomerType {
+  PUBBLICO
+  AZIENDA
+}
+
 enum MainPhase {
   ACCETTATO
   CALENDARIZZATO
@@ -87,6 +92,7 @@ model User {
 model Customer {
   id         String   @id @default(uuid())
   name       String
+  type       CustomerType @default(PUBBLICO)
   phone      String
   whatsapp   String?
   email      String?
@@ -99,6 +105,7 @@ model Customer {
 
   @@index([name])
   @@index([phone])
+  @@index([type])
 }
 
 model Order {

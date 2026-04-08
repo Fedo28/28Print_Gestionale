@@ -55,6 +55,7 @@ async function main() {
         },
         data: {
           name: "Officina Rossi",
+          type: "AZIENDA",
           phone: "+39 333 1234567",
           whatsapp: "+39 333 1234567",
           vatNumber: "IT12345678901"
@@ -63,6 +64,7 @@ async function main() {
     : await prisma.customer.create({
         data: {
           name: "Officina Rossi",
+          type: "AZIENDA",
           phone: "+39 333 1234567",
           whatsapp: "+39 333 1234567",
           email: "info@officinarossi.it",

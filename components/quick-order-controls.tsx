@@ -9,6 +9,7 @@ import {
 } from "@/app/actions";
 import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
 import { mainPhaseLabels, operationalStatusLabels } from "@/lib/constants";
+import { getSelectablePhaseTargets } from "@/lib/order-phase-transitions";
 
 export type QuickOrderControlProps = {
   orderId: string;
@@ -60,13 +61,14 @@ export function QuickOrderControlForms({
   const phaseFormRef = useRef<HTMLFormElement>(null);
   const statusFormRef = useRef<HTMLFormElement>(null);
   const quoteFormRef = useRef<HTMLFormElement>(null);
+  const selectablePhases = getSelectablePhaseTargets(phase);
 
   return (
     <div className="quick-order-controls">
       <form action={quickUpdatePhaseAction} ref={phaseFormRef}>
         <input name="orderId" type="hidden" value={orderId} />
         <label className="quick-order-label" htmlFor={`quick-phase-${orderId}`}>
-          Fase
+          Fase lavoro
         </label>
         <select
           aria-label="Fase ordine"
@@ -76,9 +78,9 @@ export function QuickOrderControlForms({
           name="nextPhase"
           onChange={() => phaseFormRef.current?.requestSubmit()}
         >
-          {Object.entries(mainPhaseLabels).map(([value, label]) => (
+          {selectablePhases.map((value) => (
             <option key={value} value={value}>
-              {label}
+              {mainPhaseLabels[value]}
             </option>
           ))}
         </select>
@@ -87,7 +89,7 @@ export function QuickOrderControlForms({
       <form action={quickUpdateOperationalStatusAction} ref={statusFormRef}>
         <input name="orderId" type="hidden" value={orderId} />
         <label className="quick-order-label" htmlFor={`quick-status-${orderId}`}>
-          Stato
+          Stato operativo
         </label>
         <select
           aria-label="Stato operativo"

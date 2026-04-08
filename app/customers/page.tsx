@@ -2,14 +2,37 @@ import Link from "next/link";
 import { createCustomerAction } from "@/app/actions";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
+import { buildCustomersFilterHref, parseCustomerTypeFilter } from "@/lib/customer-filters";
+import { customerTypeLabels } from "@/lib/constants";
 import { formatDate } from "@/lib/format";
 import { getCustomers } from "@/lib/orders";
 
 export const dynamic = "force-dynamic";
 
-export default async function CustomersPage() {
+type Props = {
+  searchParams?: {
+    type?: string;
+  };
+};
+
+export default async function CustomersPage({ searchParams }: Props) {
   await requireAuth();
-  const customers = await getCustomers();
+  const filters = {
+    type: parseCustomerTypeFilter(searchParams?.type || null)
+  };
+  const customers = await getCustomers({
+    type: filters.type
+  });
+  const activeFilters =
+    filters.type !== "ALL"
+      ? [
+          {
+            key: "type",
+            label: `Tipo: ${customerTypeLabels[filters.type]}`,
+            href: buildCustomersFilterHref({ type: "ALL" })
+          }
+        ]
+      : [];
 
   return (
     <div className="stack">
@@ -30,6 +53,16 @@ export default async function CustomersPage() {
             <div className="field wide">
               <label htmlFor="name">Nome / Ragione sociale</label>
               <input id="name" name="name" required />
+            </div>
+            <div className="field">
+              <label htmlFor="type">Tipo cliente</label>
+              <select defaultValue="PUBBLICO" id="type" name="type">
+                {Object.entries(customerTypeLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="field">
               <label htmlFor="phone">Telefono</label>
@@ -67,9 +100,39 @@ export default async function CustomersPage() {
           <div className="list-header">
             <div>
               <h3>Archivio clienti</h3>
-              <p className="card-muted">{customers.length} clienti registrati.</p>
+              <p className="card-muted">{customers.length} clienti visibili.</p>
             </div>
           </div>
+          <form className="toolbar filters-bar" method="get">
+            <div className="filters-field">
+              <select aria-label="Tipo cliente" defaultValue={filters.type} name="type">
+                <option value="ALL">Tutti i clienti</option>
+                {Object.entries(customerTypeLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button className="secondary" type="submit">
+              Filtra
+            </button>
+          </form>
+          {activeFilters.length > 0 ? (
+            <div className="active-filters-row">
+              <span className="active-filters-label">Filtri attivi</span>
+              <div className="active-filters-list">
+                {activeFilters.map((filter) => (
+                  <Link className="active-filter-chip" href={filter.href} key={filter.key} prefetch={false}>
+                    {filter.label}
+                  </Link>
+                ))}
+              </div>
+              <Link className="compact-link" href="/customers" prefetch={false}>
+                Azzera tutto
+              </Link>
+            </div>
+          ) : null}
 
           <div className="mini-list">
             {customers.length === 0 ? (
@@ -81,8 +144,9 @@ export default async function CustomersPage() {
                     <Link href={`/customers/${customer.id}`}>
                       <strong>{customer.name}</strong>
                     </Link>
-                    <span className="subtle">{customer.orders.length} ordini</span>
+                    <span className="pill">{customerTypeLabels[customer.type]}</span>
                   </div>
+                  <div className="subtle">{customer.orders.length} ordini</div>
                   <div className="subtle">{customer.phone}</div>
                   <div className="subtle">{customer.email || customer.whatsapp || "Nessun contatto secondario"}</div>
                   <div className="subtle">Ultimo ordine: {customer.orders[0] ? formatDate(customer.orders[0].createdAt) : "Nessuno"}</div>

@@ -1,4 +1,5 @@
 import {
+  CustomerType,
   DiscountMode,
   HistoryType,
   InvoiceStatus,
@@ -11,6 +12,7 @@ import {
   Priority
 } from "@prisma/client";
 import { APP_TIMEZONE, mainPhaseLabels, operationalStatusLabels, phaseOrder } from "@/lib/constants";
+import { canTransitionPhase } from "@/lib/order-phase-transitions";
 import { formatDateKey } from "@/lib/format";
 import { clampDiscountValue, computeDiscountedUnitPrice, normalizeQuantityTiers } from "@/lib/pricing";
 import type {
@@ -42,6 +44,7 @@ export type OrderItemInput = {
 export type CreateOrderInput = {
   customerId?: string;
   customer: {
+    type?: CustomerType;
     name?: string;
     phone?: string;
     whatsapp?: string;
@@ -76,6 +79,7 @@ export type UpdateOrderInput = {
 
 export type UpdateCustomerInput = {
   id: string;
+  type: CustomerType;
   name: string;
   phone: string;
   whatsapp?: string;
@@ -549,13 +553,12 @@ export function assertPhaseTransition(
     throw new Error("Fase ordine non valida.");
   }
 
-  const delta = nextIndex - currentIndex;
-  if (delta === 0) {
+  if (currentIndex === nextIndex) {
     return;
   }
 
-  if (Math.abs(delta) > 1) {
-    throw new Error("Puoi spostare l'ordine solo di una fase alla volta.");
+  if (!canTransitionPhase(currentPhase, nextPhase)) {
+    throw new Error("Puoi saltare direttamente solo fino a Pronto; per le altre fasi procedi in sequenza.");
   }
 
   if (nextPhase === "CONSEGNATO" && balanceDueCents > 0 && !overrideWithNote?.trim()) {
@@ -603,6 +606,7 @@ async function ensureCustomer(tx: Prisma.TransactionClient, input: CreateOrderIn
   return tx.customer.create({
     data: {
       name,
+      type: input.customer.type ?? "PUBBLICO",
       phone,
       whatsapp: input.customer.whatsapp?.trim() || undefined,
       email: input.customer.email?.trim() || undefined,
@@ -795,6 +799,7 @@ export async function updateCustomer(input: UpdateCustomerInput) {
     where: { id: input.id },
     data: {
       name,
+      type: input.type,
       phone,
       whatsapp: input.whatsapp?.trim() || undefined,
       email: input.email?.trim() || undefined,
@@ -1499,8 +1504,9 @@ export async function getServiceCatalogAdmin() {
   });
 }
 
-export async function getCustomers() {
+export async function getCustomers(filters?: { type?: CustomerType | "ALL" }) {
   return prisma.customer.findMany({
+    where: filters?.type && filters.type !== "ALL" ? { type: filters.type } : undefined,
     include: {
       orders: {
         orderBy: { createdAt: "desc" }

@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  parseCustomerType,
   parseBooleanFlag,
   parseCurrencyToCents,
   parseDateTime,
@@ -59,6 +60,7 @@ export async function createCustomerAction(formData: FormData) {
   await prisma.customer.create({
     data: {
       name,
+      type: parseCustomerType(formData.get("type")?.toString() || null),
       phone,
       whatsapp: String(formData.get("whatsapp") || "").trim() || undefined,
       email: String(formData.get("email") || "").trim() || undefined,
@@ -77,6 +79,7 @@ export async function updateCustomerAction(formData: FormData) {
   const id = String(formData.get("id") || "");
   await updateCustomer({
     id,
+    type: parseCustomerType(formData.get("type")?.toString() || null),
     name: String(formData.get("name") || ""),
     phone: String(formData.get("phone") || ""),
     whatsapp: String(formData.get("whatsapp") || ""),
@@ -103,6 +106,7 @@ export async function createOrderAction(formData: FormData) {
   const order = await createOrder({
     customerId: String(formData.get("customerId") || "").trim() || undefined,
     customer: {
+      type: parseCustomerType(formData.get("customerType")?.toString() || null),
       name: String(formData.get("customerName") || ""),
       phone: String(formData.get("customerPhone") || ""),
       whatsapp: String(formData.get("customerWhatsapp") || ""),

@@ -4,6 +4,7 @@ import { deleteCustomerAction, updateCustomerAction } from "@/app/actions";
 import { PageHeader } from "@/components/page-header";
 import { StatusPills } from "@/components/status-pills";
 import { requireAuth } from "@/lib/auth";
+import { customerTypeLabels } from "@/lib/constants";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import { getCustomerById } from "@/lib/orders";
 
@@ -21,7 +22,7 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
     <div className="stack">
       <PageHeader
         title={customer.name}
-        description="Scheda cliente con contatti, dati fiscali e storico ordini."
+        description={`Scheda cliente ${customerTypeLabels[customer.type].toLowerCase()} con contatti, dati fiscali e storico ordini.`}
       />
 
       <div className="grid grid-2">
@@ -32,6 +33,16 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
             <div className="field wide">
               <label htmlFor="name">Nome / Ragione sociale</label>
               <input defaultValue={customer.name} id="name" name="name" required />
+            </div>
+            <div className="field">
+              <label htmlFor="type">Tipo cliente</label>
+              <select defaultValue={customer.type} id="type" name="type">
+                {Object.entries(customerTypeLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="field">
               <label htmlFor="phone">Telefono</label>

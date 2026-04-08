@@ -1,4 +1,5 @@
 import {
+  CustomerType,
   InvoiceStatus,
   MainPhase,
   OperationalStatus,
@@ -16,6 +17,11 @@ export const priorityLabels: Record<Priority, string> = {
   MEDIA: "Media",
   ALTA: "Alta",
   URGENTE: "Urgente"
+};
+
+export const customerTypeLabels: Record<CustomerType, string> = {
+  PUBBLICO: "Pubblico",
+  AZIENDA: "Azienda"
 };
 
 export const mainPhaseLabels: Record<MainPhase, string> = {

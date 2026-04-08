@@ -1,7 +1,25 @@
-import { DiscountMode, InvoiceStatus, MainPhase, OperationalStatus, PaymentMethod, PaymentStatus, Priority } from "@prisma/client";
+import {
+  CustomerType,
+  DiscountMode,
+  InvoiceStatus,
+  MainPhase,
+  OperationalStatus,
+  PaymentMethod,
+  PaymentStatus,
+  Priority
+} from "@prisma/client";
 import { normalizeOrderTitle, OrderItemInput } from "@/lib/orders";
 
 export type QuoteFilter = "ALL" | "QUOTE" | "ORDER";
+
+export function parseCustomerType(raw: string | null): CustomerType {
+  const value = raw as CustomerType | null;
+  if (!value || !["PUBBLICO", "AZIENDA"].includes(value)) {
+    return "PUBBLICO";
+  }
+
+  return value;
+}
 
 export function parseCurrencyToCents(raw: string | null) {
   const value = (raw || "").trim().replace(/\./g, "").replace(",", ".");

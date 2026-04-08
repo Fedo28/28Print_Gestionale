@@ -1,8 +1,8 @@
 "use client";
 
-import { Customer, ServiceCatalog } from "@prisma/client";
+import { Customer, CustomerType, ServiceCatalog } from "@prisma/client";
 import { useState } from "react";
-import { invoiceStatusLabels, priorityLabels } from "@/lib/constants";
+import { customerTypeLabels, invoiceStatusLabels, priorityLabels } from "@/lib/constants";
 import {
   computeDiscountedUnitPrice,
   discountModeLabels,
@@ -197,6 +197,7 @@ export function OrderForm({
   const photographyFormats = getPhotographyFormatOptions(services);
   const photographyServices = services.filter(isPhotographyService);
   const isCatalogEmpty = services.length === 0;
+  const defaultCustomerType: CustomerType = "PUBBLICO";
 
   function getCatalogPriceDisplay(service: ServiceCatalog | undefined, quantity: number) {
     if (!service) {
@@ -351,6 +352,10 @@ export function OrderForm({
               <strong>{selectedCustomer ? selectedCustomer.name : "Nuovo cliente"}</strong>
             </div>
             <div className="order-sheet-chip">
+              <span className="subtle">Tipo cliente</span>
+              <strong>{selectedCustomer ? customerTypeLabels[selectedCustomer.type] : customerTypeLabels[defaultCustomerType]}</strong>
+            </div>
+            <div className="order-sheet-chip">
               <span className="subtle">Righe</span>
               <strong>{filledRows}</strong>
             </div>
@@ -381,7 +386,7 @@ export function OrderForm({
                   <option value="">Nuovo cliente</option>
                   {customers.map((customer) => (
                     <option key={customer.id} value={customer.id}>
-                      {customer.name} - {customer.phone}
+                      {customer.name} - {customer.phone} - {customerTypeLabels[customer.type]}
                     </option>
                   ))}
                 </select>
@@ -392,6 +397,16 @@ export function OrderForm({
                   <div className="field wide">
                     <label htmlFor="customerName">Nome / Ragione sociale</label>
                     <input id="customerName" name="customerName" required={!selectedCustomerId} />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="customerType">Tipo cliente</label>
+                    <select defaultValue={defaultCustomerType} id="customerType" name="customerType">
+                      {Object.entries(customerTypeLabels).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="field">
                     <label htmlFor="customerPhone">Telefono</label>

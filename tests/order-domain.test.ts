@@ -15,6 +15,7 @@ import {
   normalizeOrderTitle,
   normalizeForUniqueness
 } from "../lib/orders";
+import { getSelectablePhaseTargets } from "../lib/order-phase-transitions";
 import { getTieredUnitPrice, normalizeQuantityTiers, parseQuantityTiers } from "../lib/pricing";
 
 describe("order domain", () => {
@@ -69,7 +70,7 @@ describe("order domain", () => {
   });
 
   it("blocks direct jumps across phases", () => {
-    expect(() => assertPhaseTransition("ACCETTATO", "IN_LAVORAZIONE", 0)).toThrow(/una fase alla volta/i);
+    expect(() => assertPhaseTransition("ACCETTATO", "IN_LAVORAZIONE", 0)).toThrow(/procedi in sequenza/i);
   });
 
   it("blocks delivery with open balance without note", () => {
@@ -78,6 +79,16 @@ describe("order domain", () => {
 
   it("allows delivery with override note", () => {
     expect(() => assertPhaseTransition("SVILUPPO_COMPLETATO", "CONSEGNATO", 1200, "Cliente paga domani")).not.toThrow();
+  });
+
+  it("allows jumping directly to ready", () => {
+    expect(() => assertPhaseTransition("ACCETTATO", "SVILUPPO_COMPLETATO", 0)).not.toThrow();
+    expect(getSelectablePhaseTargets("CALENDARIZZATO")).toEqual([
+      "ACCETTATO",
+      "CALENDARIZZATO",
+      "IN_LAVORAZIONE",
+      "SVILUPPO_COMPLETATO"
+    ]);
   });
 
   it("excludes preventivi from operational flows", () => {
