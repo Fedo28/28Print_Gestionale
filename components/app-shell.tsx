@@ -5,6 +5,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { MouseEvent, ReactNode } from "react";
+import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  DEFAULT_THEME,
+  THEME_STORAGE_KEY,
+  THEMES,
+  applyTheme,
+  persistTheme,
+  readStoredTheme,
+  type ThemeName
+} from "@/lib/theme";
 import brandLogo from "../logo.png";
 
 const navItems = [
@@ -24,6 +34,7 @@ const MOBILE_NAV_MEDIA_QUERY = "(max-width: 768px)";
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [theme, setTheme] = useState<ThemeName>(DEFAULT_THEME);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const wasMobileNavOpenRef = useRef(false);
@@ -35,6 +46,25 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     setIsMobileNavOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    const initialTheme = readStoredTheme();
+    setTheme(initialTheme);
+    applyTheme(initialTheme);
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== THEME_STORAGE_KEY) {
+        return;
+      }
+
+      const nextTheme = readStoredTheme();
+      setTheme(nextTheme);
+      applyTheme(nextTheme);
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -106,6 +136,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     handleCloseMobileNav();
   }
 
+  function handleThemeChange(isDarkModeEnabled: boolean) {
+    const nextTheme = isDarkModeEnabled ? THEMES.dark : THEMES.light;
+    setTheme(nextTheme);
+    applyTheme(nextTheme);
+    persistTheme(nextTheme);
+  }
+
   function renderNavLinks(options?: { onNavigate?: (event: MouseEvent<HTMLAnchorElement>) => void }) {
     return (
       <>
@@ -144,6 +181,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <nav className="nav-list">{renderNavLinks()}</nav>
+
+          <div className="sidebar-utility">
+            <ThemeToggle
+              checked={theme === THEMES.dark}
+              onChange={handleThemeChange}
+            />
+          </div>
         </div>
       </aside>
 
@@ -207,6 +251,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
 
             <nav className="nav-list mobile-nav-list">{renderNavLinks({ onNavigate: handleMobileNavLinkClick })}</nav>
+
+            <div className="mobile-nav-foot">
+              <ThemeToggle
+                checked={theme === THEMES.dark}
+                onChange={handleThemeChange}
+              />
+            </div>
           </div>
         </div>
 

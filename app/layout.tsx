@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Manrope, Space_Grotesk } from "next/font/google";
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/app-shell";
+import { DEFAULT_THEME, themeBootstrapScript } from "@/lib/theme";
+import brandLogo from "../logo.png";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -15,13 +17,28 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Fede Kart",
-  description: "Gestionale ordini per stampa digitale"
+  title: "Gestionale 28 Print",
+  description: "Gestionale ordini per stampa digitale",
+  applicationName: "Gestionale 28 Print",
+  icons: {
+    icon: [
+      { url: brandLogo.src, type: "image/png" }
+    ],
+    shortcut: [
+      { url: brandLogo.src, type: "image/png" }
+    ],
+    apple: [
+      { url: brandLogo.src, type: "image/png" }
+    ]
+  }
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="it">
+    <html data-theme={DEFAULT_THEME} lang="it" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
+      </head>
       <body className={`${manrope.variable} ${spaceGrotesk.variable}`}>
         <AppShell>{children}</AppShell>
       </body>
