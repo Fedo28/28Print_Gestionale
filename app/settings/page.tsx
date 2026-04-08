@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createServiceAction, saveWhatsappTemplateAction } from "@/app/actions";
 import { CatalogImportForm } from "@/components/catalog-import-form";
 import { CatalogServiceSearch } from "@/components/catalog-service-search";
@@ -9,7 +10,7 @@ import { getWhatsappTemplate } from "@/lib/settings";
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  await requireAuth();
+  const session = await requireAuth();
   const [services, whatsappTemplate] = await Promise.all([getServiceCatalogAdmin(), getWhatsappTemplate()]);
 
   return (
@@ -18,6 +19,23 @@ export default async function SettingsPage() {
         title="Impostazioni"
         description="Catalogo servizi e template operativi della V1."
       />
+
+      {session.role === "ADMIN" ? (
+        <section className="card card-pad">
+          <div className="list-header">
+            <div>
+              <h3>Profili staff</h3>
+              <p className="card-muted">Nickname, password iniziale ed email dei colleghi in un punto unico.</p>
+            </div>
+            <Link className="button secondary" href="/settings/staff">
+              Apri profili staff
+            </Link>
+          </div>
+          <p className="hint">
+            La mail di accesso e gia predisposta ma il link finale verra configurato quando decideremo dove mettere online la versione stabile.
+          </p>
+        </section>
+      ) : null}
 
       <div className="grid grid-2">
         <section className="card card-pad">

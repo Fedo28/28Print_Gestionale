@@ -190,7 +190,7 @@ async function main() {
   console.log("- Start production-like local server: npm run build && npm run start");
   console.log("- Open http://localhost:3000");
   if (envState.localDemoData) {
-    console.log("- Seed login: admin@fede.local / admin123");
+    console.log("- Seed login: Fedo / admin123");
   } else {
     console.log("- Se vuoi i dati demo locali, imposta LOCAL_DEMO_DATA=\"true\" nel .env e rilancia npm run setup");
   }

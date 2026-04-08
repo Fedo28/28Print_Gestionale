@@ -18,11 +18,11 @@ function SubmitButton() {
 }
 
 export function LoginForm({
-  defaultEmail,
+  defaultNickname,
   defaultPassword,
   healthMessage
 }: {
-  defaultEmail?: string;
+  defaultNickname?: string;
   defaultPassword?: string;
   healthMessage?: string;
 }) {
@@ -35,8 +35,8 @@ export function LoginForm({
 
       <form action={formAction} className="stack">
         <div className="field full">
-          <label htmlFor="email">Email</label>
-          <input defaultValue={defaultEmail} id="email" name="email" type="email" required />
+          <label htmlFor="nickname">Nickname</label>
+          <input autoCapitalize="off" defaultValue={defaultNickname} id="nickname" name="nickname" required spellCheck={false} />
         </div>
         <div className="field full">
           <label htmlFor="password">Password</label>

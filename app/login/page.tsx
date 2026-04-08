@@ -19,13 +19,13 @@ export default async function LoginPage() {
             <p className="card-muted">Accesso staff per beta online e uso locale del gestionale.</p>
           </div>
           <LoginForm
-            defaultEmail={isLocalDev ? "admin@fede.local" : ""}
+            defaultNickname={isLocalDev ? "fedo" : ""}
             defaultPassword={isLocalDev ? "admin123" : ""}
             healthMessage={health.ready ? undefined : health.message}
           />
           {isLocalDev ? (
             <p className="hint">
-              Credenziali iniziali seed locale: <code>admin@fede.local</code> / <code>admin123</code>.
+              Credenziali iniziali seed locale: <code>Fedo</code> / <code>admin123</code>.
             </p>
           ) : null}
         </div>

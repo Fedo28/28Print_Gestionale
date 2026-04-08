@@ -88,9 +88,13 @@ enum HistoryType {
 model User {
   id           String   @id @default(uuid())
   name         String
+  nickname     String   @unique
   email        String   @unique
   passwordHash String
   role         UserRole @default(OPERATOR)
+  active       Boolean  @default(true)
+  invitePreparedAt DateTime?
+  inviteSentAt DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }

@@ -14,7 +14,8 @@ import {
   parseOptionalDateTime,
   parseOperationalStatus,
   parsePaymentMethod,
-  parsePriority
+  parsePriority,
+  parseUserRole
 } from "@/lib/forms";
 import { formatDateKey } from "@/lib/format";
 import {
@@ -32,10 +33,11 @@ import {
   updateOperationalStatus,
   updateOrder
 } from "@/lib/orders";
-import { authenticateUser, createSessionForUser, describeLoginFailure, requireAuth } from "@/lib/auth";
+import { authenticateUser, createSessionForUser, describeLoginFailure, requireAdmin, requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { saveSetting } from "@/lib/settings";
 import { cleanupOrderAttachments, deleteStoredAttachment, uploadBillboardBookingPdf } from "@/lib/storage";
+import { createStaffUser } from "@/lib/staff-users";
 
 function revalidateOperationalSurfaces(orderId?: string) {
   revalidatePath("/");
@@ -80,6 +82,12 @@ function parseOrderFormInput(formData: FormData, options?: { forceQuote?: boolea
 
 export type LoginActionState = {
   error: string | null;
+};
+
+export type StaffProfileActionState = {
+  error: string | null;
+  successMessage: string | null;
+  createdNickname: string | null;
 };
 
 export async function createCustomerAction(formData: FormData) {
@@ -367,6 +375,38 @@ export async function saveWhatsappTemplateAction(formData: FormData) {
   revalidatePath("/settings");
 }
 
+export async function createStaffUserAction(
+  _: StaffProfileActionState,
+  formData: FormData
+): Promise<StaffProfileActionState> {
+  await requireAdmin();
+
+  try {
+    const user = await createStaffUser({
+      name: String(formData.get("name") || ""),
+      nickname: String(formData.get("nickname") || ""),
+      email: String(formData.get("email") || ""),
+      password: String(formData.get("password") || ""),
+      role: parseUserRole(formData.get("role")?.toString() || null)
+    });
+
+    revalidatePath("/settings");
+    revalidatePath("/settings/staff");
+
+    return {
+      error: null,
+      successMessage: `Profilo creato per ${user.name}.`,
+      createdNickname: user.nickname
+    };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Impossibile creare il profilo staff.",
+      successMessage: null,
+      createdNickname: null
+    };
+  }
+}
+
 export async function deleteOrderAction(formData: FormData) {
   await requireAuth();
   const id = String(formData.get("id") || "");
@@ -377,11 +417,11 @@ export async function deleteOrderAction(formData: FormData) {
 }
 
 export async function loginAction(_: LoginActionState, formData: FormData): Promise<LoginActionState> {
-  const email = String(formData.get("email") || "").trim();
+  const nickname = String(formData.get("nickname") || "").trim();
   const password = String(formData.get("password") || "");
 
   try {
-    const user = await authenticateUser(email, password);
+    const user = await authenticateUser(nickname, password);
     await createSessionForUser(user);
   } catch (error) {
     console.error("Login failed", error);

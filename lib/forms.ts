@@ -6,7 +6,8 @@ import {
   OperationalStatus,
   PaymentMethod,
   PaymentStatus,
-  Priority
+  Priority,
+  UserRole
 } from "@prisma/client";
 import { normalizeOrderTitle, OrderItemInput } from "@/lib/orders";
 
@@ -111,6 +112,15 @@ export function parseMainPhase(raw: string | null): MainPhase {
   const value = raw as MainPhase | null;
   if (!value || !["ACCETTATO", "CALENDARIZZATO", "IN_LAVORAZIONE", "SVILUPPO_COMPLETATO", "CONSEGNATO"].includes(value)) {
     throw new Error("Fase ordine non valida.");
+  }
+
+  return value;
+}
+
+export function parseUserRole(raw: string | null): UserRole {
+  const value = raw as UserRole | null;
+  if (!value || !["ADMIN", "OPERATOR"].includes(value)) {
+    return "OPERATOR";
   }
 
   return value;

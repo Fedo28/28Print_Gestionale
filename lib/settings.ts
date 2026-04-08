@@ -1,4 +1,8 @@
-import { DEFAULT_WHATSAPP_TEMPLATE } from "@/lib/constants";
+import {
+  DEFAULT_STAFF_INVITE_EMAIL_SUBJECT,
+  DEFAULT_STAFF_INVITE_EMAIL_TEMPLATE,
+  DEFAULT_WHATSAPP_TEMPLATE
+} from "@/lib/constants";
 import { prisma } from "@/lib/prisma";
 
 export async function getSetting(key: string, fallback = "") {
@@ -16,4 +20,16 @@ export async function saveSetting(key: string, value: string) {
 
 export async function getWhatsappTemplate() {
   return getSetting("whatsappTemplate", DEFAULT_WHATSAPP_TEMPLATE);
+}
+
+export async function getStaffAccessBaseUrl() {
+  return getSetting("staffAccessBaseUrl", "");
+}
+
+export async function getStaffInviteEmailSubject() {
+  return getSetting("staffInviteEmailSubject", DEFAULT_STAFF_INVITE_EMAIL_SUBJECT);
+}
+
+export async function getStaffInviteEmailTemplate() {
+  return getSetting("staffInviteEmailTemplate", DEFAULT_STAFF_INVITE_EMAIL_TEMPLATE);
 }

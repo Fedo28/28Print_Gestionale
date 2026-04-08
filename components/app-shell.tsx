@@ -1,9 +1,10 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import brandLogo from "../logo.png";
 
 const navItems = [
@@ -18,10 +19,114 @@ const navItems = [
   { href: "/settings", label: "Impostazioni" }
 ];
 
+const MOBILE_NAV_MEDIA_QUERY = "(max-width: 768px)";
+
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const wasMobileNavOpenRef = useRef(false);
+
   if (pathname === "/login") {
     return <main className="auth-layout">{children}</main>;
+  }
+
+  useEffect(() => {
+    setIsMobileNavOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia(MOBILE_NAV_MEDIA_QUERY);
+    const handleViewportChange = (event: MediaQueryListEvent) => {
+      if (!event.matches) {
+        setIsMobileNavOpen(false);
+      }
+    };
+
+    if (!mediaQuery.matches) {
+      setIsMobileNavOpen(false);
+    }
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleViewportChange);
+      return () => mediaQuery.removeEventListener("change", handleViewportChange);
+    }
+
+    mediaQuery.addListener(handleViewportChange);
+    return () => mediaQuery.removeListener(handleViewportChange);
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    document.body.classList.toggle("mobile-nav-open", isMobileNavOpen);
+    return () => document.body.classList.remove("mobile-nav-open");
+  }, [isMobileNavOpen]);
+
+  useEffect(() => {
+    if (!isMobileNavOpen) {
+      if (wasMobileNavOpenRef.current) {
+        menuButtonRef.current?.focus();
+      }
+      wasMobileNavOpenRef.current = false;
+      return;
+    }
+
+    wasMobileNavOpenRef.current = true;
+    const focusTarget = window.requestAnimationFrame(() => {
+      closeButtonRef.current?.focus();
+    });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setIsMobileNavOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusTarget);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMobileNavOpen]);
+
+  function handleCloseMobileNav() {
+    setIsMobileNavOpen(false);
+  }
+
+  function handleMobileNavLinkClick(_: MouseEvent<HTMLAnchorElement>) {
+    handleCloseMobileNav();
+  }
+
+  function renderNavLinks(options?: { onNavigate?: (event: MouseEvent<HTMLAnchorElement>) => void }) {
+    return (
+      <>
+        {navItems.map((item) => {
+          const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
+          return (
+            <Link
+              className={`nav-link ${active ? "active" : ""}`}
+              href={item.href}
+              key={item.href}
+              onClick={options?.onNavigate}
+            >
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+        <a className="nav-link" href="/logout" onClick={options?.onNavigate}>
+          <span>Logout</span>
+        </a>
+      </>
+    );
   }
 
   return (
@@ -38,23 +143,73 @@ export function AppShell({ children }: { children: ReactNode }) {
             />
           </div>
 
-          <nav className="nav-list">
-            {navItems.map((item) => {
-              const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
-              return (
-                <Link className={`nav-link ${active ? "active" : ""}`} href={item.href} key={item.href}>
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-            <a className="nav-link" href="/logout">
-              <span>Logout</span>
-            </a>
-          </nav>
+          <nav className="nav-list">{renderNavLinks()}</nav>
         </div>
       </aside>
 
       <div className="shell-content">
+        <div className="mobile-topbar">
+          <Link aria-label="Vai alla dashboard" className="mobile-brand" href="/">
+            <Image
+              alt="28 Print"
+              className="mobile-brand-logo"
+              priority
+              sizes="120px"
+              src={brandLogo}
+            />
+          </Link>
+
+          <button
+            aria-controls="mobile-navigation-drawer"
+            aria-expanded={isMobileNavOpen}
+            aria-label={isMobileNavOpen ? "Chiudi menu di navigazione" : "Apri menu di navigazione"}
+            className="mobile-nav-trigger"
+            onClick={() => setIsMobileNavOpen((current) => !current)}
+            ref={menuButtonRef}
+            type="button"
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+        </div>
+
+        <div className={`mobile-nav-layer${isMobileNavOpen ? " open" : ""}`} aria-hidden={!isMobileNavOpen}>
+          <button
+            aria-label="Chiudi menu di navigazione"
+            className="mobile-nav-overlay"
+            onClick={handleCloseMobileNav}
+            tabIndex={isMobileNavOpen ? 0 : -1}
+            type="button"
+          />
+
+          <div
+            aria-modal="true"
+            className="mobile-nav-drawer"
+            id="mobile-navigation-drawer"
+            role="dialog"
+          >
+            <div className="mobile-nav-head">
+              <div>
+                <strong>Menu</strong>
+                <div className="subtle">Navigazione rapida del gestionale</div>
+              </div>
+              <button
+                aria-label="Chiudi menu"
+                className="mobile-nav-close"
+                onClick={handleCloseMobileNav}
+                ref={closeButtonRef}
+                type="button"
+              >
+                <span />
+                <span />
+              </button>
+            </div>
+
+            <nav className="nav-list mobile-nav-list">{renderNavLinks({ onNavigate: handleMobileNavLinkClick })}</nav>
+          </div>
+        </div>
+
         <div className="shell-stage">
           <span aria-hidden className="stage-glow stage-glow-a" />
           <span aria-hidden className="stage-glow stage-glow-b" />

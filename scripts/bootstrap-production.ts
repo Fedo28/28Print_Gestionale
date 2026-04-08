@@ -23,6 +23,11 @@ async function main() {
   const adminName = requireEnv("ADMIN_NAME");
   const adminEmail = requireEnv("ADMIN_EMAIL").toLowerCase();
   const adminPassword = requireEnv("ADMIN_PASSWORD");
+  const adminNickname = (process.env.ADMIN_NICKNAME?.trim() || "fedo").toLowerCase();
+
+  if (!adminNickname) {
+    throw new Error("ADMIN_NICKNAME non valido.");
+  }
 
   await prisma.user.upsert({
     where: {
@@ -30,11 +35,13 @@ async function main() {
     },
     update: {
       name: adminName,
+      nickname: adminNickname,
       passwordHash: hashPassword(adminPassword),
       role: "ADMIN"
     },
     create: {
       name: adminName,
+      nickname: adminNickname,
       email: adminEmail,
       passwordHash: hashPassword(adminPassword),
       role: "ADMIN"

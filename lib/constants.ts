@@ -5,7 +5,8 @@ import {
   OperationalStatus,
   PaymentMethod,
   PaymentStatus,
-  Priority
+  Priority,
+  UserRole
 } from "@prisma/client";
 
 export type VisibleMainPhase = Exclude<MainPhase, "CALENDARIZZATO">;
@@ -13,6 +14,17 @@ export type VisibleMainPhase = Exclude<MainPhase, "CALENDARIZZATO">;
 export const APP_TIMEZONE = "Europe/Rome";
 export const DEFAULT_WHATSAPP_TEMPLATE =
   "Ciao {nome_cliente}, il tuo ordine {order_code} e pronto per il ritiro.";
+export const DEFAULT_STAFF_INVITE_EMAIL_SUBJECT = "Accesso al gestionale staff";
+export const DEFAULT_STAFF_INVITE_EMAIL_TEMPLATE = `Ciao {nome_staff},
+
+il tuo profilo staff e pronto.
+
+Nickname: {nickname}
+Link di accesso: {access_url}
+
+La password iniziale viene definita internamente in fase di profilazione.
+
+A presto.`;
 
 export const priorityLabels: Record<Priority, string> = {
   BASSA: "Bassa",
@@ -24,6 +36,11 @@ export const priorityLabels: Record<Priority, string> = {
 export const customerTypeLabels: Record<CustomerType, string> = {
   PUBBLICO: "Pubblico",
   AZIENDA: "Azienda"
+};
+
+export const userRoleLabels: Record<UserRole, string> = {
+  ADMIN: "Admin",
+  OPERATOR: "Operatore"
 };
 
 export const mainPhaseLabels: Record<MainPhase, string> = {

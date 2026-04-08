@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { isAuthSecretConfigured, readSession, serializeSession, verifyPassword } from "@/lib/auth-core";
 import { prisma } from "@/lib/prisma";
+import { normalizeStaffNickname } from "@/lib/staff-users";
 
 const SESSION_COOKIE = "fede_session";
 const SESSION_DURATION_SECONDS = 60 * 60 * 12;
@@ -25,14 +26,27 @@ export async function requireAuth() {
   return session;
 }
 
-export async function authenticateUser(email: string, password: string) {
-  const normalizedEmail = email.trim().toLowerCase();
+export async function requireAdmin() {
+  const session = await requireAuth();
+  if (session.role !== "ADMIN") {
+    redirect("/");
+  }
+
+  return session;
+}
+
+export async function authenticateUser(nickname: string, password: string) {
+  const normalizedNickname = normalizeStaffNickname(nickname);
   const user = await prisma.user.findUnique({
-    where: { email: normalizedEmail }
+    where: { nickname: normalizedNickname }
   });
 
   if (!user || !verifyPassword(password, user.passwordHash)) {
     throw new Error("Credenziali non valide.");
+  }
+
+  if (!user.active) {
+    throw new Error("Utente disattivato.");
   }
 
   return user;
@@ -63,6 +77,10 @@ function describePrismaAuthError(error: unknown) {
 
 export function describeLoginFailure(error: unknown) {
   if (error instanceof Error && error.message === "Credenziali non valide.") {
+    return error.message;
+  }
+
+  if (error instanceof Error && error.message === "Utente disattivato.") {
     return error.message;
   }
 
