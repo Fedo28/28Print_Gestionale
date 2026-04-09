@@ -16,6 +16,7 @@ import { canTransitionPhase } from "@/lib/order-phase-transitions";
 import { formatDateKey } from "@/lib/format";
 import { clampDiscountValue, computeDiscountedUnitPrice, normalizeQuantityTiers } from "@/lib/pricing";
 import type {
+  DashboardPreset,
   InvoiceFilter,
   PaymentFilter,
   PhaseFilter,
@@ -1557,21 +1558,96 @@ export async function getOrdersList(filters: {
   invoice?: InvoiceFilter;
   priority?: PriorityFilter;
   quote?: QuoteFilter;
+  preset?: DashboardPreset;
 }) {
   const query = filters.query?.trim();
+  const now = new Date();
+  const todayStart = startOfDay(now);
+  const tomorrowStart = addDays(todayStart, 1);
+  const queryWhere = query
+    ? {
+        OR: [
+          { orderCode: { contains: query } },
+          { title: { contains: query } },
+          { customer: { name: { contains: query } } },
+          { customer: { phone: { contains: query } } }
+        ]
+      }
+    : undefined;
+
+  const presetWhere =
+    filters.preset === "TODAY"
+      ? {
+          mainPhase: { not: "CONSEGNATO" as MainPhase },
+          deliveryAt: {
+            gte: todayStart,
+            lt: tomorrowStart
+          }
+        }
+      : filters.preset === "APPOINTMENTS_TODAY"
+        ? {
+            mainPhase: { not: "CONSEGNATO" as MainPhase },
+            appointmentAt: {
+              gte: todayStart,
+              lt: tomorrowStart
+            }
+          }
+        : filters.preset === "OVERDUE"
+          ? {
+              mainPhase: { not: "CONSEGNATO" as MainPhase },
+              deliveryAt: {
+                lt: todayStart
+              }
+            }
+          : filters.preset === "PRIORITY_TODAY"
+            ? {
+                mainPhase: { not: "CONSEGNATO" as MainPhase },
+                OR: [
+                  {
+                    deliveryAt: {
+                      lt: todayStart
+                    }
+                  },
+                  {
+                    deliveryAt: {
+                      gte: todayStart,
+                      lt: tomorrowStart
+                    }
+                  }
+                ]
+              }
+            : filters.preset === "TO_START"
+              ? {
+                  mainPhase: "ACCETTATO" as MainPhase,
+                  operationalStatus: "ATTIVO" as OperationalStatus
+                }
+              : filters.preset === "WORKING"
+                ? {
+                    mainPhase: {
+                      in: ["IN_LAVORAZIONE", "CALENDARIZZATO"] as MainPhase[]
+                    },
+                    operationalStatus: "ATTIVO" as OperationalStatus
+                  }
+                : filters.preset === "BLOCKED"
+                  ? {
+                      mainPhase: { not: "CONSEGNATO" as MainPhase },
+                      operationalStatus: { not: "ATTIVO" as OperationalStatus }
+                    }
+                  : filters.preset === "READY"
+                    ? {
+                        mainPhase: "SVILUPPO_COMPLETATO" as MainPhase
+                      }
+                    : filters.preset === "BALANCE"
+                      ? {
+                          mainPhase: { not: "CONSEGNATO" as MainPhase },
+                          balanceDueCents: { gt: 0 }
+                        }
+                      : {};
 
   return prisma.order.findMany({
     where: {
-      ...(query
-        ? {
-            OR: [
-              { orderCode: { contains: query } },
-              { title: { contains: query } },
-              { customer: { name: { contains: query } } },
-              { customer: { phone: { contains: query } } }
-            ]
-          }
-        : {}),
+      ...presetWhere,
+      ...(queryWhere ? { AND: [queryWhere] } : {}),
       ...(filters.phase && filters.phase !== "ALL"
         ? {
             mainPhase:

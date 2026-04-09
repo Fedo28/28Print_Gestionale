@@ -4,7 +4,8 @@ import type { MainPhase, PaymentStatus } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { QuickOrderControls } from "@/components/quick-order-controls";
 import { StatusPills } from "@/components/status-pills";
-import { formatCurrency, formatDateTime } from "@/lib/format";
+import { formatCurrency, formatDateKey, formatDateTime } from "@/lib/format";
+import { buildOrdersFilterHref } from "@/lib/order-filters";
 import { countUniqueOrders, getDashboardData, type DashboardWeekDayLoad } from "@/lib/orders";
 
 type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
@@ -32,6 +33,17 @@ export async function DashboardPage() {
   const totalAttention = countUniqueOrders(priorityOrders, blockedOrders, balanceOrders);
   const weeklyWorkload = weekLoad.reduce((sum, day) => sum + day.workload, 0);
   const weeklyAppointments = weekLoad.reduce((sum, day) => sum + day.appointments, 0);
+  const links = {
+    today: buildOrdersFilterHref({ preset: "TODAY" }),
+    appointments: buildOrdersFilterHref({ preset: "APPOINTMENTS_TODAY" }),
+    overdue: buildOrdersFilterHref({ preset: "OVERDUE" }),
+    priorityToday: buildOrdersFilterHref({ preset: "PRIORITY_TODAY" }),
+    toStart: buildOrdersFilterHref({ preset: "TO_START" }),
+    working: buildOrdersFilterHref({ preset: "WORKING" }),
+    blocked: buildOrdersFilterHref({ preset: "BLOCKED" }),
+    ready: buildOrdersFilterHref({ preset: "READY" }),
+    balance: buildOrdersFilterHref({ preset: "BALANCE" })
+  };
 
   return (
     <div className="stack">
@@ -47,6 +59,7 @@ export async function DashboardPage() {
 
       <section className="grid dashboard-summary-grid">
         <MiniMetricCard
+          href={links.today}
           icon={<DashboardGlyph kind="clock" />}
           label="Oggi"
           value={todayOrders.length}
@@ -54,6 +67,7 @@ export async function DashboardPage() {
           tone="neutral"
         />
         <MiniMetricCard
+          href={links.appointments}
           icon={<DashboardGlyph kind="calendar" />}
           label="Appuntamenti"
           value={todayAppointments.length}
@@ -61,6 +75,7 @@ export async function DashboardPage() {
           tone="brand"
         />
         <MiniMetricCard
+          href={links.overdue}
           icon={<DashboardGlyph kind="alert" />}
           label="Arretrati"
           value={overdueOrders.length}
@@ -68,6 +83,7 @@ export async function DashboardPage() {
           tone="danger"
         />
         <MiniMetricCard
+          href={links.toStart}
           icon={<DashboardGlyph kind="play" />}
           label="Da avviare"
           value={toStartOrders.length}
@@ -75,6 +91,7 @@ export async function DashboardPage() {
           tone="neutral"
         />
         <MiniMetricCard
+          href={links.working}
           icon={<DashboardGlyph kind="tools" />}
           label="In lavorazione"
           value={workingOrders.length}
@@ -82,6 +99,7 @@ export async function DashboardPage() {
           tone="warning"
         />
         <MiniMetricCard
+          href={links.blocked}
           icon={<DashboardGlyph kind="pause" />}
           label="Sospesi"
           value={blockedOrders.length}
@@ -89,6 +107,7 @@ export async function DashboardPage() {
           tone="warning"
         />
         <MiniMetricCard
+          href={links.ready}
           icon={<DashboardGlyph kind="spark" />}
           label="Pronti"
           value={readyOrders.length}
@@ -96,6 +115,7 @@ export async function DashboardPage() {
           tone="success"
         />
         <MiniMetricCard
+          href={links.balance}
           icon={<DashboardGlyph kind="cash" />}
           label="Saldi"
           value={balanceOrders.length}
@@ -115,6 +135,7 @@ export async function DashboardPage() {
           </div>
           <div className="compact-signal-list">
             <CompactSignal
+              href={links.toStart}
               icon={<DashboardGlyph kind="play" />}
               label="Da avviare"
               value={String(toStartOrders.length)}
@@ -123,12 +144,14 @@ export async function DashboardPage() {
               }
             />
             <CompactSignal
+              href={links.working}
               icon={<DashboardGlyph kind="tools" />}
               label="In lavorazione"
               value={String(workingOrders.length)}
               detail={currentWork ? `${currentWork.orderCode} • ${currentWork.customer.name}` : "Banco libero"}
             />
             <CompactSignal
+              href={links.blocked}
               icon={<DashboardGlyph kind="pause" />}
               label="Sospesi"
               value={String(blockedOrders.length)}
@@ -139,6 +162,7 @@ export async function DashboardPage() {
               }
             />
             <CompactSignal
+              href={links.ready}
               icon={<DashboardGlyph kind="spark" />}
               label="Pronti"
               value={String(readyOrders.length)}
@@ -161,7 +185,11 @@ export async function DashboardPage() {
           </div>
           <div className="dashboard-week-grid">
             {weekLoad.map((day) => (
-              <article className={`dashboard-week-day${isToday(day) ? " today" : ""}`} key={day.key}>
+              <Link
+                className={`dashboard-week-day${isToday(day) ? " today" : ""}`}
+                href={`/calendar?view=day&date=${formatDateKey(day.date)}`}
+                key={day.key}
+              >
                 <span className="dashboard-week-label">{day.shortLabel}</span>
                 <strong>{day.dayLabel}</strong>
                 <div className="dashboard-week-stats">
@@ -170,17 +198,19 @@ export async function DashboardPage() {
                   {day.blocked > 0 ? <span className="warning">Sospesi {day.blocked}</span> : null}
                   {day.ready > 0 ? <span className="success">Pronti {day.ready}</span> : null}
                 </div>
-              </article>
+              </Link>
             ))}
           </div>
           <div className="compact-signal-list">
             <CompactSignal
+              href={links.priorityToday}
               icon={<DashboardGlyph kind="clock" />}
               label="Prossima consegna"
               value={nextDelivery ? nextDelivery.orderCode : "Nessuna"}
               detail={nextDelivery ? `${nextDelivery.customer.name} • ${formatDateTime(nextDelivery.deliveryAt)}` : "Nessuna scadenza vicina"}
             />
             <CompactSignal
+              href={links.appointments}
               icon={<DashboardGlyph kind="calendar" />}
               label="Primo appuntamento"
               value={nextAppointment ? nextAppointment.orderCode : "Nessuno"}
@@ -200,8 +230,8 @@ export async function DashboardPage() {
           emptyMessage="Nessuna urgenza operativa per oggi."
           orders={priorityOrders}
           title="Priorita oggi"
-          viewHref="/calendar?view=day"
-          viewLabel="Apri giorno"
+          viewHref={links.priorityToday}
+          viewLabel="Apri lista"
           renderMeta={(order) =>
             new Date(order.deliveryAt).getTime() < Date.now()
               ? `Arretrato dal ${formatDateTime(order.deliveryAt)}`
@@ -216,8 +246,8 @@ export async function DashboardPage() {
           emptyMessage="Nessun appuntamento programmato oggi."
           orders={todayAppointments}
           title="Appuntamenti di oggi"
-          viewHref="/calendar?view=day"
-          viewLabel="Apri giorno"
+          viewHref={links.appointments}
+          viewLabel="Apri lista"
           renderMeta={(order) => `Appuntamento ${formatDateTime(order.appointmentAt || order.deliveryAt)}`}
           renderNote={(order) => order.appointmentNote || `Consegna ${formatDateTime(order.deliveryAt)}`}
         />
@@ -227,6 +257,8 @@ export async function DashboardPage() {
           emptyMessage="Niente in attesa di avvio."
           orders={toStartOrders}
           title="Da avviare"
+          viewHref={links.toStart}
+          viewLabel="Apri lista"
           renderMeta={(order) => `Consegna ${formatDateTime(order.deliveryAt)}`}
           renderNote={(order) => order.notes || null}
         />
@@ -236,6 +268,8 @@ export async function DashboardPage() {
           emptyMessage="Nessun lavoro in corso."
           orders={workingOrders}
           title="In lavorazione"
+          viewHref={links.working}
+          viewLabel="Apri lista"
           renderMeta={(order) => `Consegna ${formatDateTime(order.deliveryAt)}`}
           renderNote={(order) => order.appointmentNote || order.notes || null}
         />
@@ -245,6 +279,8 @@ export async function DashboardPage() {
           emptyMessage="Nessun ordine sospeso."
           orders={blockedOrders}
           title="Sospesi"
+          viewHref={links.blocked}
+          viewLabel="Apri lista"
           renderMeta={(order) => `Consegna ${formatDateTime(order.deliveryAt)}`}
           renderNote={(order) => order.operationalNote || "Motivo sospensione non indicato"}
         />
@@ -254,6 +290,8 @@ export async function DashboardPage() {
           emptyMessage="Nessun ordine pronto."
           orders={readyOrders}
           title="Pronti"
+          viewHref={links.ready}
+          viewLabel="Apri lista"
           renderMeta={() => "Pronto al ritiro"}
           renderAside={(order) => formatCurrency(order.balanceDueCents)}
           renderNote={(order) => (order.balanceDueCents > 0 ? `Residuo ${formatCurrency(order.balanceDueCents)}` : null)}
@@ -264,6 +302,8 @@ export async function DashboardPage() {
           emptyMessage="Nessun saldo aperto."
           orders={balanceOrders}
           title="Saldi aperti"
+          viewHref={links.balance}
+          viewLabel="Apri lista"
           renderMeta={() => "Saldo da chiudere"}
           renderAside={(order) => formatCurrency(order.balanceDueCents)}
           renderNote={(order) => `Totale ordine ${formatCurrency(order.totalCents)}`}
@@ -280,18 +320,21 @@ export async function DashboardPage() {
         </div>
         <div className="compact-signal-list">
           <CompactSignal
+            href={links.overdue}
             icon={<DashboardGlyph kind="alert" />}
             label="Da riallineare"
             value={String(overdueOrders.length)}
             detail={overdueOrders[0] ? `${overdueOrders[0].orderCode} • ${overdueOrders[0].customer.name}` : "Nessun arretrato"}
           />
           <CompactSignal
+            href={links.blocked}
             icon={<DashboardGlyph kind="pause" />}
             label="Blocchi"
             value={String(blockedOrders.length)}
             detail={blockedOrders[0] ? `${blockedOrders[0].orderCode} • ${blockedOrders[0].customer.name}` : "Nessun fermo"}
           />
           <CompactSignal
+            href={links.balance}
             icon={<DashboardGlyph kind="cash" />}
             label="Incassi aperti"
             value={String(balanceOrders.length)}
@@ -373,12 +416,14 @@ function DashboardLane({
 }
 
 function MiniMetricCard({
+  href,
   icon,
   label,
   value,
   hint,
   tone
 }: {
+  href: string;
   icon: ReactNode;
   label: string;
   value: number;
@@ -386,37 +431,39 @@ function MiniMetricCard({
   tone: "neutral" | "danger" | "warning" | "success" | "brand";
 }) {
   return (
-    <article className={`card card-pad compact-metric compact-metric-${tone}`}>
+    <Link className={`card card-pad compact-metric compact-metric-${tone} compact-card-link`} href={href}>
       <div className="compact-metric-top">
         <span className="compact-icon">{icon}</span>
         <span className="compact-metric-label">{label}</span>
       </div>
       <strong>{value}</strong>
       <span className="hint">{hint}</span>
-    </article>
+    </Link>
   );
 }
 
 function CompactSignal({
+  href,
   icon,
   label,
   value,
   detail
 }: {
+  href: string;
   icon: ReactNode;
   label: string;
   value: string;
   detail: string;
 }) {
   return (
-    <article className="compact-signal">
+    <Link className="compact-signal compact-card-link" href={href}>
       <span className="compact-icon compact-icon-soft">{icon}</span>
       <div className="compact-signal-copy">
         <span className="subtle">{label}</span>
         <strong>{value}</strong>
         <span className="hint">{detail}</span>
       </div>
-    </article>
+    </Link>
   );
 }
 

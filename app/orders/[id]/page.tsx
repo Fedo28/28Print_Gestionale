@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import {
   confirmQuoteAction,
   correctPaymentAction,
-  deleteOrderAction,
   markReadyAction,
   recordPaymentAction,
   transitionPhaseAction,
@@ -14,6 +13,7 @@ import { PageHeader } from "@/components/page-header";
 import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
 import { StatusPills } from "@/components/status-pills";
 import { AttachmentUploadForm } from "@/components/attachment-upload-form";
+import { DeleteOrderForm } from "@/components/delete-order-form";
 import { formatAttachmentSize } from "@/lib/attachment-utils";
 import { requireAuth } from "@/lib/auth";
 import {
@@ -279,13 +279,8 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               <button className="secondary" form="order-status-form" type="submit">
                 Salva stato
               </button>
-              <form action={deleteOrderAction}>
-                <input name="id" type="hidden" value={order.id} />
-                <button className="ghost" type="submit">
-                  Elimina ordine
-                </button>
-              </form>
             </div>
+            <DeleteOrderForm isQuote={order.isQuote} orderId={order.id} />
           </div>
         </section>
       </div>

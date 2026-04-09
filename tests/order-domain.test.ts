@@ -17,7 +17,7 @@ import {
   normalizeOrderTitle,
   normalizeForUniqueness
 } from "../lib/orders";
-import { parsePhaseFilter } from "../lib/order-filters";
+import { buildOrdersFilterHref, parseDashboardPreset, parsePhaseFilter } from "../lib/order-filters";
 import { getSelectablePhaseTargets } from "../lib/order-phase-transitions";
 import { getTieredUnitPrice, normalizeQuantityTiers, parseQuantityTiers } from "../lib/pricing";
 
@@ -96,6 +96,12 @@ describe("order domain", () => {
     expect(parsePhaseFilter("CALENDARIZZATO")).toBe("IN_LAVORAZIONE");
     expect(mainPhaseLabels.ACCETTATO).toBe("Da avviare");
     expect(mainPhaseLabels.IN_LAVORAZIONE).toBe("In lavorazione");
+  });
+
+  it("supports dashboard presets for filtered dashboard navigation", () => {
+    expect(parseDashboardPreset("OVERDUE")).toBe("OVERDUE");
+    expect(parseDashboardPreset("UNKNOWN")).toBe("ALL");
+    expect(buildOrdersFilterHref({ preset: "BLOCKED" })).toBe("/orders?preset=BLOCKED");
   });
 
   it("excludes preventivi from operational flows", () => {

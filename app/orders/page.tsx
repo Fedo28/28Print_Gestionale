@@ -13,6 +13,8 @@ import {
 } from "@/lib/constants";
 import {
   buildOrdersFilterHref,
+  dashboardPresetLabels,
+  parseDashboardPreset,
   parseInvoiceFilter,
   parsePaymentFilter,
   parsePhaseFilter,
@@ -31,6 +33,7 @@ type Props = {
     payment?: PaymentStatus | "ALL" | string;
     invoice?: InvoiceStatus | "ALL" | string;
     priority?: Priority | "ALL" | string;
+    preset?: string;
   };
 };
 
@@ -42,7 +45,8 @@ export default async function OrdersPage({ searchParams }: Props) {
     status: parseStatusFilter(searchParams?.status || null),
     payment: parsePaymentFilter(searchParams?.payment || null),
     invoice: parseInvoiceFilter(searchParams?.invoice || null),
-    priority: parsePriorityFilter(searchParams?.priority || null)
+    priority: parsePriorityFilter(searchParams?.priority || null),
+    preset: parseDashboardPreset(searchParams?.preset || null)
   };
   const orders = await getOrdersList({
     query: filters.q,
@@ -51,9 +55,17 @@ export default async function OrdersPage({ searchParams }: Props) {
     payment: filters.payment,
     invoice: filters.invoice,
     priority: filters.priority,
-    quote: "ORDER"
+    quote: "ORDER",
+    preset: filters.preset
   });
   const activeFilters = [
+    filters.preset !== "ALL"
+      ? {
+          key: "preset",
+          label: `Vista: ${dashboardPresetLabels[filters.preset]}`,
+          href: buildOrdersFilterHref({ ...filters, preset: "ALL" })
+        }
+      : null,
     filters.q
       ? {
           key: "q",
@@ -102,7 +114,11 @@ export default async function OrdersPage({ searchParams }: Props) {
     <div className="stack">
       <PageHeader
         title="Ordini"
-        description="Ricerca per codice, titolo, cliente e telefono sugli ordini confermati. Ordinamento per consegna e priorita."
+        description={
+          filters.preset !== "ALL"
+            ? `${dashboardPresetLabels[filters.preset]}. Puoi affinare ulteriormente la lista con ricerca e filtri aggiuntivi.`
+            : "Ricerca per codice, titolo, cliente e telefono sugli ordini confermati. Ordinamento per consegna e priorita."
+        }
         action={
           <Link className="button primary" href="/orders/new">
             Nuovo ordine
@@ -112,6 +128,7 @@ export default async function OrdersPage({ searchParams }: Props) {
 
       <section className="card card-pad">
         <form className="toolbar filters-bar" method="get">
+          {filters.preset !== "ALL" ? <input name="preset" type="hidden" value={filters.preset} /> : null}
           <div className="filters-grow">
             <input
               aria-label="Ricerca ordini"

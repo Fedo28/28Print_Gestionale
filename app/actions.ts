@@ -523,7 +523,7 @@ export async function deleteOrderAction(formData: FormData) {
   const order = await deleteOrder(id);
   await cleanupOrderAttachments(order.attachments);
   revalidateOperationalSurfaces();
-  redirect("/orders");
+  redirect(order.isQuote ? "/quotes" : "/orders");
 }
 
 export async function loginAction(_: LoginActionState, formData: FormData): Promise<LoginActionState> {

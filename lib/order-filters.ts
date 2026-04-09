@@ -8,6 +8,29 @@ export type StatusFilter = OperationalStatus | "ALL";
 export type PaymentFilter = PaymentStatus | "ALL";
 export type InvoiceFilter = InvoiceStatus | "ALL";
 export type PriorityFilter = Priority | "ALL";
+export type DashboardPreset =
+  | "ALL"
+  | "TODAY"
+  | "APPOINTMENTS_TODAY"
+  | "OVERDUE"
+  | "PRIORITY_TODAY"
+  | "TO_START"
+  | "WORKING"
+  | "BLOCKED"
+  | "READY"
+  | "BALANCE";
+
+export const dashboardPresetLabels: Record<Exclude<DashboardPreset, "ALL">, string> = {
+  TODAY: "Consegne di oggi",
+  APPOINTMENTS_TODAY: "Appuntamenti di oggi",
+  OVERDUE: "Arretrati",
+  PRIORITY_TODAY: "Priorita di oggi",
+  TO_START: "Da avviare",
+  WORKING: "In lavorazione",
+  BLOCKED: "Sospesi",
+  READY: "Pronti",
+  BALANCE: "Saldi aperti"
+};
 
 export type OrderListFilters = {
   q?: string;
@@ -17,6 +40,7 @@ export type OrderListFilters = {
   invoice?: InvoiceFilter;
   priority?: PriorityFilter;
   quote?: QuoteFilter;
+  preset?: DashboardPreset;
 };
 
 const mainPhases = visibleMainPhases as PhaseFilter[];
@@ -58,6 +82,27 @@ export function parseQuoteFilter(raw: string | null): QuoteFilter {
   return "ALL";
 }
 
+export function parseDashboardPreset(raw: string | null): DashboardPreset {
+  if (
+    raw &&
+    [
+      "TODAY",
+      "APPOINTMENTS_TODAY",
+      "OVERDUE",
+      "PRIORITY_TODAY",
+      "TO_START",
+      "WORKING",
+      "BLOCKED",
+      "READY",
+      "BALANCE"
+    ].includes(raw)
+  ) {
+    return raw as DashboardPreset;
+  }
+
+  return "ALL";
+}
+
 export function buildOrdersFilterHref(filters: OrderListFilters) {
   const params = new URLSearchParams();
 
@@ -87,6 +132,10 @@ export function buildOrdersFilterHref(filters: OrderListFilters) {
 
   if (filters.quote && filters.quote !== "ALL") {
     params.set("quote", filters.quote);
+  }
+
+  if (filters.preset && filters.preset !== "ALL") {
+    params.set("preset", filters.preset);
   }
 
   const query = params.toString();
