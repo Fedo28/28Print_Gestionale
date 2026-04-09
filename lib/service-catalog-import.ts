@@ -45,6 +45,43 @@ function normalizeHeader(value: string) {
     .replace(/\s+/g, "_");
 }
 
+function resolveCatalogSheetName(workbook: XLSX.WorkBook) {
+  const preferredSheet = workbook.SheetNames.find((sheetName) => normalizeHeader(sheetName) === "catalogo");
+  if (preferredSheet) {
+    return preferredSheet;
+  }
+
+  const requiredHeaderGroups = [
+    ["code", "name"],
+    ["base_price", "prezzo_base"]
+  ];
+
+  return workbook.SheetNames.find((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) {
+      return false;
+    }
+
+    const firstRow = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+      header: 1,
+      defval: "",
+      blankrows: false
+    })[0];
+
+    if (!Array.isArray(firstRow)) {
+      return false;
+    }
+
+    const normalizedHeaders = new Set(
+      firstRow
+        .map((value) => normalizeHeader(String(value || "")))
+        .filter(Boolean)
+    );
+
+    return requiredHeaderGroups.every((group) => group.some((header) => normalizedHeaders.has(header)));
+  });
+}
+
 function parseBasePriceToCents(value: unknown) {
   if (typeof value === "number") {
     return Math.max(0, Math.round(value * 100));
@@ -74,10 +111,10 @@ function parseActiveValue(value: unknown) {
 
 export function parseServiceCatalogWorkbook(buffer: Buffer): ServiceCatalogImportParseResult {
   const workbook = XLSX.read(buffer, { type: "buffer" });
-  const sheetName = workbook.SheetNames[0];
+  const sheetName = resolveCatalogSheetName(workbook);
 
   if (!sheetName) {
-    throw new Error("Il file Excel non contiene fogli validi.");
+    throw new Error("Il file Excel non contiene un foglio catalogo valido.");
   }
 
   const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheetName], {

@@ -14,6 +14,28 @@ function buildWorkbook(rows: unknown[][]) {
   return XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
 }
 
+function buildNumbersExportStyleWorkbook() {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ["Questo documento è stato esportato da Numbers"],
+      ["Nome del foglio di Numbers", "Nome della tabella di Numbers", "Nome foglio di lavoro Excel"],
+      ["catalogo", "", ""]
+    ]),
+    "Riepilogo di esportazione"
+  );
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ["code", "name", "base_price", "description", "quantity_tiers", "active"],
+      ["BIGLIETTI_VISITA", "Biglietti da visita", "12,50", "", "1-9:12,50 | 10+:10,00", "true"]
+    ]),
+    "catalogo"
+  );
+  return XLSX.write(workbook, { bookType: "xlsx", type: "buffer" });
+}
+
 describe("service catalog import", () => {
   it("reads the bundled template workbook", async () => {
     const templatePath = path.resolve(process.cwd(), "catalogo_servizi_template.xlsx");
@@ -50,6 +72,18 @@ describe("service catalog import", () => {
     expect(result.errors).toHaveLength(2);
     expect(result.errors[0]?.message).toBe("Codice duplicato nel file.");
     expect(result.errors[1]?.message).toBe("Prezzo base mancante.");
+  });
+
+  it("finds the catalog sheet even when the workbook comes from a Numbers export", () => {
+    const result = parseServiceCatalogWorkbook(buildNumbersExportStyleWorkbook());
+
+    expect(result.errors).toEqual([]);
+    expect(result.validRows).toHaveLength(1);
+    expect(result.validRows[0]).toMatchObject({
+      code: "BIGLIETTI_VISITA",
+      name: "Biglietti da visita",
+      basePriceCents: 1250
+    });
   });
 });
 
