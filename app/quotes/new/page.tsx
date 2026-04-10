@@ -12,10 +12,7 @@ export default async function NewQuotePage() {
 
   return (
     <div className="stack">
-      <PageHeader
-        title="Nuovo preventivo"
-        description="Crea un preventivo dedicato senza sporcare il flusso ordini operativo."
-      />
+      <PageHeader title="Nuovo preventivo" />
       <OrderForm action={createQuoteAction} customers={customers} kind="quote" services={services} />
     </div>
   );

@@ -34,10 +34,11 @@ function QueueColumn({
           <div className="compact-order-grid compact-order-grid-dense queue-grid-dense">
             {orders.map((order) => {
             const workdayHighlight = getWorkdayHighlight(order.deliveryAt);
+            const whatsappNotified = order.mainPhase === "SVILUPPO_COMPLETATO" && Boolean(order.readyWhatsappSentAt);
 
             return (
               <article
-                className={`compact-order-item compact-order-item-dashboard compact-order-item-dense workday-highlight-card${workdayHighlight ? ` ${workdayHighlight}` : ""}`}
+                className={`compact-order-item compact-order-item-dashboard compact-order-item-dense workday-highlight-card${workdayHighlight ? ` ${workdayHighlight}` : ""}${whatsappNotified ? " whatsapp-notified" : ""}`}
                 key={order.id}
               >
                 <div className="compact-order-main">
@@ -47,6 +48,7 @@ function QueueColumn({
                       hasWhatsapp={Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""))}
                       orderId={order.id}
                       phase={order.mainPhase}
+                      readyWhatsappSentAt={order.readyWhatsappSentAt}
                       status={order.operationalStatus}
                     />
                     <Link className="order-code" href={`/orders/${order.id}`}>
@@ -55,6 +57,7 @@ function QueueColumn({
                   </div>
                   <div className="subtle compact-order-customer">{order.customer.name}</div>
                   <div className="hint compact-order-meta">Consegna {formatCompactDate(order.deliveryAt)}</div>
+                  {whatsappNotified ? <div className="hint order-whatsapp-status">Cliente avvisato via WhatsApp</div> : null}
                   {workdayHighlight === "weekend" ? <div className="hint">Consegna in weekend</div> : null}
                   {order.operationalStatus !== "ATTIVO" ? (
                     <div className="hint">{order.operationalNote || "Motivo sospensione non indicato"}</div>

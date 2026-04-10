@@ -52,7 +52,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
     <div className="stack">
       <PageHeader
         title="Dashboard"
-        description="Vista operativa per capire subito cosa parte oggi, cosa e fermo e come si carica la settimana."
         action={
           <Link className="button primary" href="/orders/new">
             Registra nuovo ordine
@@ -72,7 +71,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
         <MiniMetricCard
           href={links.appointments}
           icon={<DashboardGlyph kind="calendar" />}
-          label="Appuntamenti"
+          label="Agenda"
           value={todayAppointments.length}
           hint="Previsti oggi"
           tone="brand"
@@ -460,6 +459,7 @@ function DashboardLane({
                 href={`/orders/${order.id}`}
                 code={order.orderCode}
                 deliveryAt={order.deliveryAt}
+                readyWhatsappSentAt={order.readyWhatsappSentAt}
                 title={order.customer.name}
                 meta={renderMeta(order)}
                 aside={renderAside?.(order)}
@@ -544,6 +544,7 @@ function CompactOrderItem({
   href,
   code,
   deliveryAt,
+  readyWhatsappSentAt,
   title,
   meta,
   aside,
@@ -559,6 +560,7 @@ function CompactOrderItem({
   href: string;
   code: string;
   deliveryAt: Date | string;
+  readyWhatsappSentAt?: Date | string | null;
   title: string;
   meta: string;
   aside?: string;
@@ -570,10 +572,11 @@ function CompactOrderItem({
   note?: string | null;
 }) {
   const workdayHighlight = getWorkdayHighlight(deliveryAt);
+  const whatsappNotified = phase === "SVILUPPO_COMPLETATO" && Boolean(readyWhatsappSentAt);
 
   return (
     <article
-      className={`compact-order-item compact-order-item-dashboard compact-order-item-${density} compact-order-item-${tone} workday-highlight-card${workdayHighlight ? ` ${workdayHighlight}` : ""}`}
+      className={`compact-order-item compact-order-item-dashboard compact-order-item-${density} compact-order-item-${tone} workday-highlight-card${workdayHighlight ? ` ${workdayHighlight}` : ""}${whatsappNotified ? " whatsapp-notified" : ""}`}
     >
       <div className="compact-order-main">
         <div className="compact-order-head">
@@ -582,6 +585,7 @@ function CompactOrderItem({
             hasWhatsapp={hasWhatsapp}
             orderId={orderId}
             phase={phase}
+            readyWhatsappSentAt={readyWhatsappSentAt}
             status={status}
           />
           <Link className="order-code" href={href}>
@@ -591,6 +595,7 @@ function CompactOrderItem({
         </div>
         <div className="subtle compact-order-customer">{title}</div>
         <div className="hint compact-order-meta">{meta}</div>
+        {whatsappNotified ? <div className="hint order-whatsapp-status">Cliente avvisato via WhatsApp</div> : null}
         {note ? <div className="hint">{note}</div> : null}
       </div>
       {pills}

@@ -40,6 +40,25 @@ export const customerTypeLabels: Record<CustomerType, string> = {
   AZIENDA: "Azienda"
 };
 
+export const appointmentNoteOptions = [
+  "Installazione vetrina",
+  "Sopralluogo",
+  "Lavorazione esterna",
+  "Appuntamento cliente",
+  "Lavorazione programmata"
+] as const;
+
+export function getAppointmentNoteOptions(currentValue?: string | null) {
+  const normalizedCurrentValue = currentValue?.trim() || "";
+  const options = [...appointmentNoteOptions];
+
+  if (normalizedCurrentValue && !options.includes(normalizedCurrentValue as (typeof appointmentNoteOptions)[number])) {
+    return [normalizedCurrentValue, ...options];
+  }
+
+  return options;
+}
+
 export const billboardAssetKindLabels: Record<BillboardAssetKind, string> = {
   CARTELLONE: "Cartellone",
   MONITOR: "Monitor",

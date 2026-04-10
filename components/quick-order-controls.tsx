@@ -16,6 +16,7 @@ export type QuickOrderControlProps = {
   phase: MainPhase;
   status: OperationalStatus;
   hasWhatsapp?: boolean;
+  readyWhatsappSentAt?: Date | string | null;
   showWhatsapp?: boolean;
   isQuote?: boolean;
   includeQuote?: boolean;
@@ -54,6 +55,7 @@ export function QuickOrderControlForms({
   phase,
   status,
   hasWhatsapp = false,
+  readyWhatsappSentAt,
   showWhatsapp = true,
   isQuote = false,
   includeQuote = false
@@ -130,7 +132,7 @@ export function QuickOrderControlForms({
 
       {showWhatsapp && phase === "SVILUPPO_COMPLETATO" ? (
         <div className="quick-order-actions">
-          <ReadyWhatsAppButton hasPhone={hasWhatsapp} orderId={orderId} />
+          <ReadyWhatsAppButton hasPhone={hasWhatsapp} notifiedAt={readyWhatsappSentAt} orderId={orderId} />
         </div>
       ) : null}
     </div>
@@ -142,6 +144,7 @@ export function QuickOrderControls({
   phase,
   status,
   hasWhatsapp = false,
+  readyWhatsappSentAt,
   showWhatsapp = true,
   isQuote = false,
   includeQuote = false,
@@ -187,6 +190,7 @@ export function QuickOrderControls({
             isQuote={isQuote}
             orderId={orderId}
             phase={phase}
+            readyWhatsappSentAt={readyWhatsappSentAt}
             showWhatsapp={showWhatsapp}
             status={status}
           />

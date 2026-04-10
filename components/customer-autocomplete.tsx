@@ -39,7 +39,6 @@ export function CustomerAutocomplete({
   onSelect,
   label,
   placeholder,
-  helperText,
   selectedCustomerId,
   emptyMessage = "Nessun cliente trovato. Continua a scrivere o inseriscilo come nuovo.",
   maxSuggestions = 6
@@ -67,11 +66,6 @@ export function CustomerAutocomplete({
         spellCheck={false}
         value={query}
       />
-      <div className="customer-autocomplete-meta">
-        <span className="subtle">{customers.length} clienti disponibili</span>
-        {deferredQuery.trim() ? <span className="subtle">{normalizedResults.length} risultati trovati</span> : null}
-      </div>
-      {helperText ? <p className="hint customer-autocomplete-hint">{helperText}</p> : null}
 
       {showSuggestions ? (
         suggestionResults.length > 0 ? (

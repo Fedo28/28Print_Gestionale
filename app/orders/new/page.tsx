@@ -12,10 +12,7 @@ export default async function NewOrderPage() {
 
   return (
     <div className="stack">
-      <PageHeader
-        title="Nuovo ordine"
-        description="Crea un ordine operativo completo con cliente, righe catalogo o personalizzate, consegna, appuntamento e acconto."
-      />
+      <PageHeader title="Nuovo ordine" />
       <OrderForm action={createOrderAction} customers={customers} kind="order" services={services} />
     </div>
   );

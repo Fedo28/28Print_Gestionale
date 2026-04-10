@@ -6,7 +6,7 @@ export function PageHeader({
   action
 }: {
   title: string;
-  description: string;
+  description?: string;
   action?: ReactNode;
 }) {
   return (
@@ -14,7 +14,7 @@ export function PageHeader({
       <div className="page-head-copy">
         <span className="page-kicker">Gestionale operativo</span>
         <h2>{title}</h2>
-        <p>{description}</p>
+        {description ? <p>{description}</p> : null}
       </div>
       {action ? <div className="page-head-action">{action}</div> : null}
     </header>

@@ -17,6 +17,7 @@ import { DeleteOrderForm } from "@/components/delete-order-form";
 import { formatAttachmentSize } from "@/lib/attachment-utils";
 import { requireAuth } from "@/lib/auth";
 import {
+  getAppointmentNoteOptions,
   invoiceStatusLabels,
   operationalStatusLabels,
   paymentMethodLabels,
@@ -42,12 +43,12 @@ export default async function OrderDetailPage({ params }: { params: { id: string
   const guidedAction = getGuidedPhaseAction(order.mainPhase);
   const hasWhatsapp = Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""));
   const useDirectUpload = resolveAttachmentStorageMode() === "blob";
+  const appointmentNoteOptions = getAppointmentNoteOptions(order.appointmentNote);
 
   return (
     <div className="stack">
       <PageHeader
         title={order.orderCode}
-        description={`Titolo corrente: ${order.title}`}
         action={
           <Link className="button ghost" href={order.isQuote ? "/quotes" : order.mainPhase === "CONSEGNATO" ? "/orders?view=DELIVERED" : "/orders"}>
             {order.isQuote ? "Torna ai preventivi" : "Torna agli ordini"}
@@ -168,7 +169,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                     Segna consegnato
                   </button>
                 </form>
-                <ReadyWhatsAppButton hasPhone={hasWhatsapp} orderId={order.id} />
+                <ReadyWhatsAppButton hasPhone={hasWhatsapp} notifiedAt={order.readyWhatsappSentAt} orderId={order.id} />
               </div>
             ) : (
               <div className="empty">
@@ -229,12 +230,14 @@ export default async function OrderDetailPage({ params }: { params: { id: string
             </div>
             <div className="field full">
               <label htmlFor="appointmentNote">Nota appuntamento</label>
-              <input
-                defaultValue={order.appointmentNote || ""}
-                id="appointmentNote"
-                name="appointmentNote"
-                placeholder="Installazione, appuntamento cliente, lavorazione programmata"
-              />
+              <select defaultValue={order.appointmentNote || ""} id="appointmentNote" name="appointmentNote">
+                <option value="">Seleziona nota appuntamento</option>
+                {appointmentNoteOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="field full">
               <label htmlFor="notes">Note interne</label>
@@ -252,7 +255,6 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           <div className="stack">
             <div>
               <h3>Stato operativo</h3>
-              <p className="card-muted">Usalo solo per blocchi o attese: la fase principale resta il riferimento del lavoro.</p>
             </div>
             <p className="hint">
               {order.operationalStatus === "ATTIVO"
@@ -365,6 +367,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                         defaultValue={(payment.amountCents / 100).toFixed(2).replace(".", ",")}
                         id={`correct-amount-${payment.id}`}
                         name="amount"
+                        placeholder="0,00"
                         required
                       />
                     </div>

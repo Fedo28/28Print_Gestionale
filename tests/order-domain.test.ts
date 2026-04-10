@@ -72,6 +72,22 @@ describe("order domain", () => {
     expect(summary.paymentStatus).toBe("PARZIALE");
   });
 
+  it("supports payment cancellation by leaving no active payments after correction", () => {
+    const summary = computePaymentSummary(5000, [
+      {
+        id: "payment-1",
+        amountCents: 2000,
+        status: "SOSTITUITO",
+        createdAt: new Date("2026-03-25T08:00:00.000Z")
+      }
+    ]);
+
+    expect(summary.depositCents).toBe(0);
+    expect(summary.paidCents).toBe(0);
+    expect(summary.balanceDueCents).toBe(5000);
+    expect(summary.paymentStatus).toBe("NON_PAGATO");
+  });
+
   it("blocks direct jumps across phases", () => {
     expect(() => assertPhaseTransition("ACCETTATO", "SVILUPPO_COMPLETATO", 0)).toThrow(/procedi in sequenza/i);
   });

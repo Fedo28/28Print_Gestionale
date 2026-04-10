@@ -153,6 +153,7 @@ model Order {
   depositCents        Int               @default(0)
   paidCents           Int               @default(0)
   balanceDueCents     Int               @default(0)
+  readyWhatsappSentAt DateTime?
   notes               String?
   customer            Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
   items               OrderItem[]
@@ -167,6 +168,7 @@ model Order {
   @@index([isQuote])
   @@index([mainPhase, operationalStatus])
   @@index([paymentStatus])
+  @@index([readyWhatsappSentAt])
 }
 
 model OrderItem {

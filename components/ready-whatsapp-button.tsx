@@ -1,32 +1,40 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { formatDateTime } from "@/lib/format";
 
 export function ReadyWhatsAppButton({
   orderId,
   hasPhone,
   disabled = false,
-  compact = false
+  compact = false,
+  notifiedAt
 }: {
   orderId: string;
   hasPhone: boolean;
   disabled?: boolean;
   compact?: boolean;
+  notifiedAt?: Date | string | null;
 }) {
+  const router = useRouter();
   const [message, setMessage] = useState("");
   const [isPending, startTransition] = useTransition();
+  const hasAlreadyNotified = Boolean(notifiedAt);
   const isDisabled = disabled || !hasPhone || isPending;
   const title = disabled
     ? "Disponibile solo quando l'ordine e pronto."
     : !hasPhone
       ? "Manca un numero cliente valido."
-      : "Invia messaggio WhatsApp";
+      : hasAlreadyNotified
+        ? "Reinvia messaggio WhatsApp"
+        : "Invia messaggio WhatsApp";
 
   return (
     <div className={`ready-whatsapp-control${compact ? " compact" : ""}`}>
       <button
         aria-label="Apri messaggio WhatsApp"
-        className="button ghost ready-whatsapp-button"
+        className={`button ghost ready-whatsapp-button${hasAlreadyNotified ? " sent" : ""}`}
         disabled={isDisabled}
         onClick={() => {
           startTransition(() => {
@@ -45,6 +53,8 @@ export function ReadyWhatsAppButton({
 
               const data = (await response.json()) as { whatsappUrl: string };
               window.open(data.whatsappUrl, "_blank", "noopener,noreferrer");
+              setMessage(hasAlreadyNotified ? "Promemoria WhatsApp registrato." : "Cliente segnato come avvisato.");
+              router.refresh();
             })();
           });
         }}
@@ -57,6 +67,7 @@ export function ReadyWhatsAppButton({
         </svg>
       </button>
       {!compact && message ? <p className="hint">{message}</p> : null}
+      {!compact && !message && hasAlreadyNotified ? <p className="hint">{`Avvisato il ${formatDateTime(notifiedAt!)}`}</p> : null}
       {!compact && !disabled && !hasPhone ? <p className="hint">Manca un numero cliente valido: aggiorna telefono o WhatsApp.</p> : null}
     </div>
   );

@@ -989,12 +989,18 @@ export async function transitionOrderPhase(orderId: string, nextPhase: MainPhase
   return prisma.$transaction(async (tx) => {
     const deliveredAt =
       normalizedNextPhase === "CONSEGNATO" ? new Date() : order.mainPhase === "CONSEGNATO" ? null : order.deliveredAt;
+    const shouldResetReadyWhatsappSentAt =
+      (normalizedNextPhase === "SVILUPPO_COMPLETATO" && order.mainPhase !== "SVILUPPO_COMPLETATO") ||
+      (order.mainPhase === "SVILUPPO_COMPLETATO" &&
+        normalizedNextPhase !== "SVILUPPO_COMPLETATO" &&
+        normalizedNextPhase !== "CONSEGNATO");
 
     const updated = await tx.order.update({
       where: { id: orderId },
       data: {
         mainPhase: normalizedNextPhase,
-        deliveredAt
+        deliveredAt,
+        ...(shouldResetReadyWhatsappSentAt ? { readyWhatsappSentAt: null } : {})
       }
     });
 
@@ -1067,8 +1073,8 @@ export async function correctPayment(
   method: PaymentMethod,
   note?: string
 ) {
-  if (amountCents <= 0) {
-    throw new Error("L'importo pagamento deve essere maggiore di zero.");
+  if (amountCents < 0) {
+    throw new Error("L'importo pagamento non puo essere negativo.");
   }
 
   return prisma.$transaction(async (tx) => {
@@ -1099,22 +1105,27 @@ export async function correctPayment(
       data: { status: "SOSTITUITO" }
     });
 
-    const correction = await tx.payment.create({
-      data: {
-        orderId,
-        amountCents,
-        method,
-        note: note?.trim() || `Correzione pagamento ${paymentId}`,
-        correctedPaymentId: paymentId
-      }
-    });
+    const correctedPayments = existingPayments.map((payment) =>
+      payment.id === paymentId ? { ...payment, status: "SOSTITUITO" as PaymentEntryStatus } : payment
+    );
 
-    const summary = computePaymentSummary(order.totalCents, [
-      ...existingPayments.map((payment) =>
-        payment.id === paymentId ? { ...payment, status: "SOSTITUITO" as PaymentEntryStatus } : payment
-      ),
-      correction
-    ]);
+    const correction =
+      amountCents > 0
+        ? await tx.payment.create({
+            data: {
+              orderId,
+              amountCents,
+              method,
+              note: note?.trim() || `Correzione pagamento ${paymentId}`,
+              correctedPaymentId: paymentId
+            }
+          })
+        : null;
+
+    const summary = computePaymentSummary(
+      order.totalCents,
+      correction ? [...correctedPayments, correction] : correctedPayments
+    );
 
     const updated = await tx.order.update({
       where: { id: orderId },
@@ -1130,8 +1141,14 @@ export async function correctPayment(
       data: {
         orderId,
         type: "PAYMENT_RECORDED",
-        description: `Pagamento corretto: ${(amountCents / 100).toFixed(2)} EUR`,
-        details: `Rettifica del pagamento ${paymentId}${note?.trim() ? ` - ${note.trim()}` : ""}`
+        description:
+          amountCents > 0
+            ? `Pagamento corretto: ${(amountCents / 100).toFixed(2)} EUR`
+            : `Pagamento annullato: ${(originalPayment.amountCents / 100).toFixed(2)} EUR`,
+        details:
+          amountCents > 0
+            ? `Rettifica del pagamento ${paymentId}${note?.trim() ? ` - ${note.trim()}` : ""}`
+            : `Annullato il pagamento ${paymentId}${note?.trim() ? ` - ${note.trim()}` : ""}`
       }
     });
 
@@ -1237,6 +1254,41 @@ export async function getWhatsappLink(orderId: string, options?: { requireReady?
     .replaceAll("{titolo_ordine}", order.title);
 
   return `https://wa.me/${phone.replace(/^\+/, "")}?text=${encodeURIComponent(text)}`;
+}
+
+export async function markReadyWhatsappSent(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId }
+  });
+
+  if (!order) {
+    throw new Error("Ordine non trovato.");
+  }
+
+  if (order.mainPhase !== "SVILUPPO_COMPLETATO") {
+    throw new Error("Il messaggio WhatsApp e disponibile solo per ordini pronti.");
+  }
+
+  const alreadySent = Boolean(order.readyWhatsappSentAt);
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.order.update({
+      where: { id: orderId },
+      data: {
+        readyWhatsappSentAt: new Date()
+      }
+    });
+
+    await tx.orderHistory.create({
+      data: {
+        orderId,
+        type: "NOTE",
+        description: alreadySent ? "Promemoria WhatsApp aperto" : "Cliente avvisato via WhatsApp"
+      }
+    });
+
+    return updated;
+  });
 }
 
 export async function markOrderReady(orderId: string) {
@@ -1393,6 +1445,25 @@ export async function updateServiceCatalogEntry(input: {
   });
 }
 
+export async function setServiceCatalogEntryActive(id: string, active: boolean) {
+  const service = await prisma.serviceCatalog.findUnique({
+    where: { id }
+  });
+
+  if (!service) {
+    throw new Error("Servizio non trovato.");
+  }
+
+  if (service.active === active) {
+    return service;
+  }
+
+  return prisma.serviceCatalog.update({
+    where: { id },
+    data: { active }
+  });
+}
+
 export async function syncServiceCatalogEntries(rows: ServiceCatalogImportRow[]) {
   if (!rows.length) {
     return { created: 0, updated: 0 };
@@ -1457,7 +1528,7 @@ export async function getDashboardData() {
     prisma.order.findMany({
       where: {
         ...operationalOrderWhere(),
-        mainPhase: { not: "CONSEGNATO" },
+        mainPhase: { notIn: ["CONSEGNATO", "SVILUPPO_COMPLETATO"] as MainPhase[] },
         deliveryAt: {
           gte: todayStart,
           lt: tomorrowStart
@@ -1482,7 +1553,7 @@ export async function getDashboardData() {
       where: {
         ...operationalOrderWhere(),
         deliveryAt: { lt: todayStart },
-        mainPhase: { not: "CONSEGNATO" }
+        mainPhase: { notIn: ["CONSEGNATO", "SVILUPPO_COMPLETATO"] as MainPhase[] }
       },
       include: { customer: true },
       orderBy: { deliveryAt: "asc" }
@@ -1634,7 +1705,7 @@ export async function getOrdersList(filters: {
       ? {}
       : filters.preset === "TODAY"
       ? {
-          mainPhase: { not: "CONSEGNATO" as MainPhase },
+          mainPhase: { notIn: ["CONSEGNATO", "SVILUPPO_COMPLETATO"] as MainPhase[] },
           deliveryAt: {
             gte: todayStart,
             lt: tomorrowStart
@@ -1650,14 +1721,14 @@ export async function getOrdersList(filters: {
           }
         : filters.preset === "OVERDUE"
           ? {
-              mainPhase: { not: "CONSEGNATO" as MainPhase },
+              mainPhase: { notIn: ["CONSEGNATO", "SVILUPPO_COMPLETATO"] as MainPhase[] },
               deliveryAt: {
                 lt: todayStart
               }
             }
           : filters.preset === "PRIORITY_TODAY"
             ? {
-                mainPhase: { not: "CONSEGNATO" as MainPhase },
+                mainPhase: { notIn: ["CONSEGNATO", "SVILUPPO_COMPLETATO"] as MainPhase[] },
                 OR: [
                   {
                     deliveryAt: {

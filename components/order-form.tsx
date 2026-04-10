@@ -3,7 +3,7 @@
 import { Customer, CustomerType, ServiceCatalog } from "@prisma/client";
 import { useEffect, useRef, useState } from "react";
 import { CustomerAutocomplete } from "@/components/customer-autocomplete";
-import { customerTypeLabels, invoiceStatusLabels, priorityLabels } from "@/lib/constants";
+import { customerTypeLabels, getAppointmentNoteOptions, invoiceStatusLabels, priorityLabels } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
 import {
   buildOrderDraftStorageKey,
@@ -240,6 +240,12 @@ type InlineCatalogDraft = {
   quantityTiers: string;
 };
 
+type CatalogActionFeedback = {
+  rowIndex: number;
+  tone: "success" | "error";
+  message: string;
+};
+
 function createEmptyInlineCatalogDraft(): InlineCatalogDraft {
   return {
     name: "",
@@ -266,23 +272,27 @@ export function OrderForm({
   const [catalogServices, setCatalogServices] = useState<ServiceCatalog[]>(services);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [customerQuery, setCustomerQuery] = useState("");
-  const [items, setItems] = useState<ItemState[]>([emptyItem(), emptyItem()]);
+  const [items, setItems] = useState<ItemState[]>([emptyItem()]);
   const [activeServiceField, setActiveServiceField] = useState<number | null>(null);
   const [openTierIndex, setOpenTierIndex] = useState<number | null>(null);
   const [catalogDraftRowIndex, setCatalogDraftRowIndex] = useState<number | null>(null);
   const [catalogDraft, setCatalogDraft] = useState<InlineCatalogDraft>(createEmptyInlineCatalogDraft());
   const [catalogDraftMessage, setCatalogDraftMessage] = useState<string | null>(null);
   const [isCatalogDraftSubmitting, setIsCatalogDraftSubmitting] = useState(false);
+  const [catalogMutatingServiceId, setCatalogMutatingServiceId] = useState<string | null>(null);
+  const [catalogActionFeedback, setCatalogActionFeedback] = useState<CatalogActionFeedback | null>(null);
   const [draftHydrated, setDraftHydrated] = useState(false);
   const [draftRestoredAt, setDraftRestoredAt] = useState<string | null>(null);
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<string | null>(null);
   const [hasSavedDraft, setHasSavedDraft] = useState(false);
+  const [appointmentNoteValue, setAppointmentNoteValue] = useState("");
   const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId);
   const photographyFormats = getPhotographyFormatOptions(catalogServices);
   const photographyServices = catalogServices.filter(isPhotographyService);
   const isCatalogEmpty = catalogServices.length === 0;
   const defaultCustomerType: CustomerType = "PUBBLICO";
   const isQuoteMode = kind === "quote";
+  const availableAppointmentNoteOptions = getAppointmentNoteOptions(appointmentNoteValue);
   const draftStorageKey = buildOrderDraftStorageKey(kind as OrderDraftMode);
   const submittedDraftKey = buildOrderDraftSubmittedKey(kind as OrderDraftMode);
 
@@ -335,12 +345,14 @@ export function OrderForm({
     formRef.current?.reset();
     setSelectedCustomerId("");
     setCustomerQuery("");
-    setItems([emptyItem(), emptyItem()]);
+    setAppointmentNoteValue("");
+    setItems([emptyItem()]);
     setActiveServiceField(null);
     setOpenTierIndex(null);
     setCatalogDraftRowIndex(null);
     setCatalogDraft(createEmptyInlineCatalogDraft());
     setCatalogDraftMessage(null);
+    setCatalogActionFeedback(null);
   }
 
   function persistDraft() {
@@ -416,7 +428,8 @@ export function OrderForm({
 
     setSelectedCustomerId(nextSelectedCustomerId);
     setCustomerQuery(draft.customerQuery);
-    setItems(draft.items.length > 0 ? draft.items.map((item) => createItemStateFromDraft(item)) : [emptyItem(), emptyItem()]);
+    setAppointmentNoteValue(draft.fields.appointmentNote);
+    setItems(draft.items.length > 0 ? draft.items.map((item) => createItemStateFromDraft(item)) : [emptyItem()]);
     setHasSavedDraft(true);
     setLastDraftSavedAt(draft.savedAt);
     setDraftRestoredAt(draft.savedAt);
@@ -571,6 +584,75 @@ export function OrderForm({
     }
   }
 
+  async function deactivateCatalogService(index: number, service: ServiceCatalog) {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `Disattivare "${service.name}" dal catalogo? Non comparira piu nei nuovi ordini, ma restera negli ordini gia salvati.`
+      )
+    ) {
+      return;
+    }
+
+    setCatalogMutatingServiceId(service.id);
+    setCatalogActionFeedback(null);
+
+    try {
+      const response = await fetch("/api/services", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          id: service.id,
+          active: false
+        })
+      });
+
+      const body = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            service?: ServiceCatalog;
+          }
+        | null;
+
+      if (!response.ok) {
+        setCatalogActionFeedback({
+          rowIndex: index,
+          tone: "error",
+          message: body?.error || "Impossibile disattivare il servizio."
+        });
+        return;
+      }
+
+      setCatalogServices((current) => current.filter((entry) => entry.id !== service.id));
+      setItems((current) =>
+        current.map((entry) =>
+          entry.serviceCatalogId === service.id
+            ? {
+                ...entry,
+                serviceCatalogId: ""
+              }
+            : entry
+        )
+      );
+      setOpenTierIndex((current) => (current === index ? null : current));
+      setCatalogActionFeedback({
+        rowIndex: index,
+        tone: "success",
+        message: `"${service.name}" disattivato dal catalogo.`
+      });
+    } catch {
+      setCatalogActionFeedback({
+        rowIndex: index,
+        tone: "error",
+        message: "Errore di rete durante la disattivazione del servizio."
+      });
+    } finally {
+      setCatalogMutatingServiceId(null);
+    }
+  }
+
   function selectServiceForRow(index: number, service: ServiceCatalog) {
     setItems((current) =>
       current.map((entry, itemIndex) =>
@@ -593,6 +675,7 @@ export function OrderForm({
       )
     );
     setActiveServiceField(null);
+    setCatalogActionFeedback(null);
     if (catalogDraftRowIndex === index) {
       closeInlineCatalogDraft();
     }
@@ -621,6 +704,7 @@ export function OrderForm({
       )
     );
     setActiveServiceField(null);
+    setCatalogActionFeedback(null);
     if (catalogDraftRowIndex === index) {
       closeInlineCatalogDraft();
     }
@@ -694,11 +778,6 @@ export function OrderForm({
           <div className="stack compact-stack">
             <span className="compact-kicker">{isQuoteMode ? "Scheda preventivo" : "Scheda ordine"}</span>
             <h3>{isQuoteMode ? "Preventivo rapido da banco" : "Copia commissione digitale"}</h3>
-            <p className="card-muted">
-              {isQuoteMode
-                ? "Stesso flusso compatto degli ordini, ma dedicato ai preventivi per non mescolare il lavoro operativo."
-                : "Modulo rapido da banco: cliente, consegna, acconto e righe lavorazione tutte nella stessa scheda."}
-            </p>
           </div>
           <div className="order-sheet-summary">
             <div className="order-sheet-chip">
@@ -750,7 +829,6 @@ export function OrderForm({
           <div className="stack">
             <div>
               <h3>Cliente</h3>
-              <p className="card-muted">Cerca un cliente gia registrato oppure inseriscilo al volo come sulla copia commissione.</p>
             </div>
             <div className="form-grid">
               <CustomerAutocomplete
@@ -758,7 +836,6 @@ export function OrderForm({
                   ...customer,
                   orderCount: customer.orders.length
                 }))}
-                helperText="Scrivi nome, telefono, email, PEC, codice fiscale, partita IVA o codice univoco per trovare subito il cliente giusto."
                 label="Cerca cliente esistente"
                 onQueryChange={(value) => {
                   setCustomerQuery(value);
@@ -857,11 +934,6 @@ export function OrderForm({
           <div className="stack">
             <div>
               <h3>{isQuoteMode ? "Dati preventivo" : "Dati ordine"}</h3>
-              <p className="card-muted">
-                {isQuoteMode
-                  ? "Campi essenziali per preparare un preventivo completo senza mischiarlo al flusso operativo."
-                  : "Campi essenziali per prendere in carico l’ordine senza perdere tempo."}
-              </p>
             </div>
             <div className="form-grid">
               <div className="field full">
@@ -886,23 +958,16 @@ export function OrderForm({
                   ))}
                 </select>
               </div>
-              <div className="field">
-                <label htmlFor="invoiceStatus">Stato fatturazione</label>
-                <select defaultValue="DA_FATTURARE" id="invoiceStatus" name="invoiceStatus">
-                  {Object.entries(invoiceStatusLabels).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
+              <div className="field full">
+                <label htmlFor="appointmentNote">Nota appuntamento</label>
+                <select id="appointmentNote" name="appointmentNote" onChange={(event) => setAppointmentNoteValue(event.target.value)} value={appointmentNoteValue}>
+                  <option value="">Seleziona nota appuntamento</option>
+                  {availableAppointmentNoteOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
                     </option>
                   ))}
                 </select>
-              </div>
-              <div className="field">
-                <label htmlFor="initialDeposit">Acconto iniziale</label>
-                <input id="initialDeposit" name="initialDeposit" placeholder="0,00" />
-              </div>
-              <div className="field full">
-                <label htmlFor="appointmentNote">Nota appuntamento</label>
-                <input id="appointmentNote" name="appointmentNote" placeholder="Installazione vetrina, sopralluogo, lavorazione esterna" />
               </div>
               <div className="field full">
                 <label htmlFor="notes">Note operative</label>
@@ -917,7 +982,6 @@ export function OrderForm({
         <div className="list-header">
           <div>
             <h3>Righe lavorazione</h3>
-            <p className="card-muted">Impostate come una copia commissione: numero riga, articolo, quantita, prezzo e note rapide.</p>
           </div>
           <button
             className="ghost"
@@ -941,6 +1005,13 @@ export function OrderForm({
         <div className="order-lines-stack">
           {items.map((item, index) => {
             const selectedService = catalogServices.find((entry) => entry.id === item.serviceCatalogId);
+            const exactMatchedService =
+              !selectedService && item.serviceQuery.trim()
+                ? catalogServices.find(
+                    (entry) => normalizeCatalogSearch(entry.name) === normalizeCatalogSearch(item.serviceQuery)
+                  )
+                : undefined;
+            const deactivatableService = selectedService || exactMatchedService;
             const suggestions = getServiceSuggestions(item.serviceQuery);
             const parsedTiers = getServiceTiers(selectedService);
             const lineQuantity = parseQuantityValue(item.quantity, 1);
@@ -964,7 +1035,7 @@ export function OrderForm({
               <article className="order-line-card" key={index}>
                 <div className="order-line-head">
                   <div className="order-line-index">#{index + 1}</div>
-                  <strong>Voce lavorazione</strong>
+                  <strong>{`Riga ${index + 1}`}</strong>
                   <span className="pill">{new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(lineFinalWithExtraCents / 100)}</span>
                   {items.length > 1 ? (
                     <button
@@ -1039,6 +1110,19 @@ export function OrderForm({
                       >
                         {catalogDraftRowIndex === index ? "Chiudi nuovo servizio" : "Nuovo in catalogo"}
                       </button>
+                      {deactivatableService ? (
+                        <button
+                          className="ghost order-line-catalog-remove"
+                          disabled={catalogMutatingServiceId === deactivatableService.id}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            void deactivateCatalogService(index, deactivatableService);
+                          }}
+                          type="button"
+                        >
+                          {catalogMutatingServiceId === deactivatableService.id ? "Disattivazione..." : "Disattiva dal catalogo"}
+                        </button>
+                      ) : null}
                       <button
                         className="ghost order-line-tier-toggle"
                         disabled={!hasTierEntries}
@@ -1090,6 +1174,15 @@ export function OrderForm({
                         )}
                       </div>
                     ) : null}
+                    {catalogActionFeedback?.rowIndex === index ? (
+                      <p
+                        className={`hint order-line-catalog-feedback${
+                          catalogActionFeedback.tone === "error" ? " is-error" : ""
+                        }`}
+                      >
+                        {catalogActionFeedback.message}
+                      </p>
+                    ) : null}
                     {hasTierEntries && openTierIndex === index ? (
                       <div className="order-line-tier-panel">
                           {parsedTiers.map((tier) => (
@@ -1124,25 +1217,19 @@ export function OrderForm({
                       </div>
                     ) : null}
                     {catalogDraftRowIndex === index ? (
-                      <div className="mini-item order-line-inline-catalog">
-                        <div className="order-line-inline-catalog-head">
-                          <div className="order-line-inline-catalog-title">
-                            <div className="order-line-inline-catalog-copy">
-                              <strong>Nuovo servizio catalogo</strong>
-                              <p className="card-muted">Lo salvo e lo aggancio subito a questa riga.</p>
+                        <div className="mini-item order-line-inline-catalog">
+                          <div className="order-line-inline-catalog-head">
+                            <div className="order-line-inline-catalog-title">
+                              <div className="order-line-inline-catalog-copy">
+                                <strong>Nuovo servizio catalogo</strong>
+                              </div>
+                              <span className="pill">Codice automatico se vuoto</span>
                             </div>
-                            <span className="pill">Codice automatico se vuoto</span>
-                          </div>
-                          <p className="hint">
-                            Compila prima nome e prezzo base. Descrizione e scaglioni servono solo se vuoi rendere il
-                            servizio piu preciso o riutilizzarlo meglio in seguito.
-                          </p>
                         </div>
                         <div className="order-line-inline-catalog-sections">
                           <section className="order-line-inline-catalog-section">
                             <div className="order-line-inline-catalog-section-head">
                               <strong>Dati base</strong>
-                              <span className="subtle">Questi campi bastano per creare il servizio e usarlo subito.</span>
                             </div>
                             <div className="form-grid order-line-inline-catalog-grid">
                               <div className="field full order-line-inline-catalog-name">
@@ -1153,7 +1240,7 @@ export function OrderForm({
                                   value={catalogDraft.name}
                                 />
                               </div>
-                              <div className="field wide order-line-inline-catalog-code">
+                              <div className="field full order-line-inline-catalog-code">
                                 <label htmlFor={`inline-service-code-${index}`}>Codice</label>
                                 <input
                                   id={`inline-service-code-${index}`}
@@ -1162,7 +1249,7 @@ export function OrderForm({
                                   value={catalogDraft.code}
                                 />
                               </div>
-                              <div className="field wide order-line-inline-catalog-price">
+                              <div className="field full order-line-inline-catalog-price">
                                 <label htmlFor={`inline-service-price-${index}`}>Prezzo base</label>
                                 <input
                                   id={`inline-service-price-${index}`}
@@ -1176,7 +1263,6 @@ export function OrderForm({
                           <section className="order-line-inline-catalog-section">
                             <div className="order-line-inline-catalog-section-head">
                               <strong>Dettagli facoltativi</strong>
-                              <span className="subtle">Utile se vuoi trovare il servizio piu facilmente o descriverlo meglio.</span>
                             </div>
                             <div className="form-grid order-line-inline-catalog-grid">
                               <div className="field full">
@@ -1192,7 +1278,6 @@ export function OrderForm({
                           <section className="order-line-inline-catalog-section">
                             <div className="order-line-inline-catalog-section-head">
                               <strong>Scaglioni quantita</strong>
-                              <span className="subtle">Usali solo se il prezzo cambia in base alla quantita ordinata.</span>
                             </div>
                             <div className="form-grid order-line-inline-catalog-grid">
                               <div className="field full">
@@ -1205,9 +1290,6 @@ export function OrderForm({
                                 />
                               </div>
                             </div>
-                            <p className="hint order-line-inline-catalog-help">
-                              Esempio: <code>1-9:0,50 | 10-49:0,30 | 50+:0,20</code>
-                            </p>
                           </section>
                         </div>
                         {catalogDraftMessage ? <p className="hint order-line-inline-catalog-message">{catalogDraftMessage}</p> : null}
@@ -1450,9 +1532,25 @@ export function OrderForm({
           })}
         </div>
         <div className="order-sheet-footer">
-          <div className="order-sheet-chip">
-            <span className="card-muted">Totale anteprima</span>
-            <strong>{new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(previewTotalCents / 100)}</strong>
+          <div className="form-grid order-sheet-payment-row">
+            <div className="field order-sheet-invoice-field">
+              <label htmlFor="invoiceStatus">Richiesta fattura</label>
+              <select defaultValue="DA_FATTURARE" id="invoiceStatus" name="invoiceStatus">
+                {Object.entries(invoiceStatusLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field order-sheet-deposit-field">
+              <label htmlFor="initialDeposit">Acconto iniziale</label>
+              <input id="initialDeposit" name="initialDeposit" placeholder="0,00" />
+            </div>
+            <div className="order-sheet-chip order-sheet-total-card">
+              <span className="card-muted">Totale anteprima</span>
+              <strong>{new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(previewTotalCents / 100)}</strong>
+            </div>
           </div>
         </div>
       </section>

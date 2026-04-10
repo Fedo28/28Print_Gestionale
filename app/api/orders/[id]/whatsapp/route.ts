@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readSession } from "@/lib/auth-core";
-import { getWhatsappLink } from "@/lib/orders";
+import { getWhatsappLink, markReadyWhatsappSent } from "@/lib/orders";
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   if (!readSession(request.cookies.get("fede_session")?.value)) {
@@ -9,6 +9,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   try {
     const whatsappUrl = await getWhatsappLink(params.id, { requireReady: true });
+    await markReadyWhatsappSent(params.id);
     return NextResponse.json({ whatsappUrl });
   } catch (error) {
     return NextResponse.json(

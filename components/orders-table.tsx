@@ -17,6 +17,7 @@ type OrderRow = {
   title: string;
   isQuote: boolean;
   hasWhatsapp: boolean;
+  readyWhatsappSentAt?: Date | string | null;
   deliveryAt: Date | string;
   deliveredAt?: Date | string | null;
   priority: Priority;
@@ -61,11 +62,12 @@ export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; v
             const panelId = `order-row-panel-${order.id}`;
             const workdayHighlight = view === "ACTIVE" ? getWorkdayHighlight(order.deliveryAt) : null;
             const deliveredLabel = order.deliveredAt ? formatDateTime(order.deliveredAt) : formatDateTime(order.deliveryAt);
+            const whatsappNotified = order.mainPhase === "SVILUPPO_COMPLETATO" && Boolean(order.readyWhatsappSentAt);
 
             return (
               <Fragment key={order.id}>
                 <tr
-                  className={`${isOpen ? "order-row-open" : ""}${workdayHighlight ? ` order-row-${workdayHighlight}` : ""}`}
+                  className={`${isOpen ? "order-row-open" : ""}${workdayHighlight ? ` order-row-${workdayHighlight}` : ""}${whatsappNotified ? " order-row-whatsapp-notified" : ""}`}
                   key={order.id}
                 >
                   <td>
@@ -118,6 +120,7 @@ export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; v
                       compact
                       disabled={order.mainPhase !== "SVILUPPO_COMPLETATO"}
                       hasPhone={order.hasWhatsapp}
+                      notifiedAt={order.readyWhatsappSentAt}
                       orderId={order.id}
                     />
                   </td>
@@ -132,6 +135,7 @@ export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; v
                           isQuote={order.isQuote}
                           orderId={order.id}
                           phase={order.mainPhase}
+                          readyWhatsappSentAt={order.readyWhatsappSentAt}
                           showWhatsapp={false}
                           status={order.operationalStatus}
                         />
