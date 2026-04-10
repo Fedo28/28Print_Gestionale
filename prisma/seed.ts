@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { hashPassword } from "../lib/auth-core";
+import { ensureBillboardAssets } from "../lib/billboards";
 import { buildOrderCode, normalizeForUniqueness } from "../lib/orders";
 import { formatDateKey } from "../lib/format";
 
@@ -165,6 +166,8 @@ async function main() {
       value: "Ciao {nome_cliente}, il tuo ordine {order_code} e pronto per il ritiro."
     }
   });
+
+  await ensureBillboardAssets();
 
   console.log("Seed locale completato", { services: demoServices.length, customerId: customer.id, orderId: order.id });
 }

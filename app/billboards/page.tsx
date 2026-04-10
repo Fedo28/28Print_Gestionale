@@ -16,6 +16,7 @@ export const dynamic = "force-dynamic";
 type BillboardPageProps = {
   searchParams?: {
     date?: string;
+    asset?: string;
   };
 };
 
@@ -25,9 +26,25 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
   await requireAuth();
 
   const focusDate = parseDateParam(searchParams?.date);
+  const selectedAssetCode = (searchParams?.asset || "").trim();
   const [customers, surface] = await Promise.all([getCustomers(), getBillboardSurface(focusDate)]);
   const monthMatrix = buildMonthMatrix(surface.monthBookings, focusDate);
   const today = startOfDay(new Date());
+  const selectedAsset = surface.assets.find((asset) => asset.code === selectedAssetCode) || null;
+  const selectedAssetMonthBookings = selectedAsset
+    ? surface.monthBookings.filter((booking) => booking.billboardAsset.code === selectedAsset.code)
+    : [];
+  const selectedAssetUpcomingBookings = selectedAsset
+    ? surface.upcomingBookings.filter((booking) => booking.billboardAsset.code === selectedAsset.code)
+    : [];
+  const selectedAssetHistoryBookings = selectedAsset
+    ? surface.historyBookings.filter((booking) => booking.billboardAsset.code === selectedAsset.code)
+    : [];
+  const selectedAssetMonthMatrix = selectedAsset ? buildMonthMatrix(selectedAssetMonthBookings, focusDate) : [];
+  const selectedAssetActiveBooking = selectedAssetUpcomingBookings.find((booking) => bookingIncludesDate(booking, today));
+  const selectedAssetNextBooking = selectedAssetUpcomingBookings.find(
+    (booking) => new Date(booking.startsAt).getTime() >= today.getTime()
+  );
   const occupiedToday = surface.assets.filter((asset) => asset.bookings.some((booking) => bookingIncludesDate(booking, today))).length;
   const optionCount = surface.upcomingBookings.filter((booking) => booking.status === "OPZIONATO").length;
   const confirmedThisMonth = surface.monthBookings.filter((booking) => booking.status === "CONFERMATO").length;
@@ -51,7 +68,7 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
         <MetricCard hint="Residui ancora da incassare sulle campagne attive" label="Da incassare" tone="warning" value={formatCurrency(openBalanceCents)} />
       </section>
 
-      <div className="grid grid-2">
+      <div className="grid grid-2 billboard-top-grid">
         <section className="card card-pad">
           <div className="list-header">
             <div>
@@ -87,11 +104,11 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
           />
         </section>
 
-        <section className="card card-pad">
+        <section className="card card-pad billboard-assets-panel">
           <div className="list-header">
             <div>
               <h3>Impianti</h3>
-              <p className="card-muted">Inventario iniziale pronto per essere personalizzato con luoghi reali e disponibilita attive.</p>
+              <p className="card-muted">Clicca un impianto per aprire calendario e prenotazioni relative solo a quel cartellone.</p>
             </div>
             <span className="pill">{surface.assets.length}</span>
           </div>
@@ -100,9 +117,14 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
               const activeBooking = asset.bookings.find((booking) => bookingIncludesDate(booking, today));
               const nextBooking = asset.bookings.find((booking) => new Date(booking.startsAt).getTime() >= today.getTime());
               const queuedCount = Math.max(0, asset.bookings.length - (activeBooking ? 1 : nextBooking ? 1 : 0));
+              const isSelected = selectedAsset?.id === asset.id;
 
               return (
-                <article className={`billboard-asset-card${activeBooking ? " occupied" : ""}`} key={asset.id}>
+                <Link
+                  className={`billboard-asset-card${activeBooking ? " occupied" : ""}${isSelected ? " selected" : ""}`}
+                  href={buildAssetHref(focusDate, asset.code)}
+                  key={asset.id}
+                >
                   <div className="list-header">
                     <div>
                       <strong>{asset.name}</strong>
@@ -146,14 +168,158 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
 
                   <div className="billboard-asset-footer">
                     <span className="pill">{asset.code}</span>
-                    {queuedCount > 0 ? <span className="hint">+{queuedCount} altre campagne in coda</span> : null}
+                    <span className="hint">{queuedCount > 0 ? `+${queuedCount} altre campagne in coda` : "Apri calendario impianto"}</span>
                   </div>
-                </article>
+                </Link>
               );
             })}
           </div>
         </section>
       </div>
+
+      {selectedAsset ? (
+        <section className="card card-pad calendar-shell billboard-detail-shell" id="selected-billboard">
+          <div className="calendar-nav">
+            <div>
+              <span className="compact-kicker">Impianto selezionato</span>
+              <h3>{selectedAsset.name}</h3>
+              <p className="card-muted">
+                {billboardAssetKindLabels[selectedAsset.kind]}
+                {selectedAsset.location ? ` • ${selectedAsset.location}` : " • Luogo da definire"}
+              </p>
+            </div>
+            <div className="calendar-nav-actions">
+              <Link className="button secondary" href={buildAssetHref(new Date(focusDate.getFullYear(), focusDate.getMonth() - 1, 1), selectedAsset.code)}>
+                Mese precedente
+              </Link>
+              <Link className="button ghost" href={buildAssetHref(new Date(), selectedAsset.code)}>
+                Oggi
+              </Link>
+              <Link className="button secondary" href={buildAssetHref(new Date(focusDate.getFullYear(), focusDate.getMonth() + 1, 1), selectedAsset.code)}>
+                Mese successivo
+              </Link>
+              <Link className="button ghost" href={buildMonthHref(focusDate)}>
+                Chiudi dettaglio
+              </Link>
+            </div>
+          </div>
+
+          <section className="grid billboard-detail-summary-grid">
+            <MetricCard
+              hint={selectedAssetActiveBooking ? `Occupato da ${selectedAssetActiveBooking.customer.name}` : "Nessuna campagna attiva oggi"}
+              label="Stato oggi"
+              tone={selectedAssetActiveBooking ? "warning" : "neutral"}
+              value={selectedAssetActiveBooking ? billboardBookingStatusLabels[selectedAssetActiveBooking.status] : "Libero"}
+            />
+            <MetricCard
+              hint="Prenotazioni registrate su questo impianto"
+              label="Campagne totali"
+              tone="brand"
+              value={selectedAssetHistoryBookings.length}
+            />
+            <MetricCard
+              hint={monthLabel}
+              label="Nel mese"
+              tone="success"
+              value={selectedAssetMonthBookings.length}
+            />
+            <MetricCard
+              hint={selectedAssetNextBooking ? `Dal ${formatDate(selectedAssetNextBooking.startsAt)}` : "Nessuna campagna futura"}
+              label="Prossima"
+              tone="neutral"
+              value={selectedAssetNextBooking ? selectedAssetNextBooking.customer.name : "Nessuna"}
+            />
+          </section>
+
+          <div className="calendar-month-wrap">
+            <div className="calendar-month-weekdays">
+              {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((day) => (
+                <span key={day}>{day}</span>
+              ))}
+            </div>
+            <div className="calendar-month-grid">
+              {selectedAssetMonthMatrix.flat().map((day) => {
+                const isFocusMonth = day.date.getMonth() === focusDate.getMonth();
+                return (
+                  <article
+                    className={`calendar-month-cell${isFocusMonth ? "" : " muted"}${day.isToday ? " today" : ""}`}
+                    key={`asset-${selectedAsset.id}-${day.key}`}
+                  >
+                    <div className="calendar-month-head">
+                      <strong>{day.date.getDate()}</strong>
+                      <span>{day.entries.length > 0 ? `${day.entries.length} pren.` : "Libero"}</span>
+                    </div>
+                    <div className="calendar-month-events">
+                      {day.entries.slice(0, 3).map((booking) => (
+                        <div className={`billboard-booking-chip billboard-booking-chip-${booking.status.toLowerCase()}`} key={booking.id}>
+                          <div className="billboard-booking-chip-head">
+                            <strong>{booking.customer.name}</strong>
+                            <span className={`pill ${getBillboardStatusPillClass(booking.status)}`}>
+                              {billboardBookingStatusLabels[booking.status]}
+                            </span>
+                          </div>
+                          <span>
+                            Dal {formatDate(booking.startsAt)} al {formatDate(booking.endsAt)}
+                          </span>
+                          {booking.note ? <span className="billboard-booking-note">{booking.note}</span> : null}
+                        </div>
+                      ))}
+                      {!day.inMonth && day.entries.length === 0 ? <span className="calendar-slot-empty"> </span> : null}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="list-header">
+            <div>
+              <h3>Prenotazioni di questo impianto</h3>
+              <p className="card-muted">Storico e campagne future riferite solo a {selectedAsset.code}.</p>
+            </div>
+            <span className="pill">{selectedAssetHistoryBookings.length}</span>
+          </div>
+          <div className="compact-order-list">
+            {selectedAssetHistoryBookings.length === 0 ? (
+              <div className="empty">Nessuna prenotazione registrata su questo cartellone.</div>
+            ) : (
+              selectedAssetHistoryBookings.map((booking) => (
+                <article className="compact-order-item" key={booking.id}>
+                  <div className="compact-order-main">
+                    <div className="compact-order-head">
+                      <strong>{booking.customer.name}</strong>
+                      <span className="compact-order-aside">{billboardBookingStatusLabels[booking.status]}</span>
+                    </div>
+                    <div className="subtle">
+                      Dal {formatDate(booking.startsAt)} al {formatDate(booking.endsAt)}
+                    </div>
+                    <div className="hint">
+                      {booking.note ? booking.note : "Nessuna nota aggiuntiva"}
+                    </div>
+                    <div className="billboard-booking-financials">
+                      <span>Valore {formatCurrency(booking.priceCents)}</span>
+                      <span>Incassato {formatCurrency(booking.paidCents)}</span>
+                      <span>Residuo {formatCurrency(booking.balanceDueCents)}</span>
+                    </div>
+                  </div>
+                  <div className="billboard-booking-side">
+                    <span className={`pill ${getBillboardStatusPillClass(booking.status)}`}>
+                      {billboardBookingStatusLabels[booking.status]}
+                    </span>
+                    {booking.pdfFilePath ? (
+                      <a className="pill" href={booking.pdfFilePath} rel="noreferrer" target="_blank">
+                        PDF
+                      </a>
+                    ) : (
+                      <span className="pill">Senza PDF</span>
+                    )}
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        </section>
+      ) : null}
 
       <section className="card card-pad calendar-shell">
         <div className="calendar-nav">
@@ -163,13 +329,13 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
             <p className="card-muted">Calendario mensile con copertura giornaliera, stato commerciale e cliente della campagna.</p>
           </div>
           <div className="calendar-nav-actions">
-            <Link className="button secondary" href={buildMonthHref(new Date(focusDate.getFullYear(), focusDate.getMonth() - 1, 1))}>
+            <Link className="button secondary" href={buildMonthHref(new Date(focusDate.getFullYear(), focusDate.getMonth() - 1, 1), selectedAsset?.code)}>
               Mese precedente
             </Link>
-            <Link className="button ghost" href={buildMonthHref(new Date())}>
+            <Link className="button ghost" href={buildMonthHref(new Date(), selectedAsset?.code)}>
               Oggi
             </Link>
-            <Link className="button secondary" href={buildMonthHref(new Date(focusDate.getFullYear(), focusDate.getMonth() + 1, 1))}>
+            <Link className="button secondary" href={buildMonthHref(new Date(focusDate.getFullYear(), focusDate.getMonth() + 1, 1), selectedAsset?.code)}>
               Mese successivo
             </Link>
           </div>
@@ -361,8 +527,20 @@ function getMonthLabel(date: Date) {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
-function buildMonthHref(date: Date) {
-  return `/billboards?date=${formatDateKey(startOfMonth(date))}`;
+function buildMonthHref(date: Date, assetCode?: string) {
+  const searchParams = new URLSearchParams({
+    date: formatDateKey(startOfMonth(date))
+  });
+
+  if (assetCode) {
+    searchParams.set("asset", assetCode);
+  }
+
+  return `/billboards?${searchParams.toString()}`;
+}
+
+function buildAssetHref(date: Date, assetCode: string) {
+  return `${buildMonthHref(date, assetCode)}#selected-billboard`;
 }
 
 function buildMonthMatrix(bookings: BillboardSurface["monthBookings"], focusDate: Date) {

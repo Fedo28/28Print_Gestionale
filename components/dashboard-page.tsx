@@ -61,6 +61,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
 
       <section className="grid dashboard-summary-grid">
         <MiniMetricCard
+          accent="today"
           href={links.today}
           icon={<DashboardGlyph kind="clock" />}
           label="Oggi"
@@ -69,6 +70,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
           tone="neutral"
         />
         <MiniMetricCard
+          accent="agenda"
           href={links.appointments}
           icon={<DashboardGlyph kind="calendar" />}
           label="Agenda"
@@ -77,6 +79,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
           tone="brand"
         />
         <MiniMetricCard
+          accent="overdue"
           href={links.overdue}
           icon={<DashboardGlyph kind="alert" />}
           label="Arretrati"
@@ -85,6 +88,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
           tone="danger"
         />
         <MiniMetricCard
+          accent="to-start"
           href={links.toStart}
           icon={<DashboardGlyph kind="play" />}
           label="Da avviare"
@@ -93,6 +97,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
           tone="neutral"
         />
         <MiniMetricCard
+          accent="working"
           href={links.working}
           icon={<DashboardGlyph kind="tools" />}
           label="In lavorazione"
@@ -101,6 +106,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
           tone="warning"
         />
         <MiniMetricCard
+          accent="blocked"
           href={links.blocked}
           icon={<DashboardGlyph kind="pause" />}
           label="Sospesi"
@@ -109,6 +115,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
           tone="warning"
         />
         <MiniMetricCard
+          accent="ready"
           href={links.ready}
           icon={<DashboardGlyph kind="spark" />}
           label="Pronti"
@@ -117,6 +124,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
           tone="success"
         />
         <MiniMetricCard
+          accent="balance"
           href={links.balance}
           icon={<DashboardGlyph kind="cash" />}
           label="Saldi"
@@ -487,6 +495,7 @@ function DashboardLane({
 }
 
 function MiniMetricCard({
+  accent,
   href,
   icon,
   label,
@@ -494,6 +503,7 @@ function MiniMetricCard({
   hint,
   tone
 }: {
+  accent: "today" | "agenda" | "overdue" | "to-start" | "working" | "blocked" | "ready" | "balance";
   href: string;
   icon: ReactNode;
   label: string;
@@ -502,7 +512,10 @@ function MiniMetricCard({
   tone: "neutral" | "danger" | "warning" | "success" | "brand";
 }) {
   return (
-    <Link className={`card card-pad compact-metric compact-metric-${tone} compact-card-link`} href={href}>
+    <Link
+      className={`card card-pad compact-metric compact-metric-${tone} compact-metric-dashboard compact-accent-${accent} compact-card-link`}
+      href={href}
+    >
       <div className="compact-metric-top">
         <span className="compact-icon">{icon}</span>
         <span className="compact-metric-label">{label}</span>
@@ -691,18 +704,73 @@ function DashboardGlyph({
   kind: "clock" | "alert" | "pause" | "spark" | "cash" | "calendar" | "play" | "tools";
 }) {
   const paths = {
-    clock: <path d="M12 6.5v5l3 2M12 21a9 9 0 1 0 0-18a9 9 0 0 0 0 18Z" />,
-    alert: <path d="M12 8v5m0 3h.01M10.3 4.9L3.8 16.2a1.5 1.5 0 0 0 1.3 2.3h13.8a1.5 1.5 0 0 0 1.3-2.3L13.7 4.9a1.9 1.9 0 0 0-3.4 0Z" />,
-    pause: <path d="M9.2 6.8h1.9v10.4H9.2zm3.7 0h1.9v10.4h-1.9zM12 21a9 9 0 1 0 0-18a9 9 0 0 0 0 18Z" />,
-    spark: <path d="m12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Zm6 13l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8L18 16ZM6 14l1 2.8L9.8 18L7 19l-1 2.8L5 19l-2.8-1L5 16.8L6 14Z" />,
-    cash: <path d="M4 7.5h16v9H4zm3 4.5h.01M17 12h.01M12 14.5a2.5 2.5 0 1 0 0-5a2.5 2.5 0 0 0 0 5Z" />,
-    calendar: <path d="M7.5 3.5v3m9-3v3M5.5 8h13m-14 1.5A2.5 2.5 0 0 1 7 7h10a2.5 2.5 0 0 1 2.5 2.5V18A2.5 2.5 0 0 1 17 20.5H7A2.5 2.5 0 0 1 4.5 18Z" />,
-    play: <path d="M9 7.5v9l7-4.5-7-4.5ZM12 21a9 9 0 1 0 0-18a9 9 0 0 0 0 18Z" />,
-    tools: <path d="m14.5 6.5 3 3m-8.2 8.2 8.9-8.9a2 2 0 0 0-2.8-2.8l-8.9 8.9a2 2 0 0 0-.5.8l-.8 2.6 2.6-.8a2 2 0 0 0 .8-.5ZM8 5.5l1.5 1.5M5.5 8 7 9.5" />
+    clock: (
+      <>
+        <circle cx="12" cy="12" r="8.15" />
+        <path d="M12 7.8v4.6l3.15 1.95" />
+      </>
+    ),
+    alert: (
+      <>
+        <path d="M12 4.75 19 16.9a1.2 1.2 0 0 1-1.04 1.8H6.04A1.2 1.2 0 0 1 5 16.9L12 4.75Z" />
+        <path d="M12 9.15v4.7" />
+        <circle cx="12" cy="16.2" r="0.92" fill="currentColor" stroke="none" />
+      </>
+    ),
+    pause: (
+      <>
+        <rect x="7.3" y="5.6" width="3.6" height="12.8" rx="1.15" fill="currentColor" stroke="none" />
+        <rect x="13.1" y="5.6" width="3.6" height="12.8" rx="1.15" fill="currentColor" stroke="none" />
+      </>
+    ),
+    spark: (
+      <path
+        d="M12 3.15 13.8 8.2l5.05 1.8-5.05 1.8L12 16.85l-1.8-5.05L5.15 10l5.05-1.8L12 3.15Zm6.15 11.35.7 1.95 1.95.7-1.95.7-.7 1.95-.7-1.95-1.95-.7 1.95-.7.7-1.95ZM5.85 14.85l.9 2.5 2.5.9-2.5.9-.9 2.5-.9-2.5-2.5-.9 2.5-.9.9-2.5Z"
+        fill="currentColor"
+        stroke="none"
+      />
+    ),
+    cash: (
+      <>
+        <rect x="4.2" y="7.1" width="15.6" height="9.8" rx="2.2" />
+        <circle cx="12" cy="12" r="2.35" />
+        <path d="M7.25 9.25h.01M16.75 14.75h.01" />
+      </>
+    ),
+    calendar: (
+      <>
+        <path d="M7.75 3.95v2.7M16.25 3.95v2.7" />
+        <rect x="4.55" y="5.75" width="14.9" height="13.2" rx="2.8" />
+        <path d="M4.55 9.35h14.9" />
+      </>
+    ),
+    play: (
+      <path
+        d="M8.35 6.1v11.8c0 .67.74 1.08 1.31.72l8.7-5.9a.86.86 0 0 0 0-1.44l-8.7-5.9a.86.86 0 0 0-1.31.72Z"
+        fill="currentColor"
+        stroke="none"
+      />
+    ),
+    tools: (
+      <>
+        <path d="m14.65 5.6 3.75 3.75" />
+        <path d="M7.85 16.15 16 8a2.2 2.2 0 1 0-3.1-3.1l-8.15 8.15-.95 4.05 4.05-.95Z" />
+      </>
+    )
   };
 
   return (
-    <svg aria-hidden="true" className="glyph" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+    <svg
+      aria-hidden="true"
+      className="glyph dashboard-glyph"
+      fill="none"
+      shapeRendering="geometricPrecision"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2.05"
+      viewBox="0 0 24 24"
+    >
       {paths[kind]}
     </svg>
   );

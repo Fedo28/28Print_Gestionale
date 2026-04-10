@@ -2,6 +2,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { prisma } from "../lib/prisma";
 import { hashPassword } from "../lib/auth-core";
+import { ensureBillboardAssets } from "../lib/billboards";
 import {
   bootstrapServiceCatalogTemplateIfEmpty,
   importServiceCatalogWorkbookFile
@@ -65,6 +66,8 @@ async function main() {
     importWorkbookFile: importServiceCatalogWorkbookFile,
     logger: console
   });
+
+  await ensureBillboardAssets();
 
   console.log("Production bootstrap completed.");
 }

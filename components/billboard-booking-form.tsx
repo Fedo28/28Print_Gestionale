@@ -117,7 +117,7 @@ export function BillboardBookingForm({
           setSelectedAssetId(asset.id);
           setAssetQuery(asset.name);
         }}
-        placeholder="Es. Cartellone 03, monitor, CARTELLONE_12"
+        placeholder="Es. 1001, Ponte del Grillo, monitor"
         query={assetQuery}
         selectedAssetId={selectedAssetId}
       />

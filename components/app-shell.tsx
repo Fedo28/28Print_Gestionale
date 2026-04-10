@@ -39,8 +39,7 @@ const navItems = [
   { href: "/calendar", label: "Calendario", icon: "calendar", tone: "amber" },
   { href: "/billboards", label: "Cartelloni", icon: "billboards", tone: "teal" },
   { href: "/production", label: "Produzione", icon: "production", tone: "mint" },
-  { href: "/stats", label: "Statistiche", icon: "stats", tone: "sky" },
-  { href: "/settings", label: "Impostazioni", icon: "settings", tone: "neutral" }
+  { href: "/stats", label: "Statistiche", icon: "stats", tone: "sky" }
 ] as const satisfies ReadonlyArray<{
   href: string;
   label: string;
@@ -209,14 +208,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
           );
         })}
-        <a className="nav-link nav-tone-neutral" href="/logout" onClick={options?.onNavigate}>
-          <span aria-hidden="true" className="nav-icon">
-            <ShellGlyph kind="logout" />
-          </span>
-          <span className="nav-copy">
-            <span>Logout</span>
-          </span>
-        </a>
       </>
     );
   }
@@ -236,13 +227,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <nav className="nav-list">{renderNavLinks()}</nav>
-
-          <div className="sidebar-utility">
-            <ThemeToggle
-              checked={theme === THEMES.dark}
-              onChange={handleThemeChange}
-            />
-          </div>
         </div>
       </aside>
 
@@ -309,12 +293,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 
             <nav className="nav-list mobile-nav-list">{renderNavLinks({ onNavigate: handleMobileNavLinkClick })}</nav>
 
-            <div className="mobile-nav-foot">
-              <ThemeToggle
-                checked={theme === THEMES.dark}
-                onChange={handleThemeChange}
-              />
-            </div>
           </div>
         </div>
 
@@ -324,6 +302,31 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span aria-hidden className="stage-glow stage-glow-c" />
           <div className="shell-toolbar">
             <GlobalSearch />
+            <div className="shell-toolbar-actions">
+              <ThemeToggle
+                checked={theme === THEMES.dark}
+                className="toolbar-theme-toggle"
+                hint="Tema serale"
+                label="Dark mode"
+                onChange={handleThemeChange}
+              />
+              <Link
+                aria-label="Apri impostazioni"
+                className="shell-toolbar-icon-link shell-toolbar-settings-link"
+                href="/settings"
+              >
+                <ShellGlyph kind="settings" />
+              </Link>
+              <a
+                className="shell-toolbar-link"
+                href="/logout"
+              >
+                <span aria-hidden="true" className="shell-toolbar-link-icon">
+                  <ShellGlyph kind="logout" />
+                </span>
+                <span>Logout</span>
+              </a>
+            </div>
           </div>
           <main>{children}</main>
         </div>
@@ -389,10 +392,13 @@ function ShellGlyph({ kind }: { kind: NavIcon }) {
       </>
     ),
     settings: (
-      <>
-        <path d="M12 8.5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 0 0 0-7Z" />
-        <path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M17.3 6.7l-1.5 1.5M8.2 15.8l-1.5 1.5M17.3 17.3l-1.5-1.5M8.2 8.2L6.7 6.7" />
-      </>
+      <path
+        clipRule="evenodd"
+        d="M10.68 2.75a1 1 0 0 1 1.64 0l1.04 1.5a1 1 0 0 0 1.16.39l1.75-.57a1 1 0 0 1 1.31.98l-.06 1.82a1 1 0 0 0 .74.98l1.75.48a1 1 0 0 1 .5 1.56l-1.12 1.43a1 1 0 0 0 0 1.24l1.12 1.43a1 1 0 0 1-.5 1.56l-1.75.48a1 1 0 0 0-.74.98l.06 1.82a1 1 0 0 1-1.31.98l-1.75-.57a1 1 0 0 0-1.16.39l-1.04 1.5a1 1 0 0 1-1.64 0l-1.04-1.5a1 1 0 0 0-1.16-.39l-1.75.57a1 1 0 0 1-1.31-.98l.06-1.82a1 1 0 0 0-.74-.98l-1.75-.48a1 1 0 0 1-.5-1.56l1.12-1.43a1 1 0 0 0 0-1.24L2.99 9.6a1 1 0 0 1 .5-1.56l1.75-.48a1 1 0 0 0 .74-.98l-.06-1.82a1 1 0 0 1 1.31-.98l1.75.57a1 1 0 0 0 1.16-.39l1.04-1.5ZM12 8.25a3.75 3.75 0 1 0 0 7.5a3.75 3.75 0 0 0 0-7.5Z"
+        fill="currentColor"
+        fillRule="evenodd"
+        stroke="none"
+      />
     ),
     logout: (
       <>
