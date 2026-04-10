@@ -61,7 +61,7 @@ export function BillboardBookingForm({
       <CustomerAutocomplete
         customers={customers}
         emptyMessage="Cliente non trovato. Crealo prima nella sezione clienti, poi torna qui per prenotare."
-        helperText="Scrivi nome, telefono, email, codice fiscale o partita IVA per trovare subito il cliente da prenotare."
+        helperText="Scrivi nome, telefono, email, PEC, codice fiscale, partita IVA o codice univoco per trovare subito il cliente da prenotare."
         label="Cliente"
         onQueryChange={(value) => {
           setCustomerQuery(value);
@@ -97,7 +97,7 @@ export function BillboardBookingForm({
               Cambia cliente
             </button>
           </div>
-          <div className="subtle">{selectedCustomer.phone}</div>
+          <div className="subtle">{selectedCustomer.phone || "Telefono non inserito"}</div>
           <div className="subtle">{selectedCustomer.email || selectedCustomer.whatsapp || "Nessun contatto secondario"}</div>
         </div>
       ) : null}

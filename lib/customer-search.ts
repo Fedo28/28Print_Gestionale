@@ -3,11 +3,13 @@ import { CustomerType } from "@prisma/client";
 export type SearchableCustomer = {
   id: string;
   name: string;
-  phone: string;
+  phone?: string | null;
   whatsapp?: string | null;
   email?: string | null;
+  pec?: string | null;
   taxCode?: string | null;
   vatNumber?: string | null;
+  uniqueCode?: string | null;
   type: CustomerType;
 };
 
@@ -23,11 +25,13 @@ function buildCustomerSearchHaystack(customer: SearchableCustomer) {
   return normalizeCustomerSearchValue(
     [
       customer.name,
-      customer.phone,
+      customer.phone || "",
       customer.whatsapp || "",
       customer.email || "",
+      customer.pec || "",
       customer.taxCode || "",
-      customer.vatNumber || ""
+      customer.vatNumber || "",
+      customer.uniqueCode || ""
     ].join(" ")
   );
 }
@@ -35,11 +39,13 @@ function buildCustomerSearchHaystack(customer: SearchableCustomer) {
 export function getCustomerSearchScore(customer: SearchableCustomer, normalizedQuery: string) {
   const haystack = buildCustomerSearchHaystack(customer);
   const normalizedName = normalizeCustomerSearchValue(customer.name);
-  const normalizedPhone = normalizeCustomerSearchValue(customer.phone);
+  const normalizedPhone = normalizeCustomerSearchValue(customer.phone || "");
   const normalizedWhatsapp = normalizeCustomerSearchValue(customer.whatsapp || "");
   const normalizedEmail = normalizeCustomerSearchValue(customer.email || "");
+  const normalizedPec = normalizeCustomerSearchValue(customer.pec || "");
   const normalizedTaxCode = normalizeCustomerSearchValue(customer.taxCode || "");
   const normalizedVatNumber = normalizeCustomerSearchValue(customer.vatNumber || "");
+  const normalizedUniqueCode = normalizeCustomerSearchValue(customer.uniqueCode || "");
   const terms = normalizedQuery.split(/\s+/).filter(Boolean);
 
   if (!terms.length || !terms.every((term) => haystack.includes(term))) {
@@ -70,15 +76,27 @@ export function getCustomerSearchScore(customer: SearchableCustomer, normalizedQ
     return 5;
   }
 
+  if (normalizedPec === normalizedQuery) {
+    return 5;
+  }
+
   if (normalizedEmail.includes(normalizedQuery)) {
     return 6;
   }
 
-  if (normalizedTaxCode === normalizedQuery || normalizedVatNumber === normalizedQuery) {
+  if (normalizedPec.includes(normalizedQuery)) {
+    return 6;
+  }
+
+  if (normalizedTaxCode === normalizedQuery || normalizedVatNumber === normalizedQuery || normalizedUniqueCode === normalizedQuery) {
     return 7;
   }
 
-  if (normalizedTaxCode.includes(normalizedQuery) || normalizedVatNumber.includes(normalizedQuery)) {
+  if (
+    normalizedTaxCode.includes(normalizedQuery) ||
+    normalizedVatNumber.includes(normalizedQuery) ||
+    normalizedUniqueCode.includes(normalizedQuery)
+  ) {
     return 8;
   }
 
@@ -102,7 +120,7 @@ export function rankCustomers<T extends SearchableCustomer>(customers: T[], quer
       (left, right) =>
         left.score - right.score ||
         left.customer.name.localeCompare(right.customer.name, "it") ||
-        left.customer.phone.localeCompare(right.customer.phone, "it")
+        (left.customer.phone || "").localeCompare(right.customer.phone || "", "it")
     )
     .map((entry) => entry.customer);
 }

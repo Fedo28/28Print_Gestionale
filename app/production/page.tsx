@@ -3,8 +3,9 @@ import { PageHeader } from "@/components/page-header";
 import { QuickOrderControls } from "@/components/quick-order-controls";
 import { StatusPills } from "@/components/status-pills";
 import { requireAuth } from "@/lib/auth";
-import { formatDateTime } from "@/lib/format";
+import { formatCompactDate } from "@/lib/format";
 import { getProductionQueues } from "@/lib/orders";
+import { getWorkdayHighlight } from "@/lib/workday-highlights";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ function QueueColumn({
   orders: Awaited<ReturnType<typeof getProductionQueues>>["planning"];
 }) {
   return (
-    <section className="card card-pad">
+    <section className="card card-pad compact-lane-card queue-column-card">
       <div className="list-header">
         <div>
           <h3>{title}</h3>
@@ -26,33 +27,50 @@ function QueueColumn({
         </div>
         <span className="pill">{orders.length}</span>
       </div>
-      <div className="queue">
+      <div className="compact-order-list">
         {orders.length === 0 ? (
           <div className="empty">Nessun ordine in questa coda.</div>
         ) : (
-          orders.map((order) => (
-            <article className="queue-card" key={order.id}>
-              <div className="order-inline-head">
-                <QuickOrderControls
-                  align="start"
-                  hasWhatsapp={Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""))}
-                  orderId={order.id}
+          <div className="compact-order-grid compact-order-grid-dense queue-grid-dense">
+            {orders.map((order) => {
+            const workdayHighlight = getWorkdayHighlight(order.deliveryAt);
+
+            return (
+              <article
+                className={`compact-order-item compact-order-item-dashboard compact-order-item-dense workday-highlight-card${workdayHighlight ? ` ${workdayHighlight}` : ""}`}
+                key={order.id}
+              >
+                <div className="compact-order-main">
+                  <div className="compact-order-head">
+                    <QuickOrderControls
+                      align="start"
+                      hasWhatsapp={Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""))}
+                      orderId={order.id}
+                      phase={order.mainPhase}
+                      status={order.operationalStatus}
+                    />
+                    <Link className="order-code" href={`/orders/${order.id}`}>
+                      {order.orderCode}
+                    </Link>
+                  </div>
+                  <div className="subtle compact-order-customer">{order.customer.name}</div>
+                  <div className="hint compact-order-meta">Consegna {formatCompactDate(order.deliveryAt)}</div>
+                  {workdayHighlight === "weekend" ? <div className="hint">Consegna in weekend</div> : null}
+                  {order.operationalStatus !== "ATTIVO" ? (
+                    <div className="hint">{order.operationalNote || "Motivo sospensione non indicato"}</div>
+                  ) : null}
+                </div>
+                <StatusPills
+                  hideNeutralStatus
+                  linked={false}
                   phase={order.mainPhase}
+                  payment={order.paymentStatus}
                   status={order.operationalStatus}
                 />
-                <Link className="order-code" href={`/orders/${order.id}`}>
-                  {order.orderCode}
-                </Link>
-              </div>
-              <div className="subtle">
-                {order.customer.name} - {formatDateTime(order.deliveryAt)}
-              </div>
-              {order.operationalStatus !== "ATTIVO" ? (
-                <div className="hint">{order.operationalNote || "Motivo sospensione non indicato"}</div>
-              ) : null}
-              <StatusPills phase={order.mainPhase} status={order.operationalStatus} payment={order.paymentStatus} />
-            </article>
-          ))
+              </article>
+            );
+          })}
+          </div>
         )}
       </div>
     </section>

@@ -8,11 +8,13 @@ import { rankCustomers } from "@/lib/customer-search";
 export type CustomerAutocompleteOption = {
   id: string;
   name: string;
-  phone: string;
+  phone?: string | null;
   whatsapp?: string | null;
   email?: string | null;
+  pec?: string | null;
   taxCode?: string | null;
   vatNumber?: string | null;
+  uniqueCode?: string | null;
   type: CustomerType;
   orderCount?: number;
 };
@@ -87,8 +89,7 @@ export function CustomerAutocomplete({
               >
                 <strong>{customer.name}</strong>
                 <span>
-                  {customer.phone}
-                  {customer.email ? ` • ${customer.email}` : ""}
+                  {[customer.phone, customer.email].filter(Boolean).join(" • ") || "Nessun contatto rapido"}
                 </span>
                 <span>
                   {customerTypeLabels[customer.type]}

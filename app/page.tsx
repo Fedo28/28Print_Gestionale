@@ -3,7 +3,13 @@ import { requireAuth } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-export default async function Page() {
+type Props = {
+  searchParams?: {
+    panel?: string;
+  };
+};
+
+export default async function Page({ searchParams }: Props) {
   await requireAuth();
-  return <DashboardPage />;
+  return <DashboardPage panel={searchParams?.panel} />;
 }

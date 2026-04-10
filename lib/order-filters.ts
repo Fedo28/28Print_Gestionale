@@ -3,6 +3,7 @@ import { normalizeMainPhaseForWorkflow, visibleMainPhases } from "@/lib/constant
 import type { VisibleMainPhase } from "@/lib/constants";
 
 export type QuoteFilter = "ALL" | "QUOTE" | "ORDER";
+export type OrderListView = "ACTIVE" | "DELIVERED";
 export type PhaseFilter = VisibleMainPhase | "ALL";
 export type StatusFilter = OperationalStatus | "ALL";
 export type PaymentFilter = PaymentStatus | "ALL";
@@ -33,6 +34,7 @@ export const dashboardPresetLabels: Record<Exclude<DashboardPreset, "ALL">, stri
 };
 
 export type OrderListFilters = {
+  view?: OrderListView;
   q?: string;
   phase?: PhaseFilter;
   status?: StatusFilter;
@@ -48,6 +50,10 @@ const operationalStatuses: OperationalStatus[] = ["ATTIVO", "IN_ATTESA_FILE", "I
 const paymentStatuses: PaymentStatus[] = ["NON_PAGATO", "ACCONTO", "PARZIALE", "PAGATO"];
 const invoiceStatuses: InvoiceStatus[] = ["DA_FATTURARE", "FATTURATO", "NON_RICHIESTO"];
 const priorities: Priority[] = ["BASSA", "MEDIA", "ALTA", "URGENTE"];
+
+export function parseOrderListView(raw: string | null): OrderListView {
+  return raw === "DELIVERED" ? "DELIVERED" : "ACTIVE";
+}
 
 export function parsePhaseFilter(raw: string | null): PhaseFilter {
   if (!raw) {
@@ -105,12 +111,17 @@ export function parseDashboardPreset(raw: string | null): DashboardPreset {
 
 export function buildOrdersFilterHref(filters: OrderListFilters) {
   const params = new URLSearchParams();
+  const deliveredView = filters.view === "DELIVERED" || filters.phase === "CONSEGNATO";
+
+  if (deliveredView) {
+    params.set("view", "DELIVERED");
+  }
 
   if (filters.q?.trim()) {
     params.set("q", filters.q.trim());
   }
 
-  if (filters.phase && filters.phase !== "ALL") {
+  if (filters.phase && filters.phase !== "ALL" && filters.phase !== "CONSEGNATO") {
     params.set("phase", normalizeMainPhaseForWorkflow(filters.phase));
   }
 

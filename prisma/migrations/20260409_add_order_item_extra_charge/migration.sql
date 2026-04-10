@@ -1,0 +1,3 @@
+ALTER TABLE "OrderItem"
+ADD COLUMN "extraMode" "DiscountMode" NOT NULL DEFAULT 'NONE',
+ADD COLUMN "extraValue" INTEGER NOT NULL DEFAULT 0;

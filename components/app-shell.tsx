@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { MouseEvent, ReactNode } from "react";
 import { GlobalSearch } from "@/components/global-search";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -34,6 +34,7 @@ const COMPACT_NAV_MEDIA_QUERY = "(max-width: 1180px)";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const isLoginRoute = pathname === "/login";
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeName>(DEFAULT_THEME);
@@ -63,6 +64,30 @@ export function AppShell({ children }: { children: ReactNode }) {
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
   }, []);
+
+  useEffect(() => {
+    const schedulePrefetch = () => {
+      for (const item of navItems) {
+        router.prefetch(item.href);
+      }
+      router.prefetch("/orders/new");
+      router.prefetch("/quotes/new");
+    };
+
+    const supportsIdleCallback = "requestIdleCallback" in window && "cancelIdleCallback" in window;
+    const prefetchHandle = supportsIdleCallback
+      ? window.requestIdleCallback(schedulePrefetch)
+      : window.setTimeout(schedulePrefetch, 180);
+
+    return () => {
+      if (supportsIdleCallback) {
+        window.cancelIdleCallback(prefetchHandle);
+        return;
+      }
+
+      window.clearTimeout(prefetchHandle);
+    };
+  }, [router]);
 
   useEffect(() => {
     if (typeof window === "undefined") {

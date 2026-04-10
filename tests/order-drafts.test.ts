@@ -26,7 +26,7 @@ describe("order drafts", () => {
         items: [
           {
             label: "Biglietti visita",
-            quantity: 2,
+            quantity: 0.5,
             discountMode: "NONE"
           }
         ]
@@ -34,7 +34,7 @@ describe("order drafts", () => {
     );
 
     expect(snapshot?.fields.title).toBe("Biglietti visita");
-    expect(snapshot?.items[0]?.quantity).toBe(2);
+    expect(snapshot?.items[0]?.quantity).toBe("0,5");
     expect(snapshot?.selectedCustomerId).toBe("customer-1");
   });
 

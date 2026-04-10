@@ -8,6 +8,8 @@ import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
 import { StatusPills } from "@/components/status-pills";
 import { priorityLabels } from "@/lib/constants";
 import { formatCurrency, formatDateTime } from "@/lib/format";
+import type { OrderListView } from "@/lib/order-filters";
+import { getWorkdayHighlight } from "@/lib/workday-highlights";
 
 type OrderRow = {
   id: string;
@@ -16,6 +18,7 @@ type OrderRow = {
   isQuote: boolean;
   hasWhatsapp: boolean;
   deliveryAt: Date | string;
+  deliveredAt?: Date | string | null;
   priority: Priority;
   mainPhase: MainPhase;
   operationalStatus: OperationalStatus;
@@ -24,12 +27,13 @@ type OrderRow = {
   balanceDueCents: number;
   customer: {
     name: string;
-    phone: string;
+    phone?: string | null;
   };
 };
 
-export function OrdersTable({ orders }: { orders: OrderRow[] }) {
+export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; view?: OrderListView }) {
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  const deliveryColumnLabel = view === "DELIVERED" ? "Consegnato" : "Consegna";
 
   return (
     <table>
@@ -37,7 +41,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
         <tr>
           <th>Ordine</th>
           <th>Cliente</th>
-          <th>Consegna</th>
+          <th>{deliveryColumnLabel}</th>
           <th>Priorita</th>
           <th>Stato</th>
           <th>Importi</th>
@@ -55,10 +59,15 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
           orders.map((order) => {
             const isOpen = openOrderId === order.id;
             const panelId = `order-row-panel-${order.id}`;
+            const workdayHighlight = view === "ACTIVE" ? getWorkdayHighlight(order.deliveryAt) : null;
+            const deliveredLabel = order.deliveredAt ? formatDateTime(order.deliveredAt) : formatDateTime(order.deliveryAt);
 
             return (
               <Fragment key={order.id}>
-                <tr className={isOpen ? "order-row-open" : ""} key={order.id}>
+                <tr
+                  className={`${isOpen ? "order-row-open" : ""}${workdayHighlight ? ` order-row-${workdayHighlight}` : ""}`}
+                  key={order.id}
+                >
                   <td>
                     <div className="order-inline-head">
                       <QuickOrderTriggerButton
@@ -77,9 +86,19 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                   </td>
                   <td>
                     <strong>{order.customer.name}</strong>
-                    <div className="subtle">{order.customer.phone}</div>
+                    <div className="subtle">{order.customer.phone || "Telefono non inserito"}</div>
                   </td>
-                  <td>{formatDateTime(order.deliveryAt)}</td>
+                  <td className={`orders-table-delivery-cell${workdayHighlight ? ` ${workdayHighlight}` : ""}`}>
+                    <div className={`order-deadline-chip${workdayHighlight ? ` ${workdayHighlight}` : ""}${view === "DELIVERED" ? " delivered" : ""}`}>
+                      <strong>{view === "DELIVERED" ? deliveredLabel : formatDateTime(order.deliveryAt)}</strong>
+                      {view === "DELIVERED" ? (
+                        <span>Consegnato</span>
+                      ) : workdayHighlight === "weekend" ? (
+                        <span>Weekend</span>
+                      ) : null}
+                      {view === "DELIVERED" && order.deliveredAt ? <span>Prevista {formatDateTime(order.deliveryAt)}</span> : null}
+                    </div>
+                  </td>
                   <td>{priorityLabels[order.priority]}</td>
                   <td>
                     <StatusPills

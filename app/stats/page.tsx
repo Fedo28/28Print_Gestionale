@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatQuantity } from "@/lib/format";
 import { getSalesStats, type SalesStatsMonth, type SalesStatsTopItem, type SalesStatsTrend } from "@/lib/orders";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +46,7 @@ export default async function StatsPage() {
         />
         <StatsMetricCard
           title="Quantita mese"
-          value={String(currentMonth.quantity)}
+          value={formatQuantity(currentMonth.quantity)}
           hint="Righe vendute"
           tone="success"
         />
@@ -62,7 +62,7 @@ export default async function StatsPage() {
             </div>
             <div className="stats-period-meta">
               <strong>{formatCurrency(totalRevenue)}</strong>
-              <span className="subtle">{totalQuantity} pezzi complessivi</span>
+              <span className="subtle">{formatQuantity(totalQuantity)} pezzi complessivi</span>
             </div>
           </div>
 
@@ -73,7 +73,7 @@ export default async function StatsPage() {
                   <div>
                     <strong>{month.label}</strong>
                     <div className="subtle">
-                      {month.ordersCount} ordini • {month.quantity} pezzi
+                      {month.ordersCount} ordini • {formatQuantity(month.quantity)} pezzi
                     </div>
                   </div>
                   <div className={`stats-delta stats-delta-${month.trend}`}>{formatTrendValue(month)}</div>
@@ -164,7 +164,7 @@ function StatsTopList({
               <div className="subtle">{item.orderCount} ordini coinvolti</div>
             </div>
             <div className="stats-top-aside">
-              <strong>{metric === "revenue" ? formatCurrency(item.revenueCents) : `${item.quantity}`}</strong>
+              <strong>{metric === "revenue" ? formatCurrency(item.revenueCents) : formatQuantity(item.quantity)}</strong>
               <span className="hint">{share.toLocaleString("it-IT", { maximumFractionDigits: 1 })}% quota</span>
             </div>
           </article>

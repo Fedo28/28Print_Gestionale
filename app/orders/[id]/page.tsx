@@ -7,7 +7,7 @@ import {
   recordPaymentAction,
   transitionPhaseAction,
   updateOrderAction,
-  updateOrderStatusAction
+  updateOrderStatusDetailAction
 } from "@/app/actions";
 import { PageHeader } from "@/components/page-header";
 import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
@@ -22,10 +22,10 @@ import {
   paymentMethodLabels,
   priorityLabels
 } from "@/lib/constants";
-import { formatCurrency, formatDateTime, toDateTimeLocalInput } from "@/lib/format";
+import { formatCurrency, formatDateTime, formatQuantity, toDateTimeLocalInput } from "@/lib/format";
 import { buildOrdersFilterHref } from "@/lib/order-filters";
 import { getOrderById } from "@/lib/orders";
-import { formatDiscountSummary } from "@/lib/pricing";
+import { formatDiscountSummary, formatExtraSummary } from "@/lib/pricing";
 import { resolveAttachmentStorageMode } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +49,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         title={order.orderCode}
         description={`Titolo corrente: ${order.title}`}
         action={
-          <Link className="button ghost" href={order.isQuote ? "/quotes" : "/orders"}>
+          <Link className="button ghost" href={order.isQuote ? "/quotes" : order.mainPhase === "CONSEGNATO" ? "/orders?view=DELIVERED" : "/orders"}>
             {order.isQuote ? "Torna ai preventivi" : "Torna agli ordini"}
           </Link>
         }
@@ -61,7 +61,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
             <div className="list-header">
               <div>
                 <h3>{order.customer.name}</h3>
-                <p className="card-muted">{order.customer.phone}</p>
+                <p className="card-muted">{order.customer.phone || "Telefono non inserito"}</p>
               </div>
               <StatusPills
                 linked={!order.isQuote}
@@ -119,7 +119,11 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           <div className="stack">
             <div>
               <h3>Prossimo passo</h3>
-              <p className="card-muted">Consegna prevista {formatDateTime(order.deliveryAt)}</p>
+              <p className="card-muted">
+                {order.mainPhase === "CONSEGNATO" && order.deliveredAt
+                  ? `Consegnato il ${formatDateTime(order.deliveredAt)}`
+                  : `Consegna prevista ${formatDateTime(order.deliveryAt)}`}
+              </p>
             </div>
             <p className="hint action-note">
               {order.isQuote
@@ -167,7 +171,9 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                 <ReadyWhatsAppButton hasPhone={hasWhatsapp} orderId={order.id} />
               </div>
             ) : (
-              <div className="empty">Ordine gia consegnato.</div>
+              <div className="empty">
+                {order.deliveredAt ? `Ordine gia consegnato il ${formatDateTime(order.deliveredAt)}.` : "Ordine gia consegnato."}
+              </div>
             )}
           </div>
         </article>
@@ -253,7 +259,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                 ? "Nessun blocco operativo attivo."
                 : `Motivo corrente: ${order.operationalNote || "non indicato"}`}
             </p>
-            <form action={updateOrderStatusAction} className="form-grid order-status-form" id="order-status-form">
+            <form action={updateOrderStatusDetailAction} className="form-grid order-status-form">
               <input name="orderId" type="hidden" value={order.id} />
               <div className="field order-status-field">
                 <label htmlFor="operationalStatus">Stato</label>
@@ -274,12 +280,12 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                   placeholder="Motivo sospensione o dettaglio operativo"
                 />
               </div>
+              <div className="button-row order-status-actions">
+                <button className="secondary" type="submit">
+                  Salva stato
+                </button>
+              </div>
             </form>
-            <div className="button-row order-status-actions">
-              <button className="secondary" form="order-status-form" type="submit">
-                Salva stato
-              </button>
-            </div>
             <DeleteOrderForm isQuote={order.isQuote} orderId={order.id} />
           </div>
         </section>
@@ -296,11 +302,12 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                   <span>{formatCurrency(item.lineTotalCents)}</span>
                 </div>
                 <div className="subtle">
-                  {item.quantity} x {formatCurrency(item.unitPriceCents)}
+                  {formatQuantity(item.quantity)} x {formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}
                 </div>
                 <div className="subtle order-item-pricing">
                   Listino {formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}
                   {item.discountMode !== "NONE" ? ` • ${formatDiscountSummary(item.discountMode, item.discountValue)}` : ""}
+                  {item.extraMode !== "NONE" ? ` • ${formatExtraSummary(item.extraMode, item.extraValue)}` : ""}
                 </div>
                 <div className="subtle">{[item.format, item.material, item.finishing].filter(Boolean).join(" - ") || "Lavorazione personalizzata"}</div>
               </article>

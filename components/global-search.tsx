@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useId, useRef, useState } from "react";
+import { startTransition, useEffect, useId, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { GlobalSearchSection } from "@/lib/global-search";
 
@@ -19,10 +19,11 @@ export function GlobalSearch() {
   const [isFocused, setIsFocused] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [shortcutLabel, setShortcutLabel] = useState("Ctrl");
-  const deferredQuery = useDeferredValue(query);
+  const [debouncedQuery, setDebouncedQuery] = useState("");
 
   useEffect(() => {
     setQuery("");
+    setDebouncedQuery("");
     setSections([]);
     setIsFocused(false);
   }, [pathname]);
@@ -62,7 +63,15 @@ export function GlobalSearch() {
   }, []);
 
   useEffect(() => {
-    const normalizedQuery = deferredQuery.trim();
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 140);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [query]);
+
+  useEffect(() => {
+    const normalizedQuery = debouncedQuery.trim();
     if (normalizedQuery.length < 2) {
       setSections([]);
       setIsLoading(false);
@@ -98,10 +107,23 @@ export function GlobalSearch() {
       });
 
     return () => controller.abort();
-  }, [deferredQuery]);
+  }, [debouncedQuery]);
+
+  useEffect(() => {
+    for (const item of sections.flatMap((section) => section.items).slice(0, 6)) {
+      router.prefetch(item.href);
+    }
+  }, [router, sections]);
 
   const totalResults = sections.reduce((sum, section) => sum + section.items.length, 0);
   const showPanel = isFocused && query.trim().length > 0;
+
+  function navigateTo(href: string) {
+    startTransition(() => {
+      router.push(href);
+    });
+    setIsFocused(false);
+  }
 
   return (
     <div className="global-search" ref={containerRef}>
@@ -115,8 +137,7 @@ export function GlobalSearch() {
           }
 
           const firstResult = sections[0]?.items[0];
-          router.push(firstResult?.href || `/orders?q=${encodeURIComponent(normalizedQuery)}`);
-          setIsFocused(false);
+          navigateTo(firstResult?.href || `/orders?q=${encodeURIComponent(normalizedQuery)}`);
         }}
       >
         <label className="global-search-label" htmlFor={inputId}>
@@ -184,11 +205,10 @@ export function GlobalSearch() {
                     <button
                       className="global-search-result"
                       key={`${section.key}-${item.id}`}
-                      onClick={() => {
-                        router.push(item.href);
-                        setIsFocused(false);
-                      }}
+                      onClick={() => navigateTo(item.href)}
+                      onMouseEnter={() => router.prefetch(item.href)}
                       onMouseDown={(event) => event.preventDefault()}
+                      onFocus={() => router.prefetch(item.href)}
                       type="button"
                     >
                       <strong>{item.label}</strong>

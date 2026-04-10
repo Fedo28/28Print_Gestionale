@@ -167,6 +167,10 @@ export function parseItemsPayload(raw: string | null): OrderItemInput[] {
       ? String(entry.discountMode ?? "NONE")
       : "NONE") as DiscountMode,
     discountValue: Math.max(0, Number(entry.discountValue ?? 0)),
+    extraMode: (["NONE", "AMOUNT", "PERCENT"].includes(String(entry.extraMode ?? "NONE"))
+      ? String(entry.extraMode ?? "NONE")
+      : "NONE") as DiscountMode,
+    extraValue: Math.max(0, Number(entry.extraValue ?? 0)),
     unitPriceCents: Math.max(0, Number(entry.unitPriceCents ?? 0)),
     format: String(entry.format ?? ""),
     material: String(entry.material ?? ""),

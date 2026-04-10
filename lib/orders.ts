@@ -13,9 +13,16 @@ import {
 } from "@prisma/client";
 import { APP_TIMEZONE, mainPhaseLabels, normalizeMainPhaseForWorkflow, operationalStatusLabels, phaseOrder } from "@/lib/constants";
 import { canTransitionPhase } from "@/lib/order-phase-transitions";
-import { formatDateKey } from "@/lib/format";
-import { clampDiscountValue, computeDiscountedUnitPrice, normalizeQuantityTiers } from "@/lib/pricing";
+import { formatCompactDate, formatDateKey, formatWeekdayLabel } from "@/lib/format";
+import {
+  clampDiscountValue,
+  computeLineTotalWithAdjustmentsCents,
+  computeEffectiveUnitPriceCents,
+  normalizeQuantityTiers,
+  normalizeQuantityValue
+} from "@/lib/pricing";
 import type {
+  OrderListView,
   DashboardPreset,
   InvoiceFilter,
   PaymentFilter,
@@ -34,6 +41,8 @@ export type OrderItemInput = {
   catalogBasePriceCents?: number;
   discountMode?: DiscountMode;
   discountValue?: number;
+  extraMode?: DiscountMode;
+  extraValue?: number;
   unitPriceCents: number;
   format?: string;
   material?: string;
@@ -50,8 +59,10 @@ export type CreateOrderInput = {
     phone?: string;
     whatsapp?: string;
     email?: string;
+    pec?: string;
     taxCode?: string;
     vatNumber?: string;
+    uniqueCode?: string;
     notes?: string;
   };
   title: string;
@@ -82,11 +93,13 @@ export type UpdateCustomerInput = {
   id: string;
   type: CustomerType;
   name: string;
-  phone: string;
+  phone?: string;
   whatsapp?: string;
   email?: string;
+  pec?: string;
   taxCode?: string;
   vatNumber?: string;
+  uniqueCode?: string;
   notes?: string;
 };
 
@@ -228,8 +241,8 @@ function isSameDay(left: Date | string, right: Date) {
 
 function getDashboardDayFormatter() {
   return new Intl.DateTimeFormat("it-IT", {
-    weekday: "short",
     day: "2-digit",
+    month: "2-digit",
     timeZone: APP_TIMEZONE
   });
 }
@@ -246,13 +259,12 @@ export function buildDashboardWeekLoad(
     const entries = orders.filter(
       (order) => isSameDay(order.deliveryAt, date) || (order.appointmentAt ? isSameDay(order.appointmentAt, date) : false)
     );
-    const label = formatter.format(date).replace(".", "");
-    const [shortLabel, dayLabel = label] = label.split(" ");
+    const dayLabel = formatter.format(date) || formatCompactDate(date);
 
     return {
       key: formatDateKey(date),
       date,
-      shortLabel: shortLabel ? shortLabel.toUpperCase() : label.toUpperCase(),
+      shortLabel: formatWeekdayLabel(date),
       dayLabel,
       workload: entries.filter((order) => isSameDay(order.deliveryAt, date)).length,
       appointments: entries.filter((order) => order.appointmentAt && isSameDay(order.appointmentAt, date)).length,
@@ -582,14 +594,24 @@ export function computeOrderTotals(items: OrderItemInput[]) {
   const normalizedItems = items
     .filter((item) => normalizeOrderTitle(item.label).length > 0)
     .map((item) => {
-      const quantity = Number.isFinite(item.quantity) && item.quantity > 0 ? Math.round(item.quantity) : 1;
+      const quantity = normalizeQuantityValue(item.quantity, 1);
       const catalogBasePriceCents =
         Number.isFinite(item.catalogBasePriceCents) && Number(item.catalogBasePriceCents) > 0
           ? Math.round(Number(item.catalogBasePriceCents))
           : Math.max(Number.isFinite(item.unitPriceCents) ? Math.round(item.unitPriceCents) : 0, 0);
       const discountMode = (item.discountMode || "NONE") as DiscountMode;
       const discountValue = clampDiscountValue(discountMode, Number(item.discountValue ?? 0));
-      const unitPriceCents = computeDiscountedUnitPrice(catalogBasePriceCents, discountMode, discountValue);
+      const extraMode = (item.extraMode || "NONE") as DiscountMode;
+      const extraValue = clampDiscountValue(extraMode, Number(item.extraValue ?? 0));
+      const lineTotalCents = computeLineTotalWithAdjustmentsCents(
+        catalogBasePriceCents,
+        quantity,
+        discountMode,
+        discountValue,
+        extraMode,
+        extraValue
+      );
+      const unitPriceCents = computeEffectiveUnitPriceCents(lineTotalCents, quantity);
 
       return {
         ...item,
@@ -598,8 +620,10 @@ export function computeOrderTotals(items: OrderItemInput[]) {
         catalogBasePriceCents,
         discountMode,
         discountValue,
+        extraMode,
+        extraValue,
         unitPriceCents,
-        lineTotalCents: quantity * unitPriceCents
+        lineTotalCents
       };
     });
 
@@ -681,19 +705,21 @@ async function ensureCustomer(tx: Prisma.TransactionClient, input: CreateOrderIn
   const name = input.customer.name?.trim();
   const phone = input.customer.phone?.trim();
 
-  if (!name || !phone) {
-    throw new Error("Per creare un nuovo cliente servono nome e telefono.");
+  if (!name) {
+    throw new Error("Per creare un nuovo cliente serve il nome.");
   }
 
   return tx.customer.create({
     data: {
       name,
       type: input.customer.type ?? "PUBBLICO",
-      phone,
+      phone: phone || undefined,
       whatsapp: input.customer.whatsapp?.trim() || undefined,
       email: input.customer.email?.trim() || undefined,
+      pec: input.customer.pec?.trim() || undefined,
       taxCode: input.customer.taxCode?.trim() || undefined,
       vatNumber: input.customer.vatNumber?.trim() || undefined,
+      uniqueCode: input.customer.uniqueCode?.trim() || undefined,
       notes: input.customer.notes?.trim() || undefined
     }
   });
@@ -764,6 +790,8 @@ export async function createOrder(input: CreateOrderInput) {
             catalogBasePriceCents: item.catalogBasePriceCents,
             discountMode: item.discountMode,
             discountValue: item.discountValue,
+            extraMode: item.extraMode,
+            extraValue: item.extraValue,
             unitPriceCents: item.unitPriceCents,
             lineTotalCents: item.lineTotalCents,
             format: item.format?.trim() || undefined,
@@ -871,10 +899,10 @@ export async function updateOrder(input: UpdateOrderInput) {
 
 export async function updateCustomer(input: UpdateCustomerInput) {
   const name = input.name.trim();
-  const phone = input.phone.trim();
+  const phone = input.phone?.trim();
 
-  if (!name || !phone) {
-    throw new Error("Nome e telefono sono obbligatori.");
+  if (!name) {
+    throw new Error("Il nome cliente e obbligatorio.");
   }
 
   return prisma.customer.update({
@@ -882,11 +910,13 @@ export async function updateCustomer(input: UpdateCustomerInput) {
     data: {
       name,
       type: input.type,
-      phone,
+      phone: phone || undefined,
       whatsapp: input.whatsapp?.trim() || undefined,
       email: input.email?.trim() || undefined,
+      pec: input.pec?.trim() || undefined,
       taxCode: input.taxCode?.trim() || undefined,
       vatNumber: input.vatNumber?.trim() || undefined,
+      uniqueCode: input.uniqueCode?.trim() || undefined,
       notes: input.notes?.trim() || undefined
     }
   });
@@ -957,9 +987,15 @@ export async function transitionOrderPhase(orderId: string, nextPhase: MainPhase
   assertPhaseTransition(order.mainPhase, normalizedNextPhase, order.balanceDueCents, overrideNote);
 
   return prisma.$transaction(async (tx) => {
+    const deliveredAt =
+      normalizedNextPhase === "CONSEGNATO" ? new Date() : order.mainPhase === "CONSEGNATO" ? null : order.deliveredAt;
+
     const updated = await tx.order.update({
       where: { id: orderId },
-      data: { mainPhase: normalizedNextPhase }
+      data: {
+        mainPhase: normalizedNextPhase,
+        deliveredAt
+      }
     });
 
     await tx.orderHistory.create({
@@ -1283,17 +1319,33 @@ export async function createService(
   }
 
   const normalizedCode = normalizeServiceCode(code);
-  const existing = await prisma.serviceCatalog.findUnique({
-    where: { code: normalizedCode }
-  });
+  let resolvedCode = normalizedCode;
 
-  if (existing) {
-    throw new Error("Esiste gia un servizio con questo codice.");
+  if (resolvedCode) {
+    const existing = await prisma.serviceCatalog.findUnique({
+      where: { code: resolvedCode }
+    });
+
+    if (existing) {
+      throw new Error("Esiste gia un servizio con questo codice.");
+    }
+  } else {
+    const existingCodes = await prisma.serviceCatalog.findMany({
+      select: { code: true }
+    });
+    const usedCodes = new Set(
+      existingCodes
+        .map((service) => service.code?.trim())
+        .filter((value): value is string => Boolean(value))
+        .map((value) => value.toUpperCase())
+    );
+
+    resolvedCode = buildUniqueServiceCode(normalizeServiceCode(cleanName || "SERVIZIO"), usedCodes);
   }
 
   return prisma.serviceCatalog.create({
     data: {
-      code: normalizedCode,
+      code: resolvedCode,
       name: cleanName,
       description: description?.trim() || undefined,
       basePriceCents: Math.max(0, basePriceCents),
@@ -1551,6 +1603,7 @@ export async function getSalesStats(options?: { months?: number; referenceDate?:
 }
 
 export async function getOrdersList(filters: {
+  view?: OrderListView;
   query?: string;
   phase?: PhaseFilter;
   status?: StatusFilter;
@@ -1564,6 +1617,7 @@ export async function getOrdersList(filters: {
   const now = new Date();
   const todayStart = startOfDay(now);
   const tomorrowStart = addDays(todayStart, 1);
+  const isDeliveredView = filters.view === "DELIVERED";
   const queryWhere = query
     ? {
         OR: [
@@ -1576,7 +1630,9 @@ export async function getOrdersList(filters: {
     : undefined;
 
   const presetWhere =
-    filters.preset === "TODAY"
+    isDeliveredView
+      ? {}
+      : filters.preset === "TODAY"
       ? {
           mainPhase: { not: "CONSEGNATO" as MainPhase },
           deliveryAt: {
@@ -1644,8 +1700,17 @@ export async function getOrdersList(filters: {
                         }
                       : {};
 
+  const viewWhere = isDeliveredView
+    ? {
+        mainPhase: "CONSEGNATO" as MainPhase
+      }
+    : {
+        mainPhase: { not: "CONSEGNATO" as MainPhase }
+      };
+
   return prisma.order.findMany({
     where: {
+      ...viewWhere,
       ...presetWhere,
       ...(queryWhere ? { AND: [queryWhere] } : {}),
       ...(filters.phase && filters.phase !== "ALL"
@@ -1666,7 +1731,7 @@ export async function getOrdersList(filters: {
     include: {
       customer: true
     },
-    orderBy: [{ deliveryAt: "asc" }, { priority: "desc" }]
+    orderBy: isDeliveredView ? [{ deliveredAt: "desc" }, { updatedAt: "desc" }] : [{ deliveryAt: "asc" }, { priority: "desc" }]
   });
 }
 

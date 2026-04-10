@@ -35,7 +35,9 @@ function buildOrderSearchWhere(query: string, isQuote: boolean) {
       { title: containsInsensitive(query) },
       { customer: { name: containsInsensitive(query) } },
       { customer: { phone: containsInsensitive(query) } },
-      { customer: { email: containsInsensitive(query) } }
+      { customer: { email: containsInsensitive(query) } },
+      { customer: { pec: containsInsensitive(query) } },
+      { customer: { uniqueCode: containsInsensitive(query) } }
     ]
   };
 }
@@ -87,15 +89,19 @@ export async function searchGlobal(query: string): Promise<GlobalSearchSection[]
           { name: containsInsensitive(normalizedQuery) },
           { phone: containsInsensitive(normalizedQuery) },
           { email: containsInsensitive(normalizedQuery) },
+          { pec: containsInsensitive(normalizedQuery) },
           { taxCode: containsInsensitive(normalizedQuery) },
-          { vatNumber: containsInsensitive(normalizedQuery) }
+          { vatNumber: containsInsensitive(normalizedQuery) },
+          { uniqueCode: containsInsensitive(normalizedQuery) }
         ]
       },
       select: {
         id: true,
         name: true,
         phone: true,
-        email: true
+        email: true,
+        pec: true,
+        uniqueCode: true
       },
       orderBy: [{ name: "asc" }],
       take: 5
@@ -201,7 +207,7 @@ export async function searchGlobal(query: string): Promise<GlobalSearchSection[]
         id: customer.id,
         kind: "customer",
         label: customer.name,
-        meta: [customer.phone, customer.email].filter(Boolean).join(" • ") || "Scheda cliente",
+        meta: [customer.phone, customer.email, customer.pec, customer.uniqueCode].filter(Boolean).join(" • ") || "Scheda cliente",
         href: `/customers/${customer.id}`
       }))
     });

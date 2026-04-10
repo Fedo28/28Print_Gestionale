@@ -72,8 +72,10 @@ function parseOrderFormInput(formData: FormData, options?: { forceQuote?: boolea
       phone: String(formData.get("customerPhone") || ""),
       whatsapp: String(formData.get("customerWhatsapp") || ""),
       email: String(formData.get("customerEmail") || ""),
+      pec: String(formData.get("customerPec") || ""),
       taxCode: String(formData.get("customerTaxCode") || ""),
       vatNumber: String(formData.get("customerVatNumber") || ""),
+      uniqueCode: String(formData.get("customerUniqueCode") || ""),
       notes: String(formData.get("customerNotes") || "")
     },
     title: String(formData.get("title") || ""),
@@ -116,25 +118,28 @@ export async function createCustomerAction(formData: FormData) {
   const name = String(formData.get("name") || "").trim();
   const phone = String(formData.get("phone") || "").trim();
 
-  if (!name || !phone) {
-    throw new Error("Nome e telefono sono obbligatori.");
+  if (!name) {
+    throw new Error("Il nome cliente e obbligatorio.");
   }
 
   await prisma.customer.create({
     data: {
       name,
       type: parseCustomerType(formData.get("type")?.toString() || null),
-      phone,
+      phone: phone || undefined,
       whatsapp: String(formData.get("whatsapp") || "").trim() || undefined,
       email: String(formData.get("email") || "").trim() || undefined,
+      pec: String(formData.get("pec") || "").trim() || undefined,
       taxCode: String(formData.get("taxCode") || "").trim() || undefined,
       vatNumber: String(formData.get("vatNumber") || "").trim() || undefined,
+      uniqueCode: String(formData.get("uniqueCode") || "").trim() || undefined,
       notes: String(formData.get("notes") || "").trim() || undefined
     }
   });
 
   revalidatePath("/customers");
   revalidatePath("/orders/new");
+  revalidatePath("/quotes/new");
   revalidateBillboardSurfaces();
 }
 
@@ -148,8 +153,10 @@ export async function updateCustomerAction(formData: FormData) {
     phone: String(formData.get("phone") || ""),
     whatsapp: String(formData.get("whatsapp") || ""),
     email: String(formData.get("email") || ""),
+    pec: String(formData.get("pec") || ""),
     taxCode: String(formData.get("taxCode") || ""),
     vatNumber: String(formData.get("vatNumber") || ""),
+    uniqueCode: String(formData.get("uniqueCode") || ""),
     notes: String(formData.get("notes") || "")
   });
 
@@ -207,6 +214,17 @@ export async function updateOrderStatusAction(formData: FormData) {
 
   await updateOperationalStatus(orderId, status, note);
   revalidateOperationalSurfaces(orderId);
+}
+
+export async function updateOrderStatusDetailAction(formData: FormData) {
+  await requireAuth();
+  const orderId = String(formData.get("orderId") || "");
+  const status = parseOperationalStatus(formData.get("operationalStatus")?.toString() || null);
+  const note = String(formData.get("note") || "");
+
+  await updateOperationalStatus(orderId, status, note);
+  revalidateOperationalSurfaces(orderId);
+  redirect(`/orders/${orderId}`);
 }
 
 export async function transitionPhaseAction(formData: FormData) {
@@ -373,6 +391,7 @@ export async function createServiceAction(formData: FormData) {
 
   revalidatePath("/settings");
   revalidatePath("/orders/new");
+  revalidatePath("/quotes/new");
 }
 
 export async function updateServiceAction(formData: FormData) {
@@ -389,6 +408,7 @@ export async function updateServiceAction(formData: FormData) {
 
   revalidatePath("/settings");
   revalidatePath("/orders/new");
+  revalidatePath("/quotes/new");
 }
 
 export async function saveWhatsappTemplateAction(formData: FormData) {
@@ -523,7 +543,7 @@ export async function deleteOrderAction(formData: FormData) {
   const order = await deleteOrder(id);
   await cleanupOrderAttachments(order.attachments);
   revalidateOperationalSurfaces();
-  redirect(order.isQuote ? "/quotes" : "/orders");
+  redirect(order.isQuote ? "/quotes" : order.mainPhase === "CONSEGNATO" ? "/orders?view=DELIVERED" : "/orders");
 }
 
 export async function loginAction(_: LoginActionState, formData: FormData): Promise<LoginActionState> {

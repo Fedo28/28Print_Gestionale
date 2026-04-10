@@ -1,11 +1,9 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/page-header";
-import { QuickOrderControls } from "@/components/quick-order-controls";
-import { StatusPills } from "@/components/status-pills";
-import { mainPhaseLabels, normalizeMainPhaseForWorkflow, operationalStatusLabels } from "@/lib/constants";
+import { normalizeMainPhaseForWorkflow } from "@/lib/constants";
 import { requireAuth } from "@/lib/auth";
-import { formatCurrency, formatDate, formatDateKey, formatDateTime } from "@/lib/format";
+import { formatCompactDate, formatDate, formatDateKey, formatWeekdayLabel } from "@/lib/format";
 import { getCalendarOrders, getMonthlyAgendaOrders } from "@/lib/orders";
 
 export const dynamic = "force-dynamic";
@@ -127,7 +125,7 @@ function CalendarSwitchLink({
 }) {
   const isActive = href.includes(`view=${current}`);
   return (
-    <Link className={`calendar-switch-link${isActive ? " active" : ""}`} href={href}>
+    <Link className={`calendar-switch-link${isActive ? " active" : ""}`} href={href} replace scroll={false}>
       {children}
     </Link>
   );
@@ -218,17 +216,17 @@ function WeekCalendar({ snapshot }: { snapshot: CalendarWeekSnapshot }) {
 
       <div className="calendar-week-grid">
         {snapshot.days.map((day) => (
-          <article className={`calendar-column${day.isToday ? " today" : ""}`} key={day.key}>
+          <article className={getWeekColumnClassName(day)} key={day.key}>
             <div className="calendar-column-head">
               <strong>{weekdayLabel(day.date)}</strong>
-              <span className="subtle">{formatDate(day.date)}</span>
+              <span className="subtle calendar-column-date">{formatCompactDate(day.date)}</span>
             </div>
 
             <div className="calendar-column-stats">
-              <span className="calendar-day-stat">Carico {day.summary.workload}</span>
+              <span className="calendar-day-stat">Lav. {day.summary.workload}</span>
               <span className="calendar-day-stat">App. {day.summary.appointments}</span>
-              {day.summary.blocked > 0 ? <span className="calendar-day-stat warning">Sospesi {day.summary.blocked}</span> : null}
-              {day.summary.ready > 0 ? <span className="calendar-day-stat success">Pronti {day.summary.ready}</span> : null}
+              {day.summary.blocked > 0 ? <span className="calendar-day-stat warning">Sosp. {day.summary.blocked}</span> : null}
+              {day.summary.ready > 0 ? <span className="calendar-day-stat success">Pront. {day.summary.ready}</span> : null}
             </div>
 
             <div className="calendar-column-body">
@@ -241,7 +239,7 @@ function WeekCalendar({ snapshot }: { snapshot: CalendarWeekSnapshot }) {
                   {day.dueOrders.length === 0 ? (
                     <div className="calendar-slot-empty">Nessun lavoro in scadenza</div>
                   ) : (
-                    day.dueOrders.map((order) => <CalendarWeekItem date={day.date} key={order.id} order={order} variant="delivery" />)
+                    day.dueOrders.map((order) => <CalendarWeekItem key={order.id} order={order} variant="delivery" />)
                   )}
                 </div>
               </section>
@@ -256,7 +254,7 @@ function WeekCalendar({ snapshot }: { snapshot: CalendarWeekSnapshot }) {
                     <div className="calendar-slot-empty">Nessun appuntamento</div>
                   ) : (
                     day.appointmentOrders.map((order) => (
-                      <CalendarWeekItem date={day.date} key={`${order.id}-appointment`} order={order} variant="appointment" />
+                      <CalendarWeekItem key={`${order.id}-appointment`} order={order} variant="appointment" />
                     ))
                   )}
                 </div>
@@ -289,8 +287,10 @@ function MonthCalendar({
   return (
     <div className="calendar-month-wrap">
       <div className="calendar-month-weekdays">
-        {["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"].map((day) => (
-          <span key={day}>{day}</span>
+        {getWeekdayLabels("compact").map((day) => (
+          <span aria-label={day.full} key={day.compact} title={day.full}>
+            {day.compact}
+          </span>
         ))}
       </div>
       <div className="calendar-month-grid">
@@ -307,11 +307,14 @@ function MonthCalendar({
               </div>
               <div className="calendar-month-events">
                 {day.entries.slice(0, 3).map((order) => (
-                  <Link className="calendar-month-event" href={`/orders/${order.id}`} key={order.id} prefetch={false}>
-                    <span>{timeLabel(order.appointmentAt || order.deliveryAt)}</span>
-                    <strong>{order.customer.name}</strong>
-                    <span>{order.title}</span>
-                    {order.appointmentNote ? <span className="calendar-month-note">{order.appointmentNote}</span> : null}
+                  <Link
+                    className="calendar-entry-link calendar-entry-link-compact calendar-entry-link-accent"
+                    href={`/orders/${order.id}`}
+                    key={order.id}
+                    prefetch={false}
+                    title={`${order.orderCode} • ${order.customer.name}`}
+                  >
+                    <span className="calendar-entry-title">{getCalendarEntryTitle(order)}</span>
                   </Link>
                 ))}
                 {day.entries.length > 3 ? <span className="calendar-more">+{day.entries.length - 3} altri</span> : null}
@@ -423,69 +426,36 @@ function CalendarOrderCard({
   focusDate: Date;
   variant: "delivery" | "appointment" | "overdue";
 }) {
-  const hasWhatsapp = Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""));
   const tone = getOrderTone(order, focusDate, variant);
-  const meta = getCardMeta(order, focusDate, variant);
-  const note = getCardNote(order, focusDate, variant);
+  const title = getCalendarEntryTitle(order);
 
   return (
-    <article className={`compact-order-item compact-order-item-${tone}${variant === "appointment" ? " calendar-appointment-card" : ""}`}>
-      <div className="compact-order-main">
-        <div className="compact-order-head">
-          <QuickOrderControls
-            align="start"
-            hasWhatsapp={hasWhatsapp}
-            orderId={order.id}
-            phase={order.mainPhase}
-            status={order.operationalStatus}
-          />
-          <Link className="order-code" href={`/orders/${order.id}`} prefetch={false}>
-            {order.orderCode}
-          </Link>
-          <span className="compact-order-aside">{formatCurrency(order.totalCents)}</span>
-        </div>
-        <div className="subtle">
-          {order.customer.name} • {meta}
-        </div>
-        {note ? <div className="hint">{note}</div> : null}
-      </div>
-      <StatusPills
-        hideNeutralStatus
-        linked={false}
-        payment={order.paymentStatus}
-        phase={order.mainPhase}
-        status={order.operationalStatus}
-      />
-    </article>
+    <Link
+      className={`calendar-entry-link calendar-entry-link-day calendar-entry-link-${tone}${variant === "appointment" ? " calendar-entry-link-accent" : ""}`}
+      href={`/orders/${order.id}`}
+      prefetch={false}
+      title={`${order.orderCode} • ${order.customer.name}`}
+    >
+      <span className="calendar-entry-title">{title}</span>
+    </Link>
   );
 }
 
 function CalendarWeekItem({
   order,
-  date,
   variant
 }: {
   order: CalendarOrder;
-  date: Date;
   variant: "delivery" | "appointment";
 }) {
-  const meta = getWeekItemMeta(order, date, variant);
-  const statusLabel =
-    order.operationalStatus !== "ATTIVO"
-      ? operationalStatusLabels[order.operationalStatus]
-      : mainPhaseLabels[normalizeMainPhaseForWorkflow(order.mainPhase)];
-
   return (
     <Link
-      className={`calendar-mini-event${variant === "appointment" ? " calendar-mini-event-accent" : ""}`}
+      className={`calendar-entry-link calendar-entry-link-compact calendar-entry-link-uniform${variant === "appointment" ? " calendar-entry-link-uniform-appointment" : ""}`}
       href={`/orders/${order.id}`}
       prefetch={false}
+      title={`${order.orderCode} • ${order.customer.name}`}
     >
-      <strong>{order.orderCode}</strong>
-      <span>{order.customer.name}</span>
-      <span>{meta}</span>
-      <span>{statusLabel}</span>
-      {variant === "appointment" && order.appointmentNote ? <span className="calendar-month-note">{order.appointmentNote}</span> : null}
+      <span className="calendar-entry-title">{getCalendarEntryTitle(order)}</span>
     </Link>
   );
 }
@@ -521,6 +491,25 @@ function addDays(date: Date, amount: number) {
   const next = new Date(date);
   next.setDate(next.getDate() + amount);
   return startOfDay(next);
+}
+
+function isWeekend(date: Date) {
+  const day = date.getDay();
+  return day === 0 || day === 6;
+}
+
+function addBusinessDays(date: Date, amount: number) {
+  let cursor = startOfDay(date);
+  let remaining = amount;
+
+  while (remaining > 0) {
+    cursor = addDays(cursor, 1);
+    if (!isWeekend(cursor)) {
+      remaining -= 1;
+    }
+  }
+
+  return cursor;
 }
 
 function startOfWeek(date: Date) {
@@ -681,15 +670,49 @@ function buildCalendarHref(view: CalendarView, date: Date) {
   return `/calendar?view=${view}&date=${formatDateKey(startOfDay(date))}`;
 }
 
-function weekdayLabel(date: Date) {
-  return new Intl.DateTimeFormat("it-IT", { weekday: "short" }).format(date);
+function getWeekColumnClassName(day: CalendarDaySnapshot) {
+  const classes = ["calendar-column"];
+  const isWeekendDay = isWeekend(day.date);
+  const today = startOfDay(new Date());
+
+  if (day.isToday) {
+    classes.push("today");
+  }
+
+  if (isWeekendDay) {
+    classes.push("weekend");
+  }
+
+  if (!isWeekendDay && isSameDay(day.date, addBusinessDays(today, 1))) {
+    classes.push("priority-next");
+  }
+
+  if (!isWeekendDay && isSameDay(day.date, addBusinessDays(today, 2))) {
+    classes.push("priority-later");
+  }
+
+  return classes.join(" ");
 }
 
-function timeLabel(date: Date | string) {
-  return new Intl.DateTimeFormat("it-IT", {
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(new Date(date));
+function weekdayLabel(date: Date) {
+  return formatWeekdayLabel(date);
+}
+
+function getWeekdayLabels(variant: "short" | "compact") {
+  const dates = [
+    new Date(2026, 3, 6),
+    new Date(2026, 3, 7),
+    new Date(2026, 3, 8),
+    new Date(2026, 3, 9),
+    new Date(2026, 3, 10),
+    new Date(2026, 3, 11),
+    new Date(2026, 3, 12)
+  ];
+
+  return dates.map((date) => ({
+    full: new Intl.DateTimeFormat("it-IT", { weekday: "long" }).format(date),
+    compact: formatWeekdayLabel(date, variant)
+  }));
 }
 
 function sortByDelivery(orders: CalendarOrder[]) {
@@ -702,51 +725,8 @@ function sortByAppointment(orders: CalendarOrder[]) {
   );
 }
 
-function formatRelativeDateTime(date: Date | string, focusDate: Date) {
-  return isSameDay(date, focusDate) ? timeLabel(date) : formatDateTime(date);
-}
-
-function getCardMeta(order: CalendarOrder, focusDate: Date, variant: "delivery" | "appointment" | "overdue") {
-  if (variant === "appointment") {
-    return `Appuntamento ${formatRelativeDateTime(order.appointmentAt || order.deliveryAt, focusDate)}`;
-  }
-
-  if (variant === "overdue") {
-    return `Scaduto il ${formatDateTime(order.deliveryAt)}`;
-  }
-
-  return `Consegna ${formatRelativeDateTime(order.deliveryAt, focusDate)}`;
-}
-
-function getCardNote(order: CalendarOrder, focusDate: Date, variant: "delivery" | "appointment" | "overdue") {
-  const notes: string[] = [];
-
-  if (variant === "appointment") {
-    if (order.appointmentNote?.trim()) {
-      notes.push(order.appointmentNote.trim());
-    }
-    notes.push(`Consegna prevista ${formatDateTime(order.deliveryAt)}`);
-  } else if (order.appointmentAt) {
-    notes.push(`Appuntamento ${formatRelativeDateTime(order.appointmentAt, focusDate)}`);
-  }
-
-  if (order.operationalStatus !== "ATTIVO") {
-    notes.push(order.operationalNote?.trim() || operationalStatusLabels[order.operationalStatus]);
-  }
-
-  return notes.join(" • ");
-}
-
-function getWeekItemMeta(order: CalendarOrder, date: Date, variant: "delivery" | "appointment") {
-  if (variant === "appointment") {
-    return `App. ${timeLabel(order.appointmentAt || order.deliveryAt)} • Consegna ${formatRelativeDateTime(order.deliveryAt, date)}`;
-  }
-
-  if (order.appointmentAt && isSameDay(order.appointmentAt, date)) {
-    return `Consegna ${timeLabel(order.deliveryAt)} • App. ${timeLabel(order.appointmentAt)}`;
-  }
-
-  return `Consegna ${timeLabel(order.deliveryAt)}`;
+function getCalendarEntryTitle(order: CalendarOrder) {
+  return order.title?.trim() || order.customer.name;
 }
 
 function getOrderTone(order: CalendarOrder, focusDate: Date, variant: "delivery" | "appointment" | "overdue") {

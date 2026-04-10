@@ -75,8 +75,10 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
               phone: customer.phone,
               whatsapp: customer.whatsapp,
               email: customer.email,
+              pec: customer.pec,
               taxCode: customer.taxCode,
               vatNumber: customer.vatNumber,
+              uniqueCode: customer.uniqueCode,
               type: customer.type,
               orderCount: customer.orders.length
             }))}

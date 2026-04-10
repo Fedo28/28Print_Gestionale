@@ -13,7 +13,7 @@ type QuoteRow = {
   balanceDueCents: number;
   customer: {
     name: string;
-    phone: string;
+    phone?: string | null;
   };
 };
 
@@ -46,7 +46,7 @@ export function QuotesTable({ quotes }: { quotes: QuoteRow[] }) {
               </td>
               <td>
                 <strong>{quote.customer.name}</strong>
-                <div className="subtle">{quote.customer.phone}</div>
+                <div className="subtle">{quote.customer.phone || "Telefono non inserito"}</div>
               </td>
               <td>{formatDateTime(quote.deliveryAt)}</td>
               <td>{priorityLabels[quote.priority]}</td>

@@ -7,11 +7,13 @@ import { StatusPills } from "@/components/status-pills";
 import { formatCurrency, formatDateKey, formatDateTime } from "@/lib/format";
 import { buildOrdersFilterHref } from "@/lib/order-filters";
 import { countUniqueOrders, getDashboardData, type DashboardWeekDayLoad } from "@/lib/orders";
+import { getWorkdayHighlight } from "@/lib/workday-highlights";
 
 type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
 type DashboardOrder = DashboardData["todayOrders"][number];
+type DashboardPanel = "PRIORITY" | "PRODUCTION" | "APPOINTMENTS" | "FINANCE";
 
-export async function DashboardPage() {
+export async function DashboardPage({ panel }: { panel?: string }) {
   const {
     todayOrders,
     todayAppointments,
@@ -33,6 +35,7 @@ export async function DashboardPage() {
   const totalAttention = countUniqueOrders(priorityOrders, blockedOrders, balanceOrders);
   const weeklyWorkload = weekLoad.reduce((sum, day) => sum + day.workload, 0);
   const weeklyAppointments = weekLoad.reduce((sum, day) => sum + day.appointments, 0);
+  const activePanel = parseDashboardPanel(panel);
   const links = {
     today: buildOrdersFilterHref({ preset: "TODAY" }),
     appointments: buildOrdersFilterHref({ preset: "APPOINTMENTS_TODAY" }),
@@ -186,17 +189,19 @@ export async function DashboardPage() {
           <div className="dashboard-week-grid">
             {weekLoad.map((day) => (
               <Link
-                className={`dashboard-week-day${isToday(day) ? " today" : ""}`}
+                className={getDashboardWeekDayClassName(day)}
                 href={`/calendar?view=day&date=${formatDateKey(day.date)}`}
                 key={day.key}
               >
-                <span className="dashboard-week-label">{day.shortLabel}</span>
-                <strong>{day.dayLabel}</strong>
+                <div className="dashboard-week-head">
+                  <span className="dashboard-week-label">{day.shortLabel}</span>
+                  <strong className="dashboard-week-date">{day.dayLabel}</strong>
+                </div>
                 <div className="dashboard-week-stats">
-                  <span>Lavori {day.workload}</span>
+                  <span>Lav. {day.workload}</span>
                   <span>App. {day.appointments}</span>
-                  {day.blocked > 0 ? <span className="warning">Sospesi {day.blocked}</span> : null}
-                  {day.ready > 0 ? <span className="success">Pronti {day.ready}</span> : null}
+                  {day.blocked > 0 ? <span className="warning">Sosp. {day.blocked}</span> : null}
+                  {day.ready > 0 ? <span className="success">Pront. {day.ready}</span> : null}
                 </div>
               </Link>
             ))}
@@ -224,90 +229,150 @@ export async function DashboardPage() {
         </article>
       </section>
 
-      <section className="grid dashboard-lanes-grid">
-        <DashboardLane
-          description="Arretrati e consegne di oggi"
-          emptyMessage="Nessuna urgenza operativa per oggi."
-          orders={priorityOrders}
-          title="Priorita oggi"
-          viewHref={links.priorityToday}
-          viewLabel="Apri lista"
-          renderMeta={(order) =>
-            new Date(order.deliveryAt).getTime() < Date.now()
-              ? `Arretrato dal ${formatDateTime(order.deliveryAt)}`
-              : `Consegna ${formatDateTime(order.deliveryAt)}`
-          }
-          renderNote={(order) => order.appointmentNote || order.notes || null}
-          renderAside={(order) => formatCurrency(order.totalCents)}
-        />
+      <section className="card card-pad compact-focus-card dashboard-panel-shell">
+        <div className="list-header compact-section-head">
+          <div>
+            <span className="compact-kicker">Liste rapide</span>
+            <h3>Dashboard operativa</h3>
+            <p className="card-muted">Apri solo il blocco che ti serve, senza tenere tutte le corsie sempre piene a schermo.</p>
+          </div>
+        </div>
 
-        <DashboardLane
-          description="Installazioni, sopralluoghi e ritiri pianificati"
-          emptyMessage="Nessun appuntamento programmato oggi."
-          orders={todayAppointments}
-          title="Appuntamenti di oggi"
-          viewHref={links.appointments}
-          viewLabel="Apri lista"
-          renderMeta={(order) => `Appuntamento ${formatDateTime(order.appointmentAt || order.deliveryAt)}`}
-          renderNote={(order) => order.appointmentNote || `Consegna ${formatDateTime(order.deliveryAt)}`}
-        />
+        <nav className="calendar-view-switch dashboard-panel-switch" aria-label="Selettore blocchi dashboard">
+          <Link
+            className={`calendar-switch-link${activePanel === "PRIORITY" ? " active" : ""}`}
+            href={buildDashboardPanelHref("PRIORITY")}
+            replace
+            scroll={false}
+          >
+            Priorita
+          </Link>
+          <Link
+            className={`calendar-switch-link${activePanel === "PRODUCTION" ? " active" : ""}`}
+            href={buildDashboardPanelHref("PRODUCTION")}
+            replace
+            scroll={false}
+          >
+            Produzione
+          </Link>
+          <Link
+            className={`calendar-switch-link${activePanel === "APPOINTMENTS" ? " active" : ""}`}
+            href={buildDashboardPanelHref("APPOINTMENTS")}
+            replace
+            scroll={false}
+          >
+            Appuntamenti
+          </Link>
+          <Link
+            className={`calendar-switch-link${activePanel === "FINANCE" ? " active" : ""}`}
+            href={buildDashboardPanelHref("FINANCE")}
+            replace
+            scroll={false}
+          >
+            Incassi
+          </Link>
+        </nav>
 
-        <DashboardLane
-          description="Ordini accettati ancora da far partire"
-          emptyMessage="Niente in attesa di avvio."
-          orders={toStartOrders}
-          title="Da avviare"
-          viewHref={links.toStart}
-          viewLabel="Apri lista"
-          renderMeta={(order) => `Consegna ${formatDateTime(order.deliveryAt)}`}
-          renderNote={(order) => order.notes || null}
-        />
+        {activePanel === "PRIORITY" ? (
+          <section className="grid dashboard-lanes-grid">
+            <DashboardLane
+              description="Arretrati e consegne di oggi"
+              emptyMessage="Nessuna urgenza operativa per oggi."
+              orders={priorityOrders}
+              title="Priorita oggi"
+              viewHref={links.priorityToday}
+              viewLabel="Apri lista"
+              renderMeta={(order) =>
+                new Date(order.deliveryAt).getTime() < Date.now()
+                  ? `Arretrato dal ${formatDateTime(order.deliveryAt)}`
+                  : `Consegna ${formatDateTime(order.deliveryAt)}`
+              }
+              renderNote={(order) => order.appointmentNote || order.notes || null}
+              renderAside={(order) => formatCurrency(order.totalCents)}
+            />
+          </section>
+        ) : null}
 
-        <DashboardLane
-          description="Lavorazioni gia partite"
-          emptyMessage="Nessun lavoro in corso."
-          orders={workingOrders}
-          title="In lavorazione"
-          viewHref={links.working}
-          viewLabel="Apri lista"
-          renderMeta={(order) => `Consegna ${formatDateTime(order.deliveryAt)}`}
-          renderNote={(order) => order.appointmentNote || order.notes || null}
-        />
+        {activePanel === "PRODUCTION" ? (
+          <section className="grid dashboard-lanes-grid">
+            <DashboardLane
+              description="Ordini accettati ancora da far partire"
+              emptyMessage="Niente in attesa di avvio."
+              density="dense"
+              orders={toStartOrders}
+              title="Da avviare"
+              viewHref={links.toStart}
+              viewLabel="Apri lista"
+              renderMeta={(order) => `Consegna ${formatDateTime(order.deliveryAt)}`}
+            />
 
-        <DashboardLane
-          description="Ordini fermi in attesa di sblocco"
-          emptyMessage="Nessun ordine sospeso."
-          orders={blockedOrders}
-          title="Sospesi"
-          viewHref={links.blocked}
-          viewLabel="Apri lista"
-          renderMeta={(order) => `Consegna ${formatDateTime(order.deliveryAt)}`}
-          renderNote={(order) => order.operationalNote || "Motivo sospensione non indicato"}
-        />
+            <DashboardLane
+              description="Lavorazioni gia partite"
+              emptyMessage="Nessun lavoro in corso."
+              density="dense"
+              orders={workingOrders}
+              title="In lavorazione"
+              viewHref={links.working}
+              viewLabel="Apri lista"
+              renderMeta={(order) => `Consegna ${formatDateTime(order.deliveryAt)}`}
+            />
 
-        <DashboardLane
-          description="Ordini pronti al ritiro o consegna"
-          emptyMessage="Nessun ordine pronto."
-          orders={readyOrders}
-          title="Pronti"
-          viewHref={links.ready}
-          viewLabel="Apri lista"
-          renderMeta={() => "Pronto al ritiro"}
-          renderAside={(order) => formatCurrency(order.balanceDueCents)}
-          renderNote={(order) => (order.balanceDueCents > 0 ? `Residuo ${formatCurrency(order.balanceDueCents)}` : null)}
-        />
+            <DashboardLane
+              description="Ordini fermi in attesa di sblocco"
+              density="dense"
+              emptyMessage="Nessun ordine sospeso."
+              orders={blockedOrders}
+              title="Sospesi"
+              viewHref={links.blocked}
+              viewLabel="Apri lista"
+              renderMeta={(order) => `Consegna ${formatDateTime(order.deliveryAt)}`}
+              renderNote={(order) => order.operationalNote || "Motivo sospensione non indicato"}
+            />
 
-        <DashboardLane
-          description="Ordini con residui ancora da chiudere"
-          emptyMessage="Nessun saldo aperto."
-          orders={balanceOrders}
-          title="Saldi aperti"
-          viewHref={links.balance}
-          viewLabel="Apri lista"
-          renderMeta={() => "Saldo da chiudere"}
-          renderAside={(order) => formatCurrency(order.balanceDueCents)}
-          renderNote={(order) => `Totale ordine ${formatCurrency(order.totalCents)}`}
-        />
+            <DashboardLane
+              description="Ordini pronti al ritiro o consegna"
+              density="dense"
+              emptyMessage="Nessun ordine pronto."
+              orders={readyOrders}
+              title="Pronti"
+              viewHref={links.ready}
+              viewLabel="Apri lista"
+              renderMeta={() => "Pronto al ritiro"}
+              renderAside={(order) => formatCurrency(order.balanceDueCents)}
+            />
+          </section>
+        ) : null}
+
+        {activePanel === "APPOINTMENTS" ? (
+          <section className="grid dashboard-lanes-grid">
+            <DashboardLane
+              description="Installazioni, sopralluoghi e ritiri pianificati"
+              emptyMessage="Nessun appuntamento programmato oggi."
+              orders={todayAppointments}
+              title="Appuntamenti di oggi"
+              viewHref={links.appointments}
+              viewLabel="Apri lista"
+              renderMeta={(order) => `Appuntamento ${formatDateTime(order.appointmentAt || order.deliveryAt)}`}
+              renderNote={(order) => order.appointmentNote || `Consegna ${formatDateTime(order.deliveryAt)}`}
+            />
+          </section>
+        ) : null}
+
+        {activePanel === "FINANCE" ? (
+          <section className="grid dashboard-lanes-grid">
+            <DashboardLane
+              description="Ordini con residui ancora da chiudere"
+              emptyMessage="Nessun saldo aperto."
+              orders={balanceOrders}
+              title="Saldi aperti"
+              viewHref={links.balance}
+              viewLabel="Apri lista"
+              renderMeta={() => "Saldo da chiudere"}
+              renderAside={(order) => formatCurrency(order.balanceDueCents)}
+              renderNote={(order) => `Totale ordine ${formatCurrency(order.totalCents)}`}
+            />
+          </section>
+        ) : null}
       </section>
 
       <section className="card card-pad compact-focus-card">
@@ -355,7 +420,8 @@ function DashboardLane({
   viewLabel,
   renderMeta,
   renderNote,
-  renderAside
+  renderAside,
+  density = "default"
 }: {
   title: string;
   description: string;
@@ -366,6 +432,7 @@ function DashboardLane({
   renderMeta: (order: DashboardOrder) => string;
   renderNote?: (order: DashboardOrder) => string | null | undefined;
   renderAside?: (order: DashboardOrder) => string | undefined;
+  density?: "default" | "dense";
 }) {
   return (
     <article className="card card-pad compact-lane-card">
@@ -384,31 +451,35 @@ function DashboardLane({
         {orders.length === 0 ? (
           <div className="empty">{emptyMessage}</div>
         ) : (
-          orders.slice(0, 5).map((order) => (
-            <CompactOrderItem
-              key={order.id}
-              hasWhatsapp={Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""))}
-              orderId={order.id}
-              href={`/orders/${order.id}`}
-              code={order.orderCode}
-              title={order.customer.name}
-              meta={renderMeta(order)}
-              aside={renderAside?.(order)}
-              tone={getOrderTone(order.deliveryAt, order.mainPhase, order.paymentStatus)}
-              phase={order.mainPhase}
-              pills={
-                <StatusPills
-                  hideNeutralStatus
-                  linked={false}
-                  phase={order.mainPhase}
-                  payment={order.paymentStatus}
-                  status={order.operationalStatus}
-                />
-              }
-              status={order.operationalStatus}
-              note={renderNote?.(order)}
-            />
-          ))
+          <div className={`compact-order-grid${density === "dense" ? " compact-order-grid-dense" : ""}`}>
+            {orders.slice(0, 30).map((order) => (
+              <CompactOrderItem
+                key={order.id}
+                hasWhatsapp={Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""))}
+                orderId={order.id}
+                href={`/orders/${order.id}`}
+                code={order.orderCode}
+                deliveryAt={order.deliveryAt}
+                title={order.customer.name}
+                meta={renderMeta(order)}
+                aside={renderAside?.(order)}
+                tone={getOrderTone(order.deliveryAt, order.mainPhase, order.paymentStatus)}
+                phase={order.mainPhase}
+                density={density}
+                pills={
+                  <StatusPills
+                    hideNeutralStatus
+                    linked={false}
+                    phase={order.mainPhase}
+                    payment={order.paymentStatus}
+                    status={order.operationalStatus}
+                  />
+                }
+                status={order.operationalStatus}
+                note={renderNote?.(order)}
+              />
+            ))}
+          </div>
         )}
       </div>
     </article>
@@ -472,11 +543,13 @@ function CompactOrderItem({
   orderId,
   href,
   code,
+  deliveryAt,
   title,
   meta,
   aside,
   tone,
   phase,
+  density = "default",
   status,
   pills,
   note
@@ -485,17 +558,23 @@ function CompactOrderItem({
   orderId: string;
   href: string;
   code: string;
+  deliveryAt: Date | string;
   title: string;
   meta: string;
   aside?: string;
   tone: "neutral" | "danger" | "warning" | "success";
   phase: MainPhase;
+  density?: "default" | "dense";
   status: import("@prisma/client").OperationalStatus;
   pills: ReactNode;
   note?: string | null;
 }) {
+  const workdayHighlight = getWorkdayHighlight(deliveryAt);
+
   return (
-    <article className={`compact-order-item compact-order-item-${tone}`}>
+    <article
+      className={`compact-order-item compact-order-item-dashboard compact-order-item-${density} compact-order-item-${tone} workday-highlight-card${workdayHighlight ? ` ${workdayHighlight}` : ""}`}
+    >
       <div className="compact-order-main">
         <div className="compact-order-head">
           <QuickOrderControls
@@ -510,9 +589,8 @@ function CompactOrderItem({
           </Link>
           {aside ? <span className="compact-order-aside">{aside}</span> : null}
         </div>
-        <div className="subtle">
-          {title} • {meta}
-        </div>
+        <div className="subtle compact-order-customer">{title}</div>
+        <div className="hint compact-order-meta">{meta}</div>
         {note ? <div className="hint">{note}</div> : null}
       </div>
       {pills}
@@ -534,6 +612,35 @@ function mergeUniqueOrders(...lists: DashboardOrder[][]) {
   return [...unique.values()];
 }
 
+function parseDashboardPanel(raw?: string): DashboardPanel {
+  if (raw === "production") {
+    return "PRODUCTION";
+  }
+
+  if (raw === "appointments") {
+    return "APPOINTMENTS";
+  }
+
+  if (raw === "finance") {
+    return "FINANCE";
+  }
+
+  return "PRIORITY";
+}
+
+function buildDashboardPanelHref(panel: DashboardPanel) {
+  switch (panel) {
+    case "PRODUCTION":
+      return "/?panel=production";
+    case "APPOINTMENTS":
+      return "/?panel=appointments";
+    case "FINANCE":
+      return "/?panel=finance";
+    default:
+      return "/";
+  }
+}
+
 function isToday(day: DashboardWeekDayLoad) {
   const today = new Date();
   return (
@@ -541,6 +648,19 @@ function isToday(day: DashboardWeekDayLoad) {
     day.date.getMonth() === today.getMonth() &&
     day.date.getDate() === today.getDate()
   );
+}
+
+function getDashboardWeekDayClassName(day: DashboardWeekDayLoad) {
+  const classes = ["dashboard-week-day", "workday-highlight-card"];
+  const highlight = getWorkdayHighlight(day.date);
+
+  if (highlight) {
+    classes.push(highlight);
+  } else if (isToday(day)) {
+    classes.push("today");
+  }
+
+  return classes.join(" ");
 }
 
 function getOrderTone(deliveryAt: Date | string, phase: MainPhase, paymentStatus: PaymentStatus) {

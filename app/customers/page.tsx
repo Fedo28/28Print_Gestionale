@@ -66,7 +66,7 @@ export default async function CustomersPage({ searchParams }: Props) {
             </div>
             <div className="field">
               <label htmlFor="phone">Telefono</label>
-              <input id="phone" name="phone" required />
+              <input id="phone" name="phone" placeholder="Facoltativo" />
             </div>
             <div className="field">
               <label htmlFor="whatsapp">WhatsApp</label>
@@ -76,13 +76,21 @@ export default async function CustomersPage({ searchParams }: Props) {
               <label htmlFor="email">Email</label>
               <input id="email" name="email" type="email" />
             </div>
+            <div className="field wide">
+              <label htmlFor="pec">PEC</label>
+              <input id="pec" name="pec" type="email" />
+            </div>
+            <div className="field">
+              <label htmlFor="vatNumber">P. IVA</label>
+              <input id="vatNumber" name="vatNumber" />
+            </div>
             <div className="field">
               <label htmlFor="taxCode">Codice fiscale</label>
               <input id="taxCode" name="taxCode" />
             </div>
             <div className="field">
-              <label htmlFor="vatNumber">P. IVA</label>
-              <input id="vatNumber" name="vatNumber" />
+              <label htmlFor="uniqueCode">Codice univoco (CU)</label>
+              <input id="uniqueCode" name="uniqueCode" />
             </div>
             <div className="field full">
               <label htmlFor="notes">Note</label>

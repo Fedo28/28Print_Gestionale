@@ -17,7 +17,7 @@ import {
   normalizeOrderTitle,
   normalizeForUniqueness
 } from "../lib/orders";
-import { buildOrdersFilterHref, parseDashboardPreset, parsePhaseFilter } from "../lib/order-filters";
+import { buildOrdersFilterHref, parseDashboardPreset, parseOrderListView, parsePhaseFilter } from "../lib/order-filters";
 import { getSelectablePhaseTargets } from "../lib/order-phase-transitions";
 import { getTieredUnitPrice, normalizeQuantityTiers, parseQuantityTiers } from "../lib/pricing";
 
@@ -102,6 +102,12 @@ describe("order domain", () => {
     expect(parseDashboardPreset("OVERDUE")).toBe("OVERDUE");
     expect(parseDashboardPreset("UNKNOWN")).toBe("ALL");
     expect(buildOrdersFilterHref({ preset: "BLOCKED" })).toBe("/orders?preset=BLOCKED");
+  });
+
+  it("supports active and delivered order views", () => {
+    expect(parseOrderListView("DELIVERED")).toBe("DELIVERED");
+    expect(parseOrderListView("whatever")).toBe("ACTIVE");
+    expect(buildOrdersFilterHref({ view: "DELIVERED", q: "rossi" })).toBe("/orders?view=DELIVERED&q=rossi");
   });
 
   it("excludes preventivi from operational flows", () => {
@@ -208,7 +214,7 @@ describe("order domain", () => {
     expect(week[2]?.ready).toBe(1);
   });
 
-  it("computes order totals with amount and percent discounts", () => {
+  it("computes order totals applying discounts and extras to the line total", () => {
     const totals = computeOrderTotals([
       {
         label: "Biglietti visita",
@@ -216,23 +222,28 @@ describe("order domain", () => {
         catalogBasePriceCents: 2500,
         discountMode: "AMOUNT",
         discountValue: 500,
+        extraMode: "PERCENT",
+        extraValue: 10,
         unitPriceCents: 2500
       },
       {
         label: "Adesivi vetrina",
-        quantity: 1,
+        quantity: 0.5,
         catalogBasePriceCents: 10000,
-        discountMode: "PERCENT",
-        discountValue: 10,
+        discountMode: "NONE",
+        discountValue: 0,
+        extraMode: "AMOUNT",
+        extraValue: 1000,
         unitPriceCents: 10000
       }
     ]);
 
-    expect(totals.items[0].unitPriceCents).toBe(2000);
-    expect(totals.items[0].lineTotalCents).toBe(4000);
-    expect(totals.items[1].unitPriceCents).toBe(9000);
-    expect(totals.items[1].lineTotalCents).toBe(9000);
-    expect(totals.totalCents).toBe(13000);
+    expect(totals.items[0].unitPriceCents).toBe(2475);
+    expect(totals.items[0].lineTotalCents).toBe(4950);
+    expect(totals.items[1].quantity).toBe(0.5);
+    expect(totals.items[1].unitPriceCents).toBe(12000);
+    expect(totals.items[1].lineTotalCents).toBe(6000);
+    expect(totals.totalCents).toBe(10950);
   });
 
   it("normalizes catalog codes for sync and manual entry", () => {

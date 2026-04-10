@@ -46,7 +46,7 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
             </div>
             <div className="field">
               <label htmlFor="phone">Telefono</label>
-              <input defaultValue={customer.phone} id="phone" name="phone" required />
+              <input defaultValue={customer.phone || ""} id="phone" name="phone" placeholder="Facoltativo" />
             </div>
             <div className="field">
               <label htmlFor="whatsapp">WhatsApp</label>
@@ -56,13 +56,21 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
               <label htmlFor="email">Email</label>
               <input defaultValue={customer.email || ""} id="email" name="email" type="email" />
             </div>
+            <div className="field wide">
+              <label htmlFor="pec">PEC</label>
+              <input defaultValue={customer.pec || ""} id="pec" name="pec" type="email" />
+            </div>
+            <div className="field">
+              <label htmlFor="vatNumber">P. IVA</label>
+              <input defaultValue={customer.vatNumber || ""} id="vatNumber" name="vatNumber" />
+            </div>
             <div className="field">
               <label htmlFor="taxCode">Codice fiscale</label>
               <input defaultValue={customer.taxCode || ""} id="taxCode" name="taxCode" />
             </div>
             <div className="field">
-              <label htmlFor="vatNumber">P. IVA</label>
-              <input defaultValue={customer.vatNumber || ""} id="vatNumber" name="vatNumber" />
+              <label htmlFor="uniqueCode">Codice univoco (CU)</label>
+              <input defaultValue={customer.uniqueCode || ""} id="uniqueCode" name="uniqueCode" />
             </div>
             <div className="field full">
               <label htmlFor="notes">Note</label>

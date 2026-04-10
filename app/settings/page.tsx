@@ -78,7 +78,7 @@ export default async function SettingsPage() {
             <form action={createServiceAction} className="form-grid settings-service-form">
               <div className="field">
                 <label htmlFor="code">Codice</label>
-                <input id="code" name="code" placeholder="BIGLIETTI_VISITA" required />
+                <input id="code" name="code" placeholder="Facoltativo, lo genero io se vuoto" />
               </div>
               <div className="field wide">
                 <label htmlFor="name">Nome servizio</label>

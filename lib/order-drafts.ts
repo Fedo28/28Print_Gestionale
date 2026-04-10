@@ -24,10 +24,12 @@ export type OrderDraftItemSnapshot = {
   photoMode: boolean;
   photoFormat: string;
   label: string;
-  quantity: number;
+  quantity: string;
   unitPrice: string;
   discountMode: string;
   discountValue: string;
+  extraMode: string;
+  extraValue: string;
   format: string;
   material: string;
   finishing: string;
@@ -126,10 +128,17 @@ export function parseOrderDraftSnapshot(raw: string | null | undefined): OrderDr
             photoMode: Boolean(item?.photoMode),
             photoFormat: typeof item?.photoFormat === "string" ? item.photoFormat : "",
             label: typeof item?.label === "string" ? item.label : "",
-            quantity: typeof item?.quantity === "number" && Number.isFinite(item.quantity) ? Math.max(1, Math.round(item.quantity)) : 1,
+            quantity:
+              typeof item?.quantity === "string"
+                ? item.quantity
+                : typeof item?.quantity === "number" && Number.isFinite(item.quantity)
+                  ? String(item.quantity).replace(".", ",")
+                  : "1",
             unitPrice: typeof item?.unitPrice === "string" ? item.unitPrice : "",
             discountMode: typeof item?.discountMode === "string" ? item.discountMode : "NONE",
             discountValue: typeof item?.discountValue === "string" ? item.discountValue : "",
+            extraMode: typeof item?.extraMode === "string" ? item.extraMode : "NONE",
+            extraValue: typeof item?.extraValue === "string" ? item.extraValue : "",
             format: typeof item?.format === "string" ? item.format : "",
             material: typeof item?.material === "string" ? item.material : "",
             finishing: typeof item?.finishing === "string" ? item.finishing : "",
@@ -160,11 +169,12 @@ export function hasMeaningfulOrderDraft(snapshot: Pick<OrderDraftSnapshot, "sele
       item.label,
       item.unitPrice,
       item.discountValue,
+      item.extraValue,
       item.format,
       item.material,
       item.finishing,
       item.notes,
       item.serviceCatalogId
-    ].some((value) => value.trim()) || item.quantity > 1
+    ].some((value) => value.trim()) || (item.quantity.trim() && item.quantity.trim() !== "1")
   );
 }

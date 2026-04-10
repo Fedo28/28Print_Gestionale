@@ -109,11 +109,13 @@ model Customer {
   id         String   @id @default(uuid())
   name       String
   type       CustomerType @default(PUBBLICO)
-  phone      String
+  phone      String?
   whatsapp   String?
   email      String?
+  pec        String?
   taxCode    String?
   vatNumber  String?
+  uniqueCode String?
   notes      String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -122,7 +124,9 @@ model Customer {
 
   @@index([name])
   @@index([phone])
+  @@index([pec])
   @@index([type])
+  @@index([uniqueCode])
 }
 
 model Order {
@@ -135,6 +139,7 @@ model Order {
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   deliveryAt          DateTime
+  deliveredAt         DateTime?
   appointmentAt       DateTime?
   appointmentNote     String?
   priority            Priority          @default(MEDIA)
@@ -157,6 +162,7 @@ model Order {
 
   @@unique([createdOn, titleNormalized])
   @@index([deliveryAt])
+  @@index([deliveredAt])
   @@index([appointmentAt])
   @@index([isQuote])
   @@index([mainPhase, operationalStatus])
@@ -169,10 +175,12 @@ model OrderItem {
   serviceCatalogId String?
   label            String
   description      String?
-  quantity         Int             @default(1)
+  quantity         Float           @default(1)
   catalogBasePriceCents Int?
   discountMode     DiscountMode    @default(NONE)
   discountValue    Int             @default(0)
+  extraMode        DiscountMode    @default(NONE)
+  extraValue       Int             @default(0)
   unitPriceCents   Int             @default(0)
   lineTotalCents   Int             @default(0)
   format           String?

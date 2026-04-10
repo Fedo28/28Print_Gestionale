@@ -17,9 +17,11 @@ import {
   type OrderDraftSnapshot
 } from "@/lib/order-drafts";
 import {
-  computeDiscountedUnitPrice,
+  computeLineTotalWithAdjustmentsCents,
+  computeEffectiveUnitPriceCents,
   discountModeLabels,
   getTieredUnitPrice,
+  parseQuantityValue,
   parseQuantityTiers,
   type QuantityTier,
   type DiscountModeValue
@@ -32,10 +34,12 @@ type ItemState = {
   photoMode: boolean;
   photoFormat: string;
   label: string;
-  quantity: number;
+  quantity: string;
   unitPrice: string;
   discountMode: DiscountModeValue;
   discountValue: string;
+  extraMode: DiscountModeValue;
+  extraValue: string;
   format: string;
   material: string;
   finishing: string;
@@ -49,10 +53,12 @@ const emptyItem = (): ItemState => ({
   photoMode: false,
   photoFormat: "",
   label: "",
-  quantity: 1,
+  quantity: "1",
   unitPrice: "",
   discountMode: "NONE",
   discountValue: "",
+  extraMode: "NONE",
+  extraValue: "",
   format: "",
   material: "",
   finishing: "",
@@ -67,10 +73,17 @@ function createItemStateFromDraft(item?: Partial<OrderDraftSnapshot["items"][num
     photoMode: Boolean(item?.photoMode),
     photoFormat: typeof item?.photoFormat === "string" ? item.photoFormat : "",
     label: typeof item?.label === "string" ? item.label : "",
-    quantity: typeof item?.quantity === "number" && Number.isFinite(item.quantity) ? Math.max(1, Math.round(item.quantity)) : 1,
+    quantity:
+      typeof item?.quantity === "string"
+        ? item.quantity
+        : typeof item?.quantity === "number" && Number.isFinite(item.quantity)
+          ? String(item.quantity).replace(".", ",")
+          : "1",
     unitPrice: typeof item?.unitPrice === "string" ? item.unitPrice : "",
     discountMode: item?.discountMode === "AMOUNT" || item?.discountMode === "PERCENT" ? item.discountMode : "NONE",
     discountValue: typeof item?.discountValue === "string" ? item.discountValue : "",
+    extraMode: item?.extraMode === "AMOUNT" || item?.extraMode === "PERCENT" ? item.extraMode : "NONE",
+    extraValue: typeof item?.extraValue === "string" ? item.extraValue : "",
     format: typeof item?.format === "string" ? item.format : "",
     material: typeof item?.material === "string" ? item.material : "",
     finishing: typeof item?.finishing === "string" ? item.finishing : "",
@@ -105,6 +118,11 @@ function parseDiscountValue(mode: DiscountModeValue, value: string) {
   }
 
   return 0;
+}
+
+function formatQuantityInput(value: string | number) {
+  const quantity = parseQuantityValue(value, 1);
+  return quantity.toLocaleString("it-IT", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
 }
 
 function normalizeCatalogSearch(value: string) {
@@ -214,6 +232,24 @@ type ServiceSuggestion =
 
 type OrderFormMode = "order" | "quote";
 
+type InlineCatalogDraft = {
+  name: string;
+  code: string;
+  basePrice: string;
+  description: string;
+  quantityTiers: string;
+};
+
+function createEmptyInlineCatalogDraft(): InlineCatalogDraft {
+  return {
+    name: "",
+    code: "",
+    basePrice: "",
+    description: "",
+    quantityTiers: ""
+  };
+}
+
 export function OrderForm({
   customers,
   services,
@@ -227,19 +263,24 @@ export function OrderForm({
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const autosaveTimerRef = useRef<number | null>(null);
+  const [catalogServices, setCatalogServices] = useState<ServiceCatalog[]>(services);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [customerQuery, setCustomerQuery] = useState("");
   const [items, setItems] = useState<ItemState[]>([emptyItem(), emptyItem()]);
   const [activeServiceField, setActiveServiceField] = useState<number | null>(null);
   const [openTierIndex, setOpenTierIndex] = useState<number | null>(null);
+  const [catalogDraftRowIndex, setCatalogDraftRowIndex] = useState<number | null>(null);
+  const [catalogDraft, setCatalogDraft] = useState<InlineCatalogDraft>(createEmptyInlineCatalogDraft());
+  const [catalogDraftMessage, setCatalogDraftMessage] = useState<string | null>(null);
+  const [isCatalogDraftSubmitting, setIsCatalogDraftSubmitting] = useState(false);
   const [draftHydrated, setDraftHydrated] = useState(false);
   const [draftRestoredAt, setDraftRestoredAt] = useState<string | null>(null);
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<string | null>(null);
   const [hasSavedDraft, setHasSavedDraft] = useState(false);
   const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId);
-  const photographyFormats = getPhotographyFormatOptions(services);
-  const photographyServices = services.filter(isPhotographyService);
-  const isCatalogEmpty = services.length === 0;
+  const photographyFormats = getPhotographyFormatOptions(catalogServices);
+  const photographyServices = catalogServices.filter(isPhotographyService);
+  const isCatalogEmpty = catalogServices.length === 0;
   const defaultCustomerType: CustomerType = "PUBBLICO";
   const isQuoteMode = kind === "quote";
   const draftStorageKey = buildOrderDraftStorageKey(kind as OrderDraftMode);
@@ -297,6 +338,9 @@ export function OrderForm({
     setItems([emptyItem(), emptyItem()]);
     setActiveServiceField(null);
     setOpenTierIndex(null);
+    setCatalogDraftRowIndex(null);
+    setCatalogDraft(createEmptyInlineCatalogDraft());
+    setCatalogDraftMessage(null);
   }
 
   function persistDraft() {
@@ -339,6 +383,10 @@ export function OrderForm({
       persistDraft();
     }, 500);
   }
+
+  useEffect(() => {
+    setCatalogServices(services);
+  }, [services]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -418,7 +466,7 @@ export function OrderForm({
       return [] as ServiceSuggestion[];
     }
 
-    const serviceSuggestions: ServiceSuggestion[] = services
+    const serviceSuggestions: ServiceSuggestion[] = catalogServices
       .filter((service) => !isPhotographyService(service))
       .map((service) => ({
         type: "service" as const,
@@ -454,6 +502,75 @@ export function OrderForm({
     return serviceSuggestions.slice(0, 6);
   }
 
+  function openInlineCatalogDraft(index: number) {
+    const row = items[index];
+    if (!row) {
+      return;
+    }
+
+    setCatalogDraftRowIndex(index);
+    setCatalogDraftMessage(null);
+    setCatalogDraft({
+      name: row.serviceQuery.trim() || row.label.trim(),
+      code: "",
+      basePrice: row.unitPrice,
+      description: "",
+      quantityTiers: ""
+    });
+  }
+
+  function closeInlineCatalogDraft() {
+    setCatalogDraftRowIndex(null);
+    setCatalogDraft(createEmptyInlineCatalogDraft());
+    setCatalogDraftMessage(null);
+  }
+
+  async function saveInlineCatalogDraft(index: number) {
+    if (!catalogDraft.name.trim()) {
+      setCatalogDraftMessage("Il nome servizio e obbligatorio.");
+      return;
+    }
+
+    setIsCatalogDraftSubmitting(true);
+    setCatalogDraftMessage(null);
+
+    try {
+      const response = await fetch("/api/services", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(catalogDraft)
+      });
+
+      const body = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            service?: ServiceCatalog;
+          }
+        | null;
+
+      const createdService = body?.service;
+
+      if (!response.ok || !createdService) {
+        setCatalogDraftMessage(body?.error || "Impossibile salvare il servizio nel catalogo.");
+        return;
+      }
+
+      setCatalogServices((current) =>
+        [...current, createdService].sort((left, right) => left.name.localeCompare(right.name, "it"))
+      );
+      selectServiceForRow(index, createdService);
+      setCatalogDraftRowIndex(null);
+      setCatalogDraft(createEmptyInlineCatalogDraft());
+      setCatalogDraftMessage(null);
+    } catch {
+      setCatalogDraftMessage("Errore di rete durante il salvataggio del servizio.");
+    } finally {
+      setIsCatalogDraftSubmitting(false);
+    }
+  }
+
   function selectServiceForRow(index: number, service: ServiceCatalog) {
     setItems((current) =>
       current.map((entry, itemIndex) =>
@@ -465,15 +582,20 @@ export function OrderForm({
               photoMode: false,
               photoFormat: "",
               label: service.name,
-              unitPrice: getCatalogPriceDisplay(service, entry.quantity),
+              unitPrice: getCatalogPriceDisplay(service, parseQuantityValue(entry.quantity)),
               discountMode: "NONE",
               discountValue: "",
+              extraMode: "NONE",
+              extraValue: "",
               priceOverridden: false
             }
           : entry
       )
     );
     setActiveServiceField(null);
+    if (catalogDraftRowIndex === index) {
+      closeInlineCatalogDraft();
+    }
   }
 
   function selectPhotographyForRow(index: number) {
@@ -490,6 +612,8 @@ export function OrderForm({
               unitPrice: "",
               discountMode: "NONE",
               discountValue: "",
+              extraMode: "NONE",
+              extraValue: "",
               priceOverridden: false,
               format: ""
             }
@@ -497,15 +621,28 @@ export function OrderForm({
       )
     );
     setActiveServiceField(null);
+    if (catalogDraftRowIndex === index) {
+      closeInlineCatalogDraft();
+    }
   }
 
   const itemsPayload = JSON.stringify(
     items
       .map((item) => {
-        const service = services.find((entry) => entry.id === item.serviceCatalogId);
+        const service = catalogServices.find((entry) => entry.id === item.serviceCatalogId);
+        const quantity = parseQuantityValue(item.quantity, 1);
         const catalogBasePriceCents = parseDisplayPriceToCents(item.unitPrice);
         const discountValue = parseDiscountValue(item.discountMode, item.discountValue);
-        const unitPriceCents = computeDiscountedUnitPrice(catalogBasePriceCents, item.discountMode, discountValue);
+        const extraValue = parseDiscountValue(item.extraMode, item.extraValue);
+        const lineTotalCents = computeLineTotalWithAdjustmentsCents(
+          catalogBasePriceCents,
+          quantity,
+          item.discountMode,
+          discountValue,
+          item.extraMode,
+          extraValue
+        );
+        const unitPriceCents = computeEffectiveUnitPriceCents(lineTotalCents, quantity);
 
         return {
           ...item,
@@ -514,20 +651,26 @@ export function OrderForm({
           label: item.label || item.serviceQuery || service?.name || "",
           serviceCatalogId: item.serviceCatalogId || undefined,
           priceOverridden: undefined,
+          quantity,
           catalogBasePriceCents,
           discountValue,
+          extraValue,
           unitPriceCents
         };
       })
       .filter((item) => item.label.trim() && (!item.serviceQuery || item.serviceQuery !== "Fotografie" || Boolean(item.serviceCatalogId)))
   );
   const previewTotalCents = items.reduce((sum, item) => {
-    const unitPriceCents = computeDiscountedUnitPrice(
+    const quantity = parseQuantityValue(item.quantity, 1);
+    const lineTotalCents = computeLineTotalWithAdjustmentsCents(
       parseDisplayPriceToCents(item.unitPrice),
+      quantity,
       item.discountMode,
-      parseDiscountValue(item.discountMode, item.discountValue)
+      parseDiscountValue(item.discountMode, item.discountValue),
+      item.extraMode,
+      parseDiscountValue(item.extraMode, item.extraValue)
     );
-    return sum + (Number.isFinite(unitPriceCents) ? unitPriceCents : 0) * Math.max(1, item.quantity || 1);
+    return sum + (Number.isFinite(lineTotalCents) ? lineTotalCents : 0);
   }, 0);
   const filledRows = items.filter((item) => item.label.trim() || item.notes.trim()).length;
 
@@ -615,7 +758,7 @@ export function OrderForm({
                   ...customer,
                   orderCount: customer.orders.length
                 }))}
-                helperText="Scrivi nome, telefono, email, codice fiscale o partita IVA per trovare subito il cliente giusto."
+                helperText="Scrivi nome, telefono, email, PEC, codice fiscale, partita IVA o codice univoco per trovare subito il cliente giusto."
                 label="Cerca cliente esistente"
                 onQueryChange={(value) => {
                   setCustomerQuery(value);
@@ -627,7 +770,7 @@ export function OrderForm({
                   setSelectedCustomerId(customer.id);
                   setCustomerQuery(customer.name);
                 }}
-                placeholder="Es. Rossi, +39 333..., info@azienda.it, IT123..."
+                placeholder="Es. Rossi, +39 333..., info@azienda.it, pec@azienda.it, IT123..."
                 query={customerQuery}
                 selectedCustomerId={selectedCustomerId}
               />
@@ -651,8 +794,8 @@ export function OrderForm({
                       Nuovo cliente
                     </button>
                   </div>
-                  <div className="subtle">{selectedCustomer.phone}</div>
-                  <div className="subtle">{selectedCustomer.email || selectedCustomer.whatsapp || "Nessun contatto secondario"}</div>
+                  <div className="subtle">{selectedCustomer.phone || "Telefono non inserito"}</div>
+                  <div className="subtle">{selectedCustomer.email || selectedCustomer.pec || selectedCustomer.whatsapp || "Nessun contatto secondario"}</div>
                 </div>
               ) : null}
 
@@ -674,7 +817,7 @@ export function OrderForm({
                   </div>
                   <div className="field">
                     <label htmlFor="customerPhone">Telefono</label>
-                    <input id="customerPhone" name="customerPhone" required={!selectedCustomerId} />
+                    <input id="customerPhone" name="customerPhone" placeholder="Facoltativo" />
                   </div>
                   <div className="field">
                     <label htmlFor="customerWhatsapp">WhatsApp</label>
@@ -684,13 +827,21 @@ export function OrderForm({
                     <label htmlFor="customerEmail">Email</label>
                     <input id="customerEmail" name="customerEmail" type="email" />
                   </div>
+                  <div className="field wide">
+                    <label htmlFor="customerPec">PEC</label>
+                    <input id="customerPec" name="customerPec" type="email" />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="customerVatNumber">P. IVA</label>
+                    <input id="customerVatNumber" name="customerVatNumber" />
+                  </div>
                   <div className="field">
                     <label htmlFor="customerTaxCode">Codice fiscale</label>
                     <input id="customerTaxCode" name="customerTaxCode" />
                   </div>
                   <div className="field">
-                    <label htmlFor="customerVatNumber">P. IVA</label>
-                    <input id="customerVatNumber" name="customerVatNumber" />
+                    <label htmlFor="customerUniqueCode">Codice univoco (CU)</label>
+                    <input id="customerUniqueCode" name="customerUniqueCode" />
                   </div>
                   <div className="field full">
                     <label htmlFor="customerNotes">Note cliente</label>
@@ -789,9 +940,10 @@ export function OrderForm({
 
         <div className="order-lines-stack">
           {items.map((item, index) => {
-            const selectedService = services.find((entry) => entry.id === item.serviceCatalogId);
+            const selectedService = catalogServices.find((entry) => entry.id === item.serviceCatalogId);
             const suggestions = getServiceSuggestions(item.serviceQuery);
             const parsedTiers = getServiceTiers(selectedService);
+            const lineQuantity = parseQuantityValue(item.quantity, 1);
             const selectedPhotographyOption = photographyFormats.find((entry) => entry.serviceId === item.serviceCatalogId && entry.label === item.photoFormat);
             const isPhotographyRow = item.photoMode || item.serviceQuery === "Fotografie" || Boolean(selectedPhotographyOption);
             const showSuggestions =
@@ -799,10 +951,13 @@ export function OrderForm({
               item.serviceQuery.trim().length > 0 &&
               (!selectedService || normalizeCatalogSearch(item.serviceQuery) !== normalizeCatalogSearch(selectedService.name) || isPhotographyRow);
             const hasTierEntries = parsedTiers.length > 0;
-            const lineFinalCents = computeDiscountedUnitPrice(
+            const lineFinalWithExtraCents = computeLineTotalWithAdjustmentsCents(
               parseDisplayPriceToCents(item.unitPrice),
+              lineQuantity,
               item.discountMode,
-              parseDiscountValue(item.discountMode, item.discountValue)
+              parseDiscountValue(item.discountMode, item.discountValue),
+              item.extraMode,
+              parseDiscountValue(item.extraMode, item.extraValue)
             );
 
             return (
@@ -810,13 +965,14 @@ export function OrderForm({
                 <div className="order-line-head">
                   <div className="order-line-index">#{index + 1}</div>
                   <strong>Voce lavorazione</strong>
-                  <span className="pill">{new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(lineFinalCents / 100)}</span>
+                  <span className="pill">{new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(lineFinalWithExtraCents / 100)}</span>
                   {items.length > 1 ? (
                     <button
                       className="ghost"
                       onClick={(event) => {
                         event.preventDefault();
                         setItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+                        closeInlineCatalogDraft();
                       }}
                       type="button"
                     >
@@ -871,6 +1027,20 @@ export function OrderForm({
                       {hasTierEntries ? <span className="pill order-line-tier-badge">Prezzo a scaglioni</span> : null}
                       <button
                         className="ghost order-line-tier-toggle"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          if (catalogDraftRowIndex === index) {
+                            closeInlineCatalogDraft();
+                          } else {
+                            openInlineCatalogDraft(index);
+                          }
+                        }}
+                        type="button"
+                      >
+                        {catalogDraftRowIndex === index ? "Chiudi nuovo servizio" : "Nuovo in catalogo"}
+                      </button>
+                      <button
+                        className="ghost order-line-tier-toggle"
                         disabled={!hasTierEntries}
                         onClick={(event) => {
                           event.preventDefault();
@@ -922,9 +1092,9 @@ export function OrderForm({
                     ) : null}
                     {hasTierEntries && openTierIndex === index ? (
                       <div className="order-line-tier-panel">
-                        {parsedTiers.map((tier) => (
+                          {parsedTiers.map((tier) => (
                           <button
-                            className={`order-line-tier-chip${isTierSelected(tier, item.quantity) && !item.priceOverridden ? " is-selected" : ""}`}
+                            className={`order-line-tier-chip${isTierSelected(tier, lineQuantity) && !item.priceOverridden ? " is-selected" : ""}`}
                             key={`${index}-${tier.minQuantity}-${tier.maxQuantity ?? "plus"}`}
                             onClick={(event) => {
                               event.preventDefault();
@@ -937,7 +1107,7 @@ export function OrderForm({
                                   itemIndex === index
                                     ? {
                                         ...entry,
-                                        quantity: tier.minQuantity,
+                                        quantity: formatQuantityInput(tier.minQuantity),
                                         unitPrice: (tier.unitPriceCents / 100).toFixed(2).replace(".", ","),
                                         priceOverridden: false
                                       }
@@ -951,6 +1121,109 @@ export function OrderForm({
                             <span>{(tier.unitPriceCents / 100).toFixed(2).replace(".", ",")} €</span>
                           </button>
                         ))}
+                      </div>
+                    ) : null}
+                    {catalogDraftRowIndex === index ? (
+                      <div className="mini-item order-line-inline-catalog">
+                        <div className="order-line-inline-catalog-head">
+                          <div className="order-line-inline-catalog-title">
+                            <div className="order-line-inline-catalog-copy">
+                              <strong>Nuovo servizio catalogo</strong>
+                              <p className="card-muted">Lo salvo e lo aggancio subito a questa riga.</p>
+                            </div>
+                            <span className="pill">Codice automatico se vuoto</span>
+                          </div>
+                          <p className="hint">
+                            Compila prima nome e prezzo base. Descrizione e scaglioni servono solo se vuoi rendere il
+                            servizio piu preciso o riutilizzarlo meglio in seguito.
+                          </p>
+                        </div>
+                        <div className="order-line-inline-catalog-sections">
+                          <section className="order-line-inline-catalog-section">
+                            <div className="order-line-inline-catalog-section-head">
+                              <strong>Dati base</strong>
+                              <span className="subtle">Questi campi bastano per creare il servizio e usarlo subito.</span>
+                            </div>
+                            <div className="form-grid order-line-inline-catalog-grid">
+                              <div className="field full order-line-inline-catalog-name">
+                                <label htmlFor={`inline-service-name-${index}`}>Nome servizio</label>
+                                <input
+                                  id={`inline-service-name-${index}`}
+                                  onChange={(event) => setCatalogDraft((current) => ({ ...current, name: event.target.value }))}
+                                  value={catalogDraft.name}
+                                />
+                              </div>
+                              <div className="field wide order-line-inline-catalog-code">
+                                <label htmlFor={`inline-service-code-${index}`}>Codice</label>
+                                <input
+                                  id={`inline-service-code-${index}`}
+                                  onChange={(event) => setCatalogDraft((current) => ({ ...current, code: event.target.value }))}
+                                  placeholder="Facoltativo"
+                                  value={catalogDraft.code}
+                                />
+                              </div>
+                              <div className="field wide order-line-inline-catalog-price">
+                                <label htmlFor={`inline-service-price-${index}`}>Prezzo base</label>
+                                <input
+                                  id={`inline-service-price-${index}`}
+                                  onChange={(event) => setCatalogDraft((current) => ({ ...current, basePrice: event.target.value }))}
+                                  placeholder="0,00"
+                                  value={catalogDraft.basePrice}
+                                />
+                              </div>
+                            </div>
+                          </section>
+                          <section className="order-line-inline-catalog-section">
+                            <div className="order-line-inline-catalog-section-head">
+                              <strong>Dettagli facoltativi</strong>
+                              <span className="subtle">Utile se vuoi trovare il servizio piu facilmente o descriverlo meglio.</span>
+                            </div>
+                            <div className="form-grid order-line-inline-catalog-grid">
+                              <div className="field full">
+                                <label htmlFor={`inline-service-description-${index}`}>Descrizione</label>
+                                <textarea
+                                  id={`inline-service-description-${index}`}
+                                  onChange={(event) => setCatalogDraft((current) => ({ ...current, description: event.target.value }))}
+                                  value={catalogDraft.description}
+                                />
+                              </div>
+                            </div>
+                          </section>
+                          <section className="order-line-inline-catalog-section">
+                            <div className="order-line-inline-catalog-section-head">
+                              <strong>Scaglioni quantita</strong>
+                              <span className="subtle">Usali solo se il prezzo cambia in base alla quantita ordinata.</span>
+                            </div>
+                            <div className="form-grid order-line-inline-catalog-grid">
+                              <div className="field full">
+                                <label htmlFor={`inline-service-tiers-${index}`}>Scaglioni quantita</label>
+                                <input
+                                  id={`inline-service-tiers-${index}`}
+                                  onChange={(event) => setCatalogDraft((current) => ({ ...current, quantityTiers: event.target.value }))}
+                                  placeholder="1-9:0,50 | 10-49:0,30 | 50+:0,20"
+                                  value={catalogDraft.quantityTiers}
+                                />
+                              </div>
+                            </div>
+                            <p className="hint order-line-inline-catalog-help">
+                              Esempio: <code>1-9:0,50 | 10-49:0,30 | 50+:0,20</code>
+                            </p>
+                          </section>
+                        </div>
+                        {catalogDraftMessage ? <p className="hint order-line-inline-catalog-message">{catalogDraftMessage}</p> : null}
+                        <div className="button-row order-line-inline-catalog-actions">
+                          <button className="secondary" onClick={closeInlineCatalogDraft} type="button">
+                            Annulla
+                          </button>
+                          <button
+                            className="primary"
+                            disabled={isCatalogDraftSubmitting}
+                            onClick={() => void saveInlineCatalogDraft(index)}
+                            type="button"
+                          >
+                            {isCatalogDraftSubmitting ? "Salvataggio..." : "Salva e usa"}
+                          </button>
+                        </div>
                       </div>
                     ) : null}
                   </div>
@@ -988,9 +1261,11 @@ export function OrderForm({
                                 label: "Fotografie",
                                 serviceCatalogId: nextOption.serviceId,
                                 format: nextOption.label,
-                                unitPrice: getCatalogPriceDisplay(nextOption.service, entry.quantity),
+                                unitPrice: getCatalogPriceDisplay(nextOption.service, parseQuantityValue(entry.quantity)),
                                 discountMode: "NONE",
                                 discountValue: "",
+                                extraMode: "NONE",
+                                extraValue: "",
                                 priceOverridden: false
                               };
                             })
@@ -1010,10 +1285,11 @@ export function OrderForm({
                   <div className="field order-line-qty">
                     <label htmlFor={`quantity-${index}`}>Qta</label>
                     <input
+                      inputMode="decimal"
                       id={`quantity-${index}`}
-                      min={1}
                       onChange={(event) => {
-                        const nextQuantity = Number.parseInt(event.target.value || "1", 10) || 1;
+                        const nextQuantityInput = event.target.value;
+                        const nextQuantity = parseQuantityValue(nextQuantityInput, 1);
 
                         setItems((current) =>
                           current.map((entry, itemIndex) => {
@@ -1021,21 +1297,29 @@ export function OrderForm({
                               return entry;
                             }
 
-                            const service = services.find((serviceEntry) => serviceEntry.id === entry.serviceCatalogId);
+                            const service = catalogServices.find((serviceEntry) => serviceEntry.id === entry.serviceCatalogId);
 
                             if (!service || entry.priceOverridden) {
-                              return { ...entry, quantity: nextQuantity };
+                              return { ...entry, quantity: nextQuantityInput };
                             }
 
                             return {
                               ...entry,
-                              quantity: nextQuantity,
+                              quantity: nextQuantityInput,
                               unitPrice: getCatalogPriceDisplay(service, nextQuantity)
                             };
                           })
                         );
                       }}
-                      type="number"
+                      onBlur={() =>
+                        setItems((current) =>
+                          current.map((entry, itemIndex) =>
+                            itemIndex === index ? { ...entry, quantity: formatQuantityInput(entry.quantity) } : entry
+                          )
+                        )
+                      }
+                      placeholder="1 oppure 0,5"
+                      type="text"
                       value={item.quantity}
                     />
                   </div>
@@ -1096,12 +1380,54 @@ export function OrderForm({
                       value={item.discountValue}
                     />
                   </div>
+                  <div className="field order-line-extra-mode">
+                    <label htmlFor={`extraMode-${index}`}>Lavorazione extra</label>
+                    <select
+                      id={`extraMode-${index}`}
+                      onChange={(event) =>
+                        setItems((current) =>
+                          current.map((entry, itemIndex) =>
+                            itemIndex === index
+                              ? {
+                                  ...entry,
+                                  extraMode: event.target.value as DiscountModeValue,
+                                  extraValue: event.target.value === "NONE" ? "" : entry.extraValue
+                                }
+                              : entry
+                          )
+                        )
+                      }
+                      value={item.extraMode}
+                    >
+                      {Object.entries(discountModeLabels).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field order-line-extra-value">
+                    <label htmlFor={`extraValue-${index}`}>Valore extra</label>
+                    <input
+                      disabled={item.extraMode === "NONE"}
+                      id={`extraValue-${index}`}
+                      onChange={(event) =>
+                        setItems((current) =>
+                          current.map((entry, itemIndex) =>
+                            itemIndex === index ? { ...entry, extraValue: event.target.value } : entry
+                          )
+                        )
+                      }
+                      placeholder={item.extraMode === "PERCENT" ? "10" : "0,00"}
+                      value={item.extraValue}
+                    />
+                  </div>
                   <div className="field order-line-final">
                     <label htmlFor={`finalPrice-${index}`}>Prezzo finale</label>
                     <input
                       disabled
                       id={`finalPrice-${index}`}
-                      value={new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(lineFinalCents / 100)}
+                      value={new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(lineFinalWithExtraCents / 100)}
                     />
                   </div>
                   <div className="field full order-line-notes">

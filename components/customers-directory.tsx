@@ -32,7 +32,7 @@ export function CustomersDirectory({ customers }: { customers: CustomerDirectory
           ...customer,
           orderCount: customer.orders.length
         }))}
-        helperText="Cerca per nome, telefono, email, codice fiscale o partita IVA."
+        helperText="Cerca per nome, telefono, email, PEC, codice fiscale, partita IVA o codice univoco."
         label="Cerca cliente"
         onQueryChange={(value) => {
           setQuery(value);
@@ -42,7 +42,7 @@ export function CustomersDirectory({ customers }: { customers: CustomerDirectory
           setQuery(customer.name);
           setHighlightedCustomerId(customer.id);
         }}
-        placeholder="Es. Rossi, +39 333..., info@azienda.it, IT123..."
+        placeholder="Es. Rossi, +39 333..., info@azienda.it, pec@azienda.it, IT123..."
         query={query}
         selectedCustomerId={highlightedCustomerId}
       />
@@ -63,7 +63,7 @@ export function CustomersDirectory({ customers }: { customers: CustomerDirectory
                 <span className="pill">{customerTypeLabels[customer.type]}</span>
               </div>
               <div className="subtle">{customer.orders.length} ordini</div>
-              <div className="subtle">{customer.phone}</div>
+              <div className="subtle">{customer.phone || "Telefono non inserito"}</div>
               <div className="subtle">{customer.email || customer.whatsapp || "Nessun contatto secondario"}</div>
               <div className="subtle">Ultimo ordine: {customer.orders[0] ? formatDate(customer.orders[0].createdAt) : "Nessuno"}</div>
             </article>

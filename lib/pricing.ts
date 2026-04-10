@@ -11,6 +11,31 @@ export const discountModeLabels: Record<DiscountModeValue, string> = {
   PERCENT: "Percentuale"
 };
 
+const QUANTITY_PRECISION = 1000;
+
+export function normalizeQuantityValue(value: number, fallback = 1) {
+  const normalized = Number.isFinite(value) && value > 0 ? value : fallback;
+  return Math.round(normalized * QUANTITY_PRECISION) / QUANTITY_PRECISION;
+}
+
+export function parseQuantityValue(value: string | number | null | undefined, fallback = 1) {
+  if (typeof value === "number") {
+    return normalizeQuantityValue(value, fallback);
+  }
+
+  const normalized = String(value ?? "").trim().replace(",", ".");
+  if (!normalized) {
+    return fallback;
+  }
+
+  const parsed = Number.parseFloat(normalized);
+  if (Number.isNaN(parsed)) {
+    return fallback;
+  }
+
+  return normalizeQuantityValue(parsed, fallback);
+}
+
 export function clampDiscountValue(mode: DiscountModeValue, value: number) {
   const normalized = Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
 
@@ -36,6 +61,64 @@ export function computeDiscountedUnitPrice(basePriceCents: number, mode: Discoun
   return safeBase;
 }
 
+export function computeLineBaseTotalCents(baseUnitPriceCents: number, quantity: number) {
+  const safeBase = Number.isFinite(baseUnitPriceCents) ? Math.max(0, Math.round(baseUnitPriceCents)) : 0;
+  const safeQuantity = normalizeQuantityValue(quantity);
+  return Math.max(0, Math.round(safeBase * safeQuantity));
+}
+
+export function computeDiscountedLineTotalCents(
+  baseUnitPriceCents: number,
+  quantity: number,
+  mode: DiscountModeValue,
+  value: number
+) {
+  const safeBaseLine = computeLineBaseTotalCents(baseUnitPriceCents, quantity);
+  const safeValue = clampDiscountValue(mode, value);
+
+  if (mode === "AMOUNT") {
+    return Math.max(safeBaseLine - safeValue, 0);
+  }
+
+  if (mode === "PERCENT") {
+    return Math.max(Math.round(safeBaseLine * (100 - safeValue) / 100), 0);
+  }
+
+  return safeBaseLine;
+}
+
+export function computeExtraLineTotalCents(lineTotalCents: number, mode: DiscountModeValue, value: number) {
+  const safeBase = Number.isFinite(lineTotalCents) ? Math.max(0, Math.round(lineTotalCents)) : 0;
+  const safeValue = clampDiscountValue(mode, value);
+
+  if (mode === "AMOUNT") {
+    return safeBase + safeValue;
+  }
+
+  if (mode === "PERCENT") {
+    return Math.max(Math.round(safeBase * (100 + safeValue) / 100), 0);
+  }
+
+  return safeBase;
+}
+
+export function computeLineTotalWithAdjustmentsCents(
+  baseUnitPriceCents: number,
+  quantity: number,
+  discountMode: DiscountModeValue,
+  discountValue: number,
+  extraMode: DiscountModeValue,
+  extraValue: number
+) {
+  const discounted = computeDiscountedLineTotalCents(baseUnitPriceCents, quantity, discountMode, discountValue);
+  return computeExtraLineTotalCents(discounted, extraMode, extraValue);
+}
+
+export function computeEffectiveUnitPriceCents(lineTotalCents: number, quantity: number) {
+  const safeQuantity = normalizeQuantityValue(quantity);
+  return safeQuantity > 0 ? Math.max(0, Math.round(lineTotalCents / safeQuantity)) : 0;
+}
+
 export function formatDiscountSummary(mode: DiscountModeValue, value: number) {
   const safeValue = clampDiscountValue(mode, value);
 
@@ -48,6 +131,20 @@ export function formatDiscountSummary(mode: DiscountModeValue, value: number) {
   }
 
   return "Nessuno sconto";
+}
+
+export function formatExtraSummary(mode: DiscountModeValue, value: number) {
+  const safeValue = clampDiscountValue(mode, value);
+
+  if (mode === "AMOUNT") {
+    return `Extra ${new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(safeValue / 100)}`;
+  }
+
+  if (mode === "PERCENT") {
+    return `Extra ${safeValue}%`;
+  }
+
+  return "Nessun extra";
 }
 
 function parseTierPriceToCents(value: string) {
@@ -138,7 +235,7 @@ export function getTieredUnitPrice(basePriceCents: number, quantity: number, qua
     return Math.max(0, Math.round(basePriceCents || 0));
   }
 
-  const safeQuantity = Number.isFinite(quantity) && quantity > 0 ? Math.round(quantity) : 1;
+  const safeQuantity = normalizeQuantityValue(quantity);
   const matchedTier = tiers.find((tier) => safeQuantity >= tier.minQuantity && (tier.maxQuantity === null || safeQuantity <= tier.maxQuantity));
 
   return matchedTier ? matchedTier.unitPriceCents : Math.max(0, Math.round(basePriceCents || 0));
