@@ -24,7 +24,7 @@ type OrderRow = {
   balanceDueCents: number;
   customer: {
     name: string;
-    phone: string;
+    phone: string | null;
   };
 };
 
@@ -77,7 +77,7 @@ export function OrdersTable({ orders }: { orders: OrderRow[] }) {
                   </td>
                   <td>
                     <strong>{order.customer.name}</strong>
-                    <div className="subtle">{order.customer.phone}</div>
+                    <div className="subtle">{order.customer.phone || "Telefono non disponibile"}</div>
                   </td>
                   <td>{formatDateTime(order.deliveryAt)}</td>
                   <td>{priorityLabels[order.priority]}</td>

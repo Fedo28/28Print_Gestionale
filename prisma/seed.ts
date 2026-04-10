@@ -76,11 +76,13 @@ async function main() {
     },
     update: {
       name: "Admin",
+      nickname: "admin",
       passwordHash: hashPassword("admin123"),
       role: "ADMIN"
     },
     create: {
       name: "Admin",
+      nickname: "admin",
       email: "admin@fede.local",
       passwordHash: hashPassword("admin123"),
       role: "ADMIN"

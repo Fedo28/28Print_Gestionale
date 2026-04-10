@@ -35,7 +35,7 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
             </div>
             <div className="field">
               <label htmlFor="phone">Telefono</label>
-              <input defaultValue={customer.phone} id="phone" name="phone" required />
+              <input defaultValue={customer.phone ?? ""} id="phone" name="phone" required />
             </div>
             <div className="field">
               <label htmlFor="whatsapp">WhatsApp</label>

@@ -14,6 +14,7 @@ async function main() {
   const adminName = requireEnv("ADMIN_NAME");
   const adminEmail = requireEnv("ADMIN_EMAIL").toLowerCase();
   const adminPassword = requireEnv("ADMIN_PASSWORD");
+  const adminNickname = adminEmail.split("@")[0];
 
   await prisma.user.upsert({
     where: {
@@ -21,11 +22,13 @@ async function main() {
     },
     update: {
       name: adminName,
+      nickname: adminNickname,
       passwordHash: hashPassword(adminPassword),
       role: "ADMIN"
     },
     create: {
       name: adminName,
+      nickname: adminNickname,
       email: adminEmail,
       passwordHash: hashPassword(adminPassword),
       role: "ADMIN"
