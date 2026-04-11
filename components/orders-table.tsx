@@ -37,7 +37,7 @@ export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; v
   const deliveryColumnLabel = view === "DELIVERED" ? "Consegnato" : "Consegna";
 
   return (
-    <table>
+    <table className="orders-table">
       <thead>
         <tr>
           <th>Ordine</th>
@@ -70,7 +70,7 @@ export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; v
                   className={`${isOpen ? "order-row-open" : ""}${workdayHighlight ? ` order-row-${workdayHighlight}` : ""}${whatsappNotified ? " order-row-whatsapp-notified" : ""}`}
                   key={order.id}
                 >
-                  <td>
+                  <td data-label="Ordine">
                     <div className="order-inline-head">
                       <QuickOrderTriggerButton
                         ariaControls={panelId}
@@ -86,11 +86,14 @@ export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; v
                       {order.isQuote ? " • Preventivo" : ""}
                     </div>
                   </td>
-                  <td>
+                  <td data-label="Cliente">
                     <strong>{order.customer.name}</strong>
                     <div className="subtle">{order.customer.phone || "Telefono non inserito"}</div>
                   </td>
-                  <td className={`orders-table-delivery-cell${workdayHighlight ? ` ${workdayHighlight}` : ""}`}>
+                  <td
+                    className={`orders-table-delivery-cell${workdayHighlight ? ` ${workdayHighlight}` : ""}`}
+                    data-label={deliveryColumnLabel}
+                  >
                     <div className={`order-deadline-chip${workdayHighlight ? ` ${workdayHighlight}` : ""}${view === "DELIVERED" ? " delivered" : ""}`}>
                       <strong>{view === "DELIVERED" ? deliveredLabel : formatDateTime(order.deliveryAt)}</strong>
                       {view === "DELIVERED" ? (
@@ -101,8 +104,8 @@ export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; v
                       {view === "DELIVERED" && order.deliveredAt ? <span>Prevista {formatDateTime(order.deliveryAt)}</span> : null}
                     </div>
                   </td>
-                  <td>{priorityLabels[order.priority]}</td>
-                  <td>
+                  <td data-label="Priorita">{priorityLabels[order.priority]}</td>
+                  <td data-label="Stato">
                     <StatusPills
                       hideNeutralStatus
                       isQuote={order.isQuote}
@@ -111,11 +114,11 @@ export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; v
                       payment={order.paymentStatus}
                     />
                   </td>
-                  <td>
+                  <td data-label="Importi">
                     <div className="strong">{formatCurrency(order.totalCents)}</div>
                     <div className="subtle">Residuo {formatCurrency(order.balanceDueCents)}</div>
                   </td>
-                  <td className="orders-table-whatsapp-cell">
+                  <td className="orders-table-whatsapp-cell" data-label="WhatsApp">
                     <ReadyWhatsAppButton
                       compact
                       disabled={order.mainPhase !== "SVILUPPO_COMPLETATO"}

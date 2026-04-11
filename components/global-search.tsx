@@ -8,7 +8,15 @@ type SearchResponse = {
   sections: GlobalSearchSection[];
 };
 
-export function GlobalSearch() {
+export function GlobalSearch({
+  autoFocus = false,
+  onNavigate,
+  variant = "desktop"
+}: {
+  autoFocus?: boolean;
+  onNavigate?: () => void;
+  variant?: "desktop" | "mobile-sheet";
+}) {
   const inputId = useId();
   const pathname = usePathname();
   const router = useRouter();
@@ -29,12 +37,29 @@ export function GlobalSearch() {
   }, [pathname]);
 
   useEffect(() => {
+    if (!autoFocus) {
+      return;
+    }
+
+    const focusHandle = window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      setIsFocused(true);
+    });
+
+    return () => window.cancelAnimationFrame(focusHandle);
+  }, [autoFocus]);
+
+  useEffect(() => {
     if (typeof navigator !== "undefined" && /mac/i.test(navigator.platform)) {
       setShortcutLabel("Cmd");
     }
   }, []);
 
   useEffect(() => {
+    if (variant !== "desktop") {
+      return;
+    }
+
     function handleKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -60,7 +85,7 @@ export function GlobalSearch() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("mousedown", handlePointerDown);
     };
-  }, []);
+  }, [variant]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -116,19 +141,20 @@ export function GlobalSearch() {
   }, [router, sections]);
 
   const totalResults = sections.reduce((sum, section) => sum + section.items.length, 0);
-  const showPanel = isFocused && query.trim().length > 0;
+  const showPanel = variant === "mobile-sheet" ? true : isFocused && query.trim().length > 0;
 
   function navigateTo(href: string) {
     startTransition(() => {
       router.push(href);
     });
     setIsFocused(false);
+    onNavigate?.();
   }
 
   return (
-    <div className="global-search" ref={containerRef}>
+    <div className={`global-search global-search-${variant}`} ref={containerRef}>
       <form
-        className="global-search-form"
+        className={`global-search-form${variant === "mobile-sheet" ? " global-search-form-mobile" : ""}`}
         onSubmit={(event) => {
           event.preventDefault();
           const normalizedQuery = query.trim();
@@ -140,9 +166,11 @@ export function GlobalSearch() {
           navigateTo(firstResult?.href || `/orders?q=${encodeURIComponent(normalizedQuery)}`);
         }}
       >
-        <label className="global-search-label" htmlFor={inputId}>
-          Ricerca globale
-        </label>
+        {variant === "desktop" ? (
+          <label className="global-search-label" htmlFor={inputId}>
+            Ricerca globale
+          </label>
+        ) : null}
         <div className="global-search-field-shell">
           <svg aria-hidden="true" className="glyph global-search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
             <path d="m21 21-4.35-4.35M10.5 18a7.5 7.5 0 1 0 0-15a7.5 7.5 0 0 0 0 15Z" />
@@ -176,7 +204,10 @@ export function GlobalSearch() {
       </form>
 
       <div className="global-search-meta">
-        <span className="subtle">Comando rapido: {shortcutLabel} + K</span>
+        {variant === "desktop" ? <span className="subtle">Comando rapido: {shortcutLabel} + K</span> : null}
+        {variant === "mobile-sheet" && query.trim().length < 2 ? (
+          <span className="subtle">Scrivi almeno 2 caratteri per vedere i risultati.</span>
+        ) : null}
         {query.trim().length >= 2 ? (
           <span className="subtle">
             {isLoading ? "Ricerca in corso..." : `${totalResults} risultati`}
@@ -185,7 +216,7 @@ export function GlobalSearch() {
       </div>
 
       {showPanel ? (
-        <div className="global-search-panel">
+        <div className={`global-search-panel${variant === "mobile-sheet" ? " global-search-panel-mobile" : ""}`}>
           {query.trim().length < 2 ? (
             <div className="mini-item">
               <strong>Inizia a scrivere</strong>

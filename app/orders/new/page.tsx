@@ -11,7 +11,7 @@ export default async function NewOrderPage() {
   const [customers, services] = await Promise.all([getCustomers(), getServices()]);
 
   return (
-    <div className="stack">
+    <div className="stack order-entry-page-shell">
       <PageHeader title="Nuovo ordine" />
       <OrderForm action={createOrderAction} customers={customers} kind="order" services={services} />
     </div>

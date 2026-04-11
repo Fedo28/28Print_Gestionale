@@ -53,14 +53,20 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isLoginRoute = pathname === "/login";
+  const isDashboardRoute = pathname === "/";
+  const [isCompactViewport, setIsCompactViewport] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeName>(DEFAULT_THEME);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const searchButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const wasMobileNavOpenRef = useRef(false);
+  const wasMobileSearchOpenRef = useRef(false);
 
   useEffect(() => {
     setIsMobileNavOpen(false);
+    setIsMobileSearchOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -112,15 +118,19 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
 
     const mediaQuery = window.matchMedia(COMPACT_NAV_MEDIA_QUERY);
-    const handleViewportChange = (event: MediaQueryListEvent) => {
-      if (!event.matches) {
+    const syncViewport = (matches: boolean) => {
+      setIsCompactViewport(matches);
+      if (!matches) {
         setIsMobileNavOpen(false);
+        setIsMobileSearchOpen(false);
       }
     };
 
-    if (!mediaQuery.matches) {
-      setIsMobileNavOpen(false);
-    }
+    const handleViewportChange = (event: MediaQueryListEvent) => {
+      syncViewport(event.matches);
+    };
+
+    syncViewport(mediaQuery.matches);
 
     if (typeof mediaQuery.addEventListener === "function") {
       mediaQuery.addEventListener("change", handleViewportChange);
@@ -136,9 +146,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       return;
     }
 
-    document.body.classList.toggle("mobile-nav-open", isMobileNavOpen);
-    return () => document.body.classList.remove("mobile-nav-open");
-  }, [isMobileNavOpen]);
+    document.body.classList.toggle("mobile-nav-open", isMobileNavOpen || isMobileSearchOpen);
+    document.body.classList.toggle("mobile-menu-open", isMobileNavOpen);
+    return () => {
+      document.body.classList.remove("mobile-nav-open");
+      document.body.classList.remove("mobile-menu-open");
+    };
+  }, [isMobileNavOpen, isMobileSearchOpen]);
 
   useEffect(() => {
     if (!isMobileNavOpen) {
@@ -168,6 +182,30 @@ export function AppShell({ children }: { children: ReactNode }) {
     };
   }, [isMobileNavOpen]);
 
+  useEffect(() => {
+    if (!isMobileSearchOpen) {
+      if (wasMobileSearchOpenRef.current) {
+        searchButtonRef.current?.focus();
+      }
+      wasMobileSearchOpenRef.current = false;
+      return;
+    }
+
+    wasMobileSearchOpenRef.current = true;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setIsMobileSearchOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMobileSearchOpen]);
+
   if (isLoginRoute) {
     return <main className="auth-layout">{children}</main>;
   }
@@ -176,8 +214,22 @@ export function AppShell({ children }: { children: ReactNode }) {
     setIsMobileNavOpen(false);
   }
 
+  function handleCloseMobileSearch() {
+    setIsMobileSearchOpen(false);
+  }
+
   function handleMobileNavLinkClick(_: MouseEvent<HTMLAnchorElement>) {
     handleCloseMobileNav();
+  }
+
+  function handleOpenMobileNav() {
+    setIsMobileSearchOpen(false);
+    setIsMobileNavOpen((current) => !current);
+  }
+
+  function handleOpenMobileSearch() {
+    setIsMobileNavOpen(false);
+    setIsMobileSearchOpen((current) => !current);
   }
 
   function handleThemeChange(isDarkModeEnabled: boolean) {
@@ -243,11 +295,29 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Link>
 
           <button
+            aria-controls="mobile-search-sheet"
+            aria-expanded={isMobileSearchOpen}
+            aria-label={isMobileSearchOpen ? "Chiudi ricerca globale" : "Apri ricerca globale"}
+            className="mobile-search-trigger"
+            onClick={handleOpenMobileSearch}
+            ref={searchButtonRef}
+            type="button"
+          >
+            <svg aria-hidden="true" className="glyph mobile-search-trigger-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+              <path d="m21 21-4.35-4.35M10.5 18a7.5 7.5 0 1 0 0-15a7.5 7.5 0 0 0 0 15Z" />
+            </svg>
+            <span className="mobile-search-trigger-copy">
+              <span className="mobile-search-trigger-label">Cerca</span>
+              <span className="mobile-search-trigger-hint">Ordini, clienti, cartelloni</span>
+            </span>
+          </button>
+
+          <button
             aria-controls="mobile-navigation-drawer"
             aria-expanded={isMobileNavOpen}
             aria-label={isMobileNavOpen ? "Chiudi menu di navigazione" : "Apri menu di navigazione"}
             className="mobile-nav-trigger"
-            onClick={() => setIsMobileNavOpen((current) => !current)}
+            onClick={handleOpenMobileNav}
             ref={menuButtonRef}
             type="button"
           >
@@ -257,6 +327,45 @@ export function AppShell({ children }: { children: ReactNode }) {
               <rect x="4" y="15.8" width="16" height="3.2" rx="1.6" fill="currentColor" />
             </svg>
           </button>
+        </div>
+
+        <div className={`mobile-search-layer${isMobileSearchOpen ? " open" : ""}`} aria-hidden={!isMobileSearchOpen}>
+          <button
+            aria-label="Chiudi ricerca globale"
+            className="mobile-search-overlay"
+            onClick={handleCloseMobileSearch}
+            tabIndex={isMobileSearchOpen ? 0 : -1}
+            type="button"
+          />
+
+          <div
+            aria-modal="true"
+            className="mobile-search-sheet"
+            id="mobile-search-sheet"
+            role="dialog"
+          >
+            <div className="mobile-search-head">
+              <div>
+                <strong>Ricerca</strong>
+                <div className="subtle">Trova ordini, clienti, preventivi, impianti e catalogo.</div>
+              </div>
+              <button
+                aria-label="Chiudi ricerca"
+                className="mobile-search-close"
+                onClick={handleCloseMobileSearch}
+                type="button"
+              >
+                <span />
+                <span />
+              </button>
+            </div>
+
+            <GlobalSearch
+              autoFocus={isCompactViewport && isMobileSearchOpen}
+              onNavigate={handleCloseMobileSearch}
+              variant="mobile-sheet"
+            />
+          </div>
         </div>
 
         <div className={`mobile-nav-layer${isMobileNavOpen ? " open" : ""}`} aria-hidden={!isMobileNavOpen}>
@@ -277,7 +386,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="mobile-nav-head">
               <div>
                 <strong>Menu</strong>
-                <div className="subtle">Navigazione rapida del gestionale</div>
               </div>
               <button
                 aria-label="Chiudi menu"
@@ -292,42 +400,73 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
 
             <nav className="nav-list mobile-nav-list">{renderNavLinks({ onNavigate: handleMobileNavLinkClick })}</nav>
-
-          </div>
-        </div>
-
-        <div className="shell-stage">
-          <span aria-hidden className="stage-glow stage-glow-a" />
-          <span aria-hidden className="stage-glow stage-glow-b" />
-          <span aria-hidden className="stage-glow stage-glow-c" />
-          <div className="shell-toolbar">
-            <GlobalSearch />
-            <div className="shell-toolbar-actions">
+            <div className="mobile-nav-utilities">
+              <div className="mobile-nav-section-label">Utility rapide</div>
               <ThemeToggle
                 checked={theme === THEMES.dark}
-                className="toolbar-theme-toggle"
+                className="mobile-drawer-theme-toggle"
                 hint="Tema serale"
                 label="Dark mode"
                 onChange={handleThemeChange}
               />
               <Link
-                aria-label="Apri impostazioni"
-                className="shell-toolbar-icon-link shell-toolbar-settings-link"
+                className="mobile-nav-utility-link"
                 href="/settings"
+                onClick={handleMobileNavLinkClick}
               >
-                <ShellGlyph kind="settings" />
+                <span aria-hidden="true" className="nav-icon">
+                  <ShellGlyph kind="settings" />
+                </span>
+                <span className="nav-copy">
+                  <span>Impostazioni</span>
+                </span>
               </Link>
-              <a
-                className="shell-toolbar-link"
-                href="/logout"
-              >
-                <span aria-hidden="true" className="shell-toolbar-link-icon">
+              <a className="mobile-nav-utility-link mobile-nav-utility-link-logout" href="/logout" onClick={handleCloseMobileNav}>
+                <span aria-hidden="true" className="nav-icon">
                   <ShellGlyph kind="logout" />
                 </span>
-                <span>Logout</span>
+                <span className="nav-copy">
+                  <span>Logout</span>
+                </span>
               </a>
             </div>
           </div>
+        </div>
+
+        <div className={`shell-stage${isDashboardRoute ? " dashboard-stage-shell" : ""}`}>
+          <span aria-hidden className="stage-glow stage-glow-a" />
+          <span aria-hidden className="stage-glow stage-glow-b" />
+          <span aria-hidden className="stage-glow stage-glow-c" />
+          {!isCompactViewport ? (
+            <div className="shell-toolbar">
+              <GlobalSearch />
+              <div className="shell-toolbar-actions">
+                <ThemeToggle
+                  checked={theme === THEMES.dark}
+                  className="toolbar-theme-toggle"
+                  hint="Tema serale"
+                  label="Dark mode"
+                  onChange={handleThemeChange}
+                />
+                <Link
+                  aria-label="Apri impostazioni"
+                  className="shell-toolbar-icon-link shell-toolbar-settings-link"
+                  href="/settings"
+                >
+                  <ShellGlyph kind="settings" />
+                </Link>
+                <a
+                  className="shell-toolbar-link"
+                  href="/logout"
+                >
+                  <span aria-hidden="true" className="shell-toolbar-link-icon">
+                    <ShellGlyph kind="logout" />
+                  </span>
+                  <span>Logout</span>
+                </a>
+              </div>
+            </div>
+          ) : null}
           <main>{children}</main>
         </div>
       </div>

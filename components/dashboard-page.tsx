@@ -12,6 +12,7 @@ import { getWorkdayHighlight } from "@/lib/workday-highlights";
 type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
 type DashboardOrder = DashboardData["todayOrders"][number];
 type DashboardPanel = "PRIORITY" | "PRODUCTION" | "APPOINTMENTS" | "FINANCE";
+type DashboardAccent = "today" | "agenda" | "overdue" | "to-start" | "working" | "blocked" | "ready" | "balance";
 
 export async function DashboardPage({ panel }: { panel?: string }) {
   const {
@@ -47,9 +48,35 @@ export async function DashboardPage({ panel }: { panel?: string }) {
     ready: buildOrdersFilterHref({ preset: "READY" }),
     balance: buildOrdersFilterHref({ preset: "BALANCE" })
   };
+  const dashboardPanelLinks = {
+    today: `${buildDashboardPanelHref("PRIORITY")}#dashboard-operativa`,
+    appointments: `${buildDashboardPanelHref("APPOINTMENTS")}#dashboard-operativa`,
+    overdue: `${buildDashboardPanelHref("PRIORITY")}#dashboard-operativa`,
+    toStart: `${buildDashboardPanelHref("PRODUCTION")}#dashboard-operativa`,
+    working: `${buildDashboardPanelHref("PRODUCTION")}#dashboard-operativa`,
+    blocked: `${buildDashboardPanelHref("PRODUCTION")}#dashboard-operativa`,
+    ready: `${buildDashboardPanelHref("PRODUCTION")}#dashboard-operativa`,
+    balance: `${buildDashboardPanelHref("FINANCE")}#dashboard-operativa`
+  };
+  const nextDeliveryDetail = nextDelivery
+    ? `${nextDelivery.customer.name} • ${formatDateTime(nextDelivery.deliveryAt)}`
+    : "Nessuna scadenza vicina";
+  const nextAppointmentDetail = nextAppointment
+    ? `${nextAppointment.customer.name} • ${formatDateTime(nextAppointment.appointmentAt || nextAppointment.deliveryAt)}`
+    : "Nessun appuntamento oggi";
+  const mobileStats = [
+    { accent: "today", href: dashboardPanelLinks.today, label: "Oggi", value: todayOrders.length },
+    { accent: "agenda", href: dashboardPanelLinks.appointments, label: "Agenda", value: todayAppointments.length },
+    { accent: "overdue", href: dashboardPanelLinks.overdue, label: "Arretrati", value: overdueOrders.length },
+    { accent: "to-start", href: dashboardPanelLinks.toStart, label: "Avvio", value: toStartOrders.length },
+    { accent: "working", href: dashboardPanelLinks.working, label: "Lavoro", value: workingOrders.length },
+    { accent: "blocked", href: dashboardPanelLinks.blocked, label: "Sospesi", value: blockedOrders.length },
+    { accent: "ready", href: dashboardPanelLinks.ready, label: "Pronti", value: readyOrders.length },
+    { accent: "balance", href: dashboardPanelLinks.balance, label: "Saldi", value: balanceOrders.length }
+  ] satisfies Array<{ accent: DashboardAccent; href: string; label: string; value: number }>;
 
   return (
-    <div className="stack">
+    <div className="stack dashboard-page-shell">
       <PageHeader
         title="Dashboard"
         action={
@@ -59,10 +86,78 @@ export async function DashboardPage({ panel }: { panel?: string }) {
         }
       />
 
+      <section className="dashboard-mobile-home">
+        <article className="card card-pad dashboard-mobile-today-card">
+          <div className="dashboard-mobile-today-head">
+            <div className="dashboard-mobile-today-copy">
+              <span className="compact-kicker">Home di oggi</span>
+            </div>
+            <strong className="focus-total dashboard-mobile-today-total">{todayOrders.length + todayAppointments.length}</strong>
+          </div>
+
+          <div className="dashboard-mobile-priority-grid">
+            <Link className="dashboard-mobile-priority-card compact-card-link" href={links.priorityToday}>
+              <span className="dashboard-mobile-priority-label">Prossima consegna</span>
+              <strong>{nextDelivery ? nextDelivery.orderCode : "Nessuna"}</strong>
+              <span className="hint">{nextDeliveryDetail}</span>
+            </Link>
+            <Link className="dashboard-mobile-priority-card compact-card-link" href={links.appointments}>
+              <span className="dashboard-mobile-priority-label">Primo appuntamento</span>
+              <strong>{nextAppointment ? nextAppointment.orderCode : "Nessuno"}</strong>
+              <span className="hint">{nextAppointmentDetail}</span>
+            </Link>
+          </div>
+
+          <div className="dashboard-mobile-stats-rail" aria-label="Contatori rapidi dashboard">
+            {mobileStats.map((item) => (
+              <DashboardMobileStatChip key={item.label} accent={item.accent} href={item.href} label={item.label} value={item.value} />
+            ))}
+          </div>
+        </article>
+
+        <div className="dashboard-mobile-module-stack">
+          <DashboardMobileModuleCard
+            accent="working"
+            href={`${buildDashboardPanelHref("PRODUCTION")}#dashboard-operativa`}
+            icon={<DashboardGlyph kind="tools" />}
+            metricsLayout="quad"
+            title="Produzione"
+            items={[
+              { label: "Da avviare", value: toStartOrders.length },
+              { label: "In lav.", value: workingOrders.length },
+              { label: "Sospesi", value: blockedOrders.length },
+              { label: "Pronti", value: readyOrders.length }
+            ]}
+          />
+          <DashboardMobileModuleCard
+            accent="agenda"
+            href={`${buildDashboardPanelHref("APPOINTMENTS")}#dashboard-operativa`}
+            icon={<DashboardGlyph kind="calendar" />}
+            title="Agenda"
+            items={[
+              { label: "Oggi", value: todayAppointments.length },
+              { label: "Settimana", value: weeklyAppointments },
+              { label: "Prossima", value: nextAppointment ? nextAppointment.orderCode : "Ness." }
+            ]}
+          />
+          <DashboardMobileModuleCard
+            accent="overdue"
+            href={`${buildDashboardPanelHref("PRIORITY")}#dashboard-operativa`}
+            icon={<DashboardGlyph kind="alert" />}
+            title="Attenzione"
+            items={[
+              { label: "Arretrati", value: overdueOrders.length },
+              { label: "Blocchi", value: blockedOrders.length },
+              { label: "Saldi", value: balanceOrders.length }
+            ]}
+          />
+        </div>
+      </section>
+
       <section className="grid dashboard-summary-grid">
         <MiniMetricCard
           accent="today"
-          href={links.today}
+          href={dashboardPanelLinks.today}
           icon={<DashboardGlyph kind="clock" />}
           label="Oggi"
           value={todayOrders.length}
@@ -71,7 +166,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
         />
         <MiniMetricCard
           accent="agenda"
-          href={links.appointments}
+          href={dashboardPanelLinks.appointments}
           icon={<DashboardGlyph kind="calendar" />}
           label="Agenda"
           value={todayAppointments.length}
@@ -80,7 +175,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
         />
         <MiniMetricCard
           accent="overdue"
-          href={links.overdue}
+          href={dashboardPanelLinks.overdue}
           icon={<DashboardGlyph kind="alert" />}
           label="Arretrati"
           value={overdueOrders.length}
@@ -89,7 +184,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
         />
         <MiniMetricCard
           accent="to-start"
-          href={links.toStart}
+          href={dashboardPanelLinks.toStart}
           icon={<DashboardGlyph kind="play" />}
           label="Da avviare"
           value={toStartOrders.length}
@@ -98,7 +193,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
         />
         <MiniMetricCard
           accent="working"
-          href={links.working}
+          href={dashboardPanelLinks.working}
           icon={<DashboardGlyph kind="tools" />}
           label="In lavorazione"
           value={workingOrders.length}
@@ -107,7 +202,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
         />
         <MiniMetricCard
           accent="blocked"
-          href={links.blocked}
+          href={dashboardPanelLinks.blocked}
           icon={<DashboardGlyph kind="pause" />}
           label="Sospesi"
           value={blockedOrders.length}
@@ -116,7 +211,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
         />
         <MiniMetricCard
           accent="ready"
-          href={links.ready}
+          href={dashboardPanelLinks.ready}
           icon={<DashboardGlyph kind="spark" />}
           label="Pronti"
           value={readyOrders.length}
@@ -125,7 +220,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
         />
         <MiniMetricCard
           accent="balance"
-          href={links.balance}
+          href={dashboardPanelLinks.balance}
           icon={<DashboardGlyph kind="cash" />}
           label="Saldi"
           value={balanceOrders.length}
@@ -135,7 +230,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
       </section>
 
       <section className="grid dashboard-focus-grid">
-        <article className="card card-pad compact-focus-card">
+        <article className="card card-pad compact-focus-card dashboard-ops-card">
           <div className="compact-focus-head">
             <div>
               <span className="compact-kicker">Cantiere aperto</span>
@@ -143,7 +238,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
             </div>
             <strong className="focus-total">{totalWorkshop}</strong>
           </div>
-          <div className="compact-signal-list">
+          <div className="compact-signal-list dashboard-ops-signal-list">
             <CompactSignal
               href={links.toStart}
               icon={<DashboardGlyph kind="play" />}
@@ -236,12 +331,11 @@ export async function DashboardPage({ panel }: { panel?: string }) {
         </article>
       </section>
 
-      <section className="card card-pad compact-focus-card dashboard-panel-shell">
+      <section className="card card-pad compact-focus-card dashboard-panel-shell" id="dashboard-operativa">
         <div className="list-header compact-section-head">
           <div>
             <span className="compact-kicker">Liste rapide</span>
             <h3>Dashboard operativa</h3>
-            <p className="card-muted">Apri solo il blocco che ti serve, senza tenere tutte le corsie sempre piene a schermo.</p>
           </div>
         </div>
 
@@ -382,7 +476,7 @@ export async function DashboardPage({ panel }: { panel?: string }) {
         ) : null}
       </section>
 
-      <section className="card card-pad compact-focus-card">
+      <section className="card card-pad compact-focus-card dashboard-attention-card">
         <div className="compact-focus-head">
           <div>
             <span className="compact-kicker">Attenzione</span>
@@ -503,7 +597,7 @@ function MiniMetricCard({
   hint,
   tone
 }: {
-  accent: "today" | "agenda" | "overdue" | "to-start" | "working" | "blocked" | "ready" | "balance";
+  accent: DashboardAccent;
   href: string;
   icon: ReactNode;
   label: string;
@@ -522,6 +616,60 @@ function MiniMetricCard({
       </div>
       <strong>{value}</strong>
       <span className="hint">{hint}</span>
+    </Link>
+  );
+}
+
+function DashboardMobileStatChip({
+  accent,
+  href,
+  label,
+  value
+}: {
+  accent: DashboardAccent;
+  href: string;
+  label: string;
+  value: number;
+}) {
+  return (
+    <Link className={`dashboard-mobile-stat-chip compact-card-link compact-accent-${accent}`} href={href}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </Link>
+  );
+}
+
+function DashboardMobileModuleCard({
+  accent,
+  href,
+  icon,
+  title,
+  items,
+  metricsLayout = "auto"
+}: {
+  accent: DashboardAccent;
+  href: string;
+  icon: ReactNode;
+  title: string;
+  items: Array<{ label: string; value: string | number }>;
+  metricsLayout?: "auto" | "quad";
+}) {
+  return (
+    <Link className={`card card-pad dashboard-mobile-module compact-card-link compact-accent-${accent}`} href={href}>
+      <div className="dashboard-mobile-module-head">
+        <span className="compact-icon">{icon}</span>
+        <div className="dashboard-mobile-module-copy">
+          <strong>{title}</strong>
+        </div>
+      </div>
+      <div className={`dashboard-mobile-module-metrics${metricsLayout === "quad" ? " dashboard-mobile-module-metrics-quad" : ""}`}>
+        {items.map((item) => (
+          <span className="dashboard-mobile-module-pill" key={item.label}>
+            <strong>{item.value}</strong>
+            <span>{item.label}</span>
+          </span>
+        ))}
+      </div>
     </Link>
   );
 }

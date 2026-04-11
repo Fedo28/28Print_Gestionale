@@ -4,7 +4,7 @@ import { Customer, CustomerType, ServiceCatalog } from "@prisma/client";
 import { useEffect, useRef, useState } from "react";
 import { CustomerAutocomplete } from "@/components/customer-autocomplete";
 import { customerTypeLabels, getAppointmentNoteOptions, invoiceStatusLabels, priorityLabels } from "@/lib/constants";
-import { formatDateTime } from "@/lib/format";
+import { formatCurrency, formatDateTime, formatQuantity } from "@/lib/format";
 import {
   buildOrderDraftStorageKey,
   buildOrderDraftSubmittedKey,
@@ -231,6 +231,7 @@ type ServiceSuggestion =
     };
 
 type OrderFormMode = "order" | "quote";
+type MobileOrderStep = "customer" | "details" | "items" | "review";
 
 type InlineCatalogDraft = {
   name: string;
@@ -246,6 +247,31 @@ type CatalogActionFeedback = {
   message: string;
 };
 
+type MobileOrderMeta = {
+  customerName: string;
+  customerType: string;
+  title: string;
+  deliveryAt: string;
+  appointmentAt: string;
+  priority: string;
+  appointmentNote: string;
+  notes: string;
+  invoiceStatus: string;
+  initialDeposit: string;
+};
+
+const MOBILE_ORDER_MEDIA_QUERY = "(max-width: 768px)";
+const MOBILE_ORDER_STEPS: Array<{
+  id: MobileOrderStep;
+  label: string;
+  description: string;
+}> = [
+  { id: "customer", label: "Cliente", description: "Scegli un cliente esistente oppure creane uno nuovo." },
+  { id: "details", label: "Dettagli", description: "Compila titolo, consegna, appuntamento e priorita." },
+  { id: "items", label: "Lavorazioni", description: "Aggiungi e rifinisci le righe di lavorazione." },
+  { id: "review", label: "Riepilogo", description: "Controlla i dati finali e conferma l'ordine." }
+] as const;
+
 function createEmptyInlineCatalogDraft(): InlineCatalogDraft {
   return {
     name: "",
@@ -253,6 +279,21 @@ function createEmptyInlineCatalogDraft(): InlineCatalogDraft {
     basePrice: "",
     description: "",
     quantityTiers: ""
+  };
+}
+
+function createEmptyMobileOrderMeta(): MobileOrderMeta {
+  return {
+    customerName: "",
+    customerType: "",
+    title: "",
+    deliveryAt: "",
+    appointmentAt: "",
+    priority: "MEDIA",
+    appointmentNote: "",
+    notes: "",
+    invoiceStatus: "DA_FATTURARE",
+    initialDeposit: ""
   };
 }
 
@@ -269,10 +310,15 @@ export function OrderForm({
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const autosaveTimerRef = useRef<number | null>(null);
+  const mobileMetaFrameRef = useRef<number | null>(null);
   const [catalogServices, setCatalogServices] = useState<ServiceCatalog[]>(services);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [customerQuery, setCustomerQuery] = useState("");
   const [items, setItems] = useState<ItemState[]>([emptyItem()]);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [mobileStep, setMobileStep] = useState<MobileOrderStep>("customer");
+  const [mobileMeta, setMobileMeta] = useState<MobileOrderMeta>(createEmptyMobileOrderMeta());
+  const [openMobileItemIndex, setOpenMobileItemIndex] = useState(0);
   const [activeServiceField, setActiveServiceField] = useState<number | null>(null);
   const [openTierIndex, setOpenTierIndex] = useState<number | null>(null);
   const [catalogDraftRowIndex, setCatalogDraftRowIndex] = useState<number | null>(null);
@@ -295,6 +341,7 @@ export function OrderForm({
   const availableAppointmentNoteOptions = getAppointmentNoteOptions(appointmentNoteValue);
   const draftStorageKey = buildOrderDraftStorageKey(kind as OrderDraftMode);
   const submittedDraftKey = buildOrderDraftSubmittedKey(kind as OrderDraftMode);
+  const mobileStepIndex = MOBILE_ORDER_STEPS.findIndex((step) => step.id === mobileStep);
 
   function readDraftFieldsFromForm(): OrderDraftFieldValues {
     const form = formRef.current;
@@ -345,8 +392,11 @@ export function OrderForm({
     formRef.current?.reset();
     setSelectedCustomerId("");
     setCustomerQuery("");
+    setMobileMeta(createEmptyMobileOrderMeta());
+    setMobileStep("customer");
     setAppointmentNoteValue("");
     setItems([emptyItem()]);
+    setOpenMobileItemIndex(0);
     setActiveServiceField(null);
     setOpenTierIndex(null);
     setCatalogDraftRowIndex(null);
@@ -396,9 +446,79 @@ export function OrderForm({
     }, 500);
   }
 
+  function syncMobileMetaFromForm() {
+    const form = formRef.current;
+    if (!form) {
+      return;
+    }
+
+    const formData = new FormData(form);
+    setMobileMeta({
+      customerName: String(formData.get("customerName") || ""),
+      customerType: String(formData.get("customerType") || defaultCustomerType),
+      title: String(formData.get("title") || ""),
+      deliveryAt: String(formData.get("deliveryAt") || ""),
+      appointmentAt: String(formData.get("appointmentAt") || ""),
+      priority: String(formData.get("priority") || "MEDIA"),
+      appointmentNote: String(formData.get("appointmentNote") || ""),
+      notes: String(formData.get("notes") || ""),
+      invoiceStatus: String(formData.get("invoiceStatus") || "DA_FATTURARE"),
+      initialDeposit: String(formData.get("initialDeposit") || "")
+    });
+  }
+
+  function scheduleMobileMetaSync() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (mobileMetaFrameRef.current) {
+      window.cancelAnimationFrame(mobileMetaFrameRef.current);
+    }
+
+    mobileMetaFrameRef.current = window.requestAnimationFrame(() => {
+      syncMobileMetaFromForm();
+      mobileMetaFrameRef.current = null;
+    });
+  }
+
+  function jumpToMobileStep(step: MobileOrderStep) {
+    setMobileStep(step);
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }
+
   useEffect(() => {
     setCatalogServices(services);
   }, [services]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia(MOBILE_ORDER_MEDIA_QUERY);
+    const syncViewport = (matches: boolean) => {
+      setIsMobileViewport(matches);
+    };
+
+    syncViewport(mediaQuery.matches);
+
+    const handleViewportChange = (event: MediaQueryListEvent) => {
+      syncViewport(event.matches);
+    };
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleViewportChange);
+      return () => mediaQuery.removeEventListener("change", handleViewportChange);
+    }
+
+    mediaQuery.addListener(handleViewportChange);
+    return () => mediaQuery.removeListener(handleViewportChange);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -412,6 +532,7 @@ export function OrderForm({
       setHasSavedDraft(false);
       setLastDraftSavedAt(null);
       setDraftRestoredAt(null);
+      setMobileMeta(createEmptyMobileOrderMeta());
       return;
     }
 
@@ -437,6 +558,7 @@ export function OrderForm({
     window.setTimeout(() => {
       applyDraftFields(draft.fields);
       setDraftHydrated(true);
+      syncMobileMetaFromForm();
     }, 0);
   }, [customers, draftStorageKey, kind, submittedDraftKey]);
 
@@ -453,8 +575,28 @@ export function OrderForm({
       if (typeof window !== "undefined" && autosaveTimerRef.current) {
         window.clearTimeout(autosaveTimerRef.current);
       }
+      if (typeof window !== "undefined" && mobileMetaFrameRef.current) {
+        window.cancelAnimationFrame(mobileMetaFrameRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!draftHydrated) {
+      return;
+    }
+
+    scheduleMobileMetaSync();
+  }, [draftHydrated, selectedCustomerId, customerQuery, items]);
+
+  useEffect(() => {
+    if (!items.length) {
+      setOpenMobileItemIndex(0);
+      return;
+    }
+
+    setOpenMobileItemIndex((current) => Math.min(current, items.length - 1));
+  }, [items.length]);
 
   function getCatalogPriceDisplay(service: ServiceCatalog | undefined, quantity: number) {
     if (!service) {
@@ -757,13 +899,89 @@ export function OrderForm({
     return sum + (Number.isFinite(lineTotalCents) ? lineTotalCents : 0);
   }, 0);
   const filledRows = items.filter((item) => item.label.trim() || item.notes.trim()).length;
+  const selectedCustomerTypeLabel = selectedCustomer
+    ? customerTypeLabels[selectedCustomer.type]
+    : customerTypeLabels[(mobileMeta.customerType as CustomerType) || defaultCustomerType];
+  const reviewCustomerName = selectedCustomer ? selectedCustomer.name : mobileMeta.customerName.trim() || "Da selezionare";
+  const reviewTitle = mobileMeta.title.trim() || "Titolo da definire";
+  const reviewDelivery = mobileMeta.deliveryAt ? formatDateTime(mobileMeta.deliveryAt) : "Da impostare";
+  const reviewAppointment = mobileMeta.appointmentAt ? formatDateTime(mobileMeta.appointmentAt) : "Non programmato";
+  const reviewPriority = priorityLabels[mobileMeta.priority as keyof typeof priorityLabels] || priorityLabels.MEDIA;
+  const reviewInvoice = invoiceStatusLabels[mobileMeta.invoiceStatus as keyof typeof invoiceStatusLabels] || invoiceStatusLabels.DA_FATTURARE;
+  const mobileDraftStatusMessage = draftRestoredAt
+    ? `Bozza recuperata da ${formatDateTime(draftRestoredAt)}`
+    : lastDraftSavedAt
+      ? `Ultimo salvataggio ${formatDateTime(lastDraftSavedAt)}`
+      : "Autosalvataggio attivo";
+  const canContinueMobileStep =
+    mobileStep === "customer"
+      ? Boolean(selectedCustomerId || mobileMeta.customerName.trim())
+      : mobileStep === "details"
+        ? Boolean(mobileMeta.title.trim() && mobileMeta.deliveryAt)
+        : mobileStep === "items"
+          ? filledRows > 0
+          : true;
+  const mobileContinueLabel =
+    mobileStep === "customer"
+      ? "Vai ai dettagli"
+      : mobileStep === "details"
+        ? "Vai alle lavorazioni"
+        : mobileStep === "items"
+          ? "Vai al riepilogo"
+          : isQuoteMode
+            ? "Crea preventivo"
+            : "Crea ordine";
+  const mobileItemsPreview = items
+    .map((item) => ({
+      label: item.label.trim() || item.serviceQuery.trim(),
+      quantity: parseQuantityValue(item.quantity, 1),
+      totalCents: computeLineTotalWithAdjustmentsCents(
+        parseDisplayPriceToCents(item.unitPrice),
+        parseQuantityValue(item.quantity, 1),
+        item.discountMode,
+        parseDiscountValue(item.discountMode, item.discountValue),
+        item.extraMode,
+        parseDiscountValue(item.extraMode, item.extraValue)
+      )
+    }))
+    .filter((item) => item.label)
+    .slice(0, 4);
+
+  function renderMobilePanelHead() {
+    return (
+      <div className="order-mobile-panel-head">
+        <div className="order-mobile-panel-tools">
+          <span className="subtle">{mobileDraftStatusMessage}</span>
+          {hasSavedDraft ? (
+            <button
+              className="ghost"
+              onClick={(event) => {
+                event.preventDefault();
+                resetDraftAndForm();
+              }}
+              type="button"
+            >
+              Svuota bozza
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <form
       action={action}
-      className="stack"
-      onChangeCapture={() => scheduleDraftSave()}
-      onInputCapture={() => scheduleDraftSave()}
+      className="stack order-form-shell"
+      data-mobile-order-step={mobileStep}
+      onChangeCapture={() => {
+        scheduleDraftSave();
+        scheduleMobileMetaSync();
+      }}
+      onInputCapture={() => {
+        scheduleDraftSave();
+        scheduleMobileMetaSync();
+      }}
       onSubmit={() => {
         if (typeof window !== "undefined") {
           window.sessionStorage.setItem(submittedDraftKey, "1");
@@ -773,7 +991,23 @@ export function OrderForm({
     >
       {selectedCustomerId ? <input name="customerId" type="hidden" value={selectedCustomerId} /> : null}
       {isQuoteMode ? <input name="isQuote" type="hidden" value="true" /> : null}
-      <section className="card card-pad order-sheet-hero">
+      <section className="order-mobile-flow" aria-label="Percorso nuovo ordine mobile">
+        <nav className="order-mobile-stepper" aria-label="Step nuovo ordine">
+          {MOBILE_ORDER_STEPS.map((step) => (
+            <button
+              aria-current={mobileStep === step.id ? "step" : undefined}
+              className={`order-mobile-step-tab${mobileStep === step.id ? " active" : ""}`}
+              key={step.id}
+              onClick={() => jumpToMobileStep(step.id)}
+              type="button"
+            >
+              <strong>{step.label}</strong>
+            </button>
+          ))}
+        </nav>
+      </section>
+
+      <section className="card card-pad order-sheet-hero order-desktop-only">
         <div className="order-sheet-head">
           <div className="stack compact-stack">
             <span className="compact-kicker">{isQuoteMode ? "Scheda preventivo" : "Scheda ordine"}</span>
@@ -825,11 +1059,12 @@ export function OrderForm({
       </section>
 
       <div className="grid grid-2 order-sheet-grid">
-        <section className="card card-pad order-sheet-panel">
+        <section className="card card-pad order-sheet-panel order-mobile-panel order-mobile-panel-customer">
           <div className="stack">
-            <div>
+            <div className="order-desktop-panel-heading">
               <h3>Cliente</h3>
             </div>
+            {renderMobilePanelHead()}
             <div className="form-grid">
               <CustomerAutocomplete
                 customers={customers.map((customer) => ({
@@ -930,11 +1165,12 @@ export function OrderForm({
           </div>
         </section>
 
-        <section className="card card-pad order-sheet-panel">
+        <section className="card card-pad order-sheet-panel order-mobile-panel order-mobile-panel-details">
           <div className="stack">
-            <div>
+            <div className="order-desktop-panel-heading">
               <h3>{isQuoteMode ? "Dati preventivo" : "Dati ordine"}</h3>
             </div>
+            {renderMobilePanelHead()}
             <div className="form-grid">
               <div className="field full">
                 <label htmlFor="title">Titolo / lavoro</label>
@@ -978,16 +1214,21 @@ export function OrderForm({
         </section>
       </div>
 
-      <section className="card card-pad order-sheet-lines">
+      <section className="card card-pad order-sheet-lines order-mobile-panel order-mobile-panel-items">
         <div className="list-header">
-          <div>
+          <div className="order-desktop-panel-heading">
             <h3>Righe lavorazione</h3>
+          </div>
+          <div className="order-mobile-panel-heading-only">
+            {renderMobilePanelHead()}
           </div>
           <button
             className="ghost"
             onClick={(event) => {
               event.preventDefault();
+              const nextIndex = items.length;
               setItems((current) => [...current, emptyItem()]);
+              setOpenMobileItemIndex(nextIndex);
             }}
             type="button"
           >
@@ -1030,19 +1271,48 @@ export function OrderForm({
               item.extraMode,
               parseDiscountValue(item.extraMode, item.extraValue)
             );
+            const lineHeadline = item.label.trim() || item.serviceQuery.trim() || `Riga ${index + 1}`;
+            const lineSummaryParts = [`Qta ${formatQuantity(lineQuantity)}`];
+            if (item.photoFormat.trim()) {
+              lineSummaryParts.push(item.photoFormat.trim());
+            } else if (item.format.trim()) {
+              lineSummaryParts.push(item.format.trim());
+            }
+            const isMobileLineOpen = !isMobileViewport || openMobileItemIndex === index;
 
             return (
-              <article className="order-line-card" key={index}>
+              <article className={`order-line-card${isMobileLineOpen ? "" : " is-mobile-collapsed"}`} key={index}>
                 <div className="order-line-head">
                   <div className="order-line-index">#{index + 1}</div>
                   <strong>{`Riga ${index + 1}`}</strong>
+                  <span className="order-line-mobile-summary">
+                    <span>{lineHeadline}</span>
+                    <span>{lineSummaryParts.join(" • ")}</span>
+                  </span>
                   <span className="pill">{new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(lineFinalWithExtraCents / 100)}</span>
+                  <button
+                    className="ghost order-line-mobile-toggle"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      setOpenMobileItemIndex((current) => (current === index ? current : index));
+                    }}
+                    type="button"
+                  >
+                    {isMobileLineOpen ? "Aperta" : "Modifica"}
+                  </button>
                   {items.length > 1 ? (
                     <button
                       className="ghost"
                       onClick={(event) => {
                         event.preventDefault();
                         setItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+                        setOpenMobileItemIndex((current) => {
+                          if (index === current) {
+                            return Math.max(0, current - 1);
+                          }
+
+                          return index < current ? current - 1 : current;
+                        });
                         closeInlineCatalogDraft();
                       }}
                       type="button"
@@ -1531,34 +1801,179 @@ export function OrderForm({
           );
           })}
         </div>
-        <div className="order-sheet-footer">
-          <div className="form-grid order-sheet-payment-row">
-            <div className="field order-sheet-invoice-field">
-              <label htmlFor="invoiceStatus">Richiesta fattura</label>
-              <select defaultValue="DA_FATTURARE" id="invoiceStatus" name="invoiceStatus">
-                {Object.entries(invoiceStatusLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
+        {!isMobileViewport ? (
+          <div className="order-sheet-footer">
+            <div className="form-grid order-sheet-payment-row">
+              <div className="field order-sheet-invoice-field">
+                <label htmlFor="invoiceStatus">Richiesta fattura</label>
+                <select defaultValue="DA_FATTURARE" id="invoiceStatus" name="invoiceStatus">
+                  {Object.entries(invoiceStatusLabels).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field order-sheet-deposit-field">
+                <label htmlFor="initialDeposit">Acconto iniziale</label>
+                <input id="initialDeposit" name="initialDeposit" placeholder="0,00" />
+              </div>
+              <div className="order-sheet-chip order-sheet-total-card">
+                <span className="card-muted">Totale anteprima</span>
+                <strong>{formatCurrency(previewTotalCents)}</strong>
+              </div>
             </div>
-            <div className="field order-sheet-deposit-field">
-              <label htmlFor="initialDeposit">Acconto iniziale</label>
-              <input id="initialDeposit" name="initialDeposit" placeholder="0,00" />
-            </div>
-            <div className="order-sheet-chip order-sheet-total-card">
-              <span className="card-muted">Totale anteprima</span>
-              <strong>{new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(previewTotalCents / 100)}</strong>
-            </div>
+          </div>
+        ) : null}
+      </section>
+
+      <section className="card card-pad order-mobile-summary-panel">
+        <div className="order-mobile-summary-head">
+          <span className="compact-kicker">Riassunto</span>
+        </div>
+        <div className="order-mobile-summary-grid">
+          <div className="order-mobile-overview-chip">
+            <span>Cliente</span>
+            <strong>{reviewCustomerName}</strong>
+          </div>
+          <div className="order-mobile-overview-chip">
+            <span>Lavoro</span>
+            <strong>{reviewTitle}</strong>
+          </div>
+          <div className="order-mobile-overview-chip">
+            <span>Righe</span>
+            <strong>{filledRows}</strong>
+          </div>
+          <div className="order-mobile-overview-chip">
+            <span>Totale</span>
+            <strong>{formatCurrency(previewTotalCents)}</strong>
           </div>
         </div>
       </section>
 
-      <div className="button-row">
+      {isMobileViewport ? (
+        <section className="card card-pad order-sheet-panel order-mobile-review-panel">
+          <div className="stack">
+            {renderMobilePanelHead()}
+
+            <div className="order-mobile-review-grid">
+              <div className="order-mobile-review-chip">
+                <span>Cliente</span>
+                <strong>{reviewCustomerName}</strong>
+                <small>{selectedCustomerTypeLabel}</small>
+              </div>
+              <div className="order-mobile-review-chip">
+                <span>Titolo</span>
+                <strong>{reviewTitle}</strong>
+              </div>
+              <div className="order-mobile-review-chip">
+                <span>Consegna</span>
+                <strong>{reviewDelivery}</strong>
+              </div>
+              <div className="order-mobile-review-chip">
+                <span>Appuntamento</span>
+                <strong>{reviewAppointment}</strong>
+              </div>
+              <div className="order-mobile-review-chip">
+                <span>Priorita</span>
+                <strong>{reviewPriority}</strong>
+              </div>
+              <div className="order-mobile-review-chip">
+                <span>Stato fattura</span>
+                <strong>{reviewInvoice}</strong>
+              </div>
+              <div className="order-mobile-review-chip">
+                <span>Righe compilate</span>
+                <strong>{filledRows}</strong>
+              </div>
+              <div className="order-mobile-review-chip">
+                <span>Totale</span>
+                <strong>{formatCurrency(previewTotalCents)}</strong>
+              </div>
+            </div>
+
+            {mobileItemsPreview.length > 0 ? (
+              <div className="order-mobile-review-lines">
+                {mobileItemsPreview.map((item) => (
+                  <div className="order-mobile-review-line" key={`${item.label}-${item.quantity}-${item.totalCents}`}>
+                    <strong>{item.label}</strong>
+                    <span>{`Qta ${formatQuantity(item.quantity)} • ${formatCurrency(item.totalCents)}`}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {mobileMeta.notes.trim() ? (
+              <div className="order-mobile-review-note">
+                <span>Note operative</span>
+                <strong>{mobileMeta.notes}</strong>
+              </div>
+            ) : null}
+
+            <div className="order-sheet-footer order-mobile-review-footer">
+              <div className="form-grid order-sheet-payment-row">
+                <div className="field order-sheet-invoice-field">
+                  <label htmlFor="invoiceStatus">Richiesta fattura</label>
+                  <select defaultValue="DA_FATTURARE" id="invoiceStatus" name="invoiceStatus">
+                    {Object.entries(invoiceStatusLabels).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field order-sheet-deposit-field">
+                  <label htmlFor="initialDeposit">Acconto iniziale</label>
+                  <input id="initialDeposit" name="initialDeposit" placeholder="0,00" />
+                </div>
+                <div className="order-sheet-chip order-sheet-total-card">
+                  <span className="card-muted">Totale anteprima</span>
+                  <strong>{formatCurrency(previewTotalCents)}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      <div className="button-row order-desktop-submit-row">
         <button className="primary" type="submit">
           {isQuoteMode ? "Crea preventivo" : "Crea ordine"}
         </button>
+      </div>
+
+      <div className="order-mobile-footer">
+        <button
+          className="secondary"
+          disabled={mobileStepIndex === 0}
+          onClick={() => {
+            if (mobileStepIndex > 0) {
+              jumpToMobileStep(MOBILE_ORDER_STEPS[mobileStepIndex - 1].id);
+            }
+          }}
+          type="button"
+        >
+          Indietro
+        </button>
+        {mobileStep === "review" ? (
+          <button className="primary" type="submit">
+            {mobileContinueLabel}
+          </button>
+        ) : (
+          <button
+            className="primary"
+            disabled={!canContinueMobileStep}
+            onClick={() => {
+              if (!canContinueMobileStep || mobileStepIndex >= MOBILE_ORDER_STEPS.length - 1) {
+                return;
+              }
+              jumpToMobileStep(MOBILE_ORDER_STEPS[mobileStepIndex + 1].id);
+            }}
+            type="button"
+          >
+            {mobileContinueLabel}
+          </button>
+        )}
       </div>
     </form>
   );

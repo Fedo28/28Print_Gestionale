@@ -49,7 +49,7 @@ export function AccessProfileForm({
         </div>
       ) : null}
 
-      <form action={formAction} className="form-grid">
+      <form action={formAction} className="form-grid access-profile-form-grid">
         <div className="field wide">
           <label htmlFor="access-email">Email profilo</label>
           <input defaultValue={email} id="access-email" readOnly />
