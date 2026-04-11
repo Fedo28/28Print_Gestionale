@@ -46,7 +46,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
   const appointmentNoteOptions = getAppointmentNoteOptions(order.appointmentNote);
 
   return (
-    <div className="stack">
+    <div className="stack order-detail-page-shell">
       <PageHeader
         title={order.orderCode}
         action={
@@ -56,8 +56,8 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         }
       />
 
-      <section className="hero-strip">
-        <article className="card card-pad hero-card order-hero-card">
+      <section className="hero-strip order-detail-hero-strip">
+        <article className="card card-pad hero-card order-hero-card order-detail-summary-card">
           <div className="stack">
             <div className="list-header">
               <div>
@@ -73,7 +73,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               />
             </div>
 
-            <div className="grid grid-4 order-metric-grid">
+            <div className="grid grid-4 order-metric-grid order-detail-metric-grid">
               <div className="metric">
                 <span className="subtle">Totale</span>
                 <strong>{formatCurrency(order.totalCents)}</strong>
@@ -116,7 +116,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           </div>
         </article>
 
-        <article className="card card-pad action-panel">
+        <article className="card card-pad action-panel order-detail-action-card">
           <div className="stack">
             <div>
               <h3>Prossimo passo</h3>
@@ -180,8 +180,8 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         </article>
       </section>
 
-      <div className="grid grid-2">
-        <section className="card card-pad">
+      <div className="grid grid-2 order-detail-main-grid">
+        <section className="card card-pad order-detail-info-card">
           <h3>Dettagli ordine</h3>
           <form action={updateOrderAction} className="form-grid">
             <input name="id" type="hidden" value={order.id} />
@@ -251,7 +251,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           </form>
         </section>
 
-        <section className="card card-pad">
+        <section className="card card-pad order-detail-status-card">
           <div className="stack">
             <div>
               <h3>Stato operativo</h3>
@@ -293,8 +293,8 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         </section>
       </div>
 
-      <div className="grid grid-3">
-        <section className="card card-pad">
+      <div className="grid grid-3 order-detail-support-grid">
+        <section className="card card-pad order-detail-lines-card">
           <h3>Righe ordine</h3>
           <div className="mini-list">
             {order.items.map((item) => (
@@ -317,7 +317,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           </div>
         </section>
 
-        <section className="card card-pad">
+        <section className="card card-pad order-detail-payments-card">
           <h3>Pagamenti</h3>
           <form action={recordPaymentAction} className="form-grid payment-entry-form">
             <input name="orderId" type="hidden" value={order.id} />
@@ -402,7 +402,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           </div>
         </section>
 
-        <section className="card card-pad">
+        <section className="card card-pad order-detail-attachments-card">
           <h3>Allegati</h3>
           <AttachmentUploadForm orderId={order.id} useDirectUpload={useDirectUpload} />
           <div className="mini-list">
@@ -422,7 +422,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         </section>
       </div>
 
-      <section className="card card-pad">
+      <section className="card card-pad order-detail-history-card">
         <h3>Cronologia</h3>
         <div className="timeline">
           {order.history.map((entry) => (

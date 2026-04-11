@@ -76,7 +76,7 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
               <label htmlFor="notes">Note</label>
               <textarea defaultValue={customer.notes || ""} id="notes" name="notes" />
             </div>
-            <div className="button-row">
+            <div className="button-row customer-form-actions">
               <button className="primary" type="submit">
                 Salva modifiche
               </button>

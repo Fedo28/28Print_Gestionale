@@ -23,30 +23,24 @@ export default async function CustomersPage({ searchParams }: Props) {
   const customers = await getCustomers({
     type: filters.type
   });
-  const activeFilters =
-    filters.type !== "ALL"
-      ? [
-          {
-            key: "type",
-            label: `Tipo: ${customerTypeLabels[filters.type]}`,
-            href: buildCustomersFilterHref({ type: "ALL" })
-          }
-        ]
-      : [];
+  const typeTabs = [
+    { key: "ALL", label: "Tutti", href: buildCustomersFilterHref({ type: "ALL" }) },
+    ...Object.entries(customerTypeLabels).map(([value, label]) => ({
+      key: value,
+      label,
+      href: buildCustomersFilterHref({ type: value as keyof typeof customerTypeLabels })
+    }))
+  ];
 
   return (
-    <div className="stack">
-      <PageHeader
-        title="Clienti"
-        description="Anagrafica, contatti, dati fiscali e storico ordini per ogni cliente."
-      />
+    <div className="stack customers-page-shell">
+      <PageHeader title="Clienti" />
 
-      <div className="grid grid-2">
-        <section className="card card-pad">
+      <div className="grid grid-2 customers-page-grid">
+        <section className="card card-pad customers-entry-card">
           <div className="list-header">
             <div>
               <h3>Nuovo cliente</h3>
-              <p className="card-muted">Inserimento rapido dal banco.</p>
             </div>
           </div>
           <form action={createCustomerAction} className="form-grid">
@@ -96,7 +90,7 @@ export default async function CustomersPage({ searchParams }: Props) {
               <label htmlFor="notes">Note</label>
               <textarea id="notes" name="notes" />
             </div>
-            <div className="button-row">
+            <div className="button-row customers-entry-actions">
               <button className="primary" type="submit">
                 Salva cliente
               </button>
@@ -104,45 +98,36 @@ export default async function CustomersPage({ searchParams }: Props) {
           </form>
         </section>
 
-        <section className="card card-pad">
-          <div className="list-header">
-            <div>
-              <h3>Archivio clienti</h3>
-              <p className="card-muted">{customers.length} clienti visibili.</p>
-            </div>
-          </div>
-          <form className="toolbar filters-bar" method="get">
-            <div className="filters-field">
-              <select aria-label="Tipo cliente" defaultValue={filters.type} name="type">
-                <option value="ALL">Tutti i clienti</option>
-                {Object.entries(customerTypeLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button className="secondary" type="submit">
-              Filtra
-            </button>
-          </form>
-          {activeFilters.length > 0 ? (
-            <div className="active-filters-row">
-              <span className="active-filters-label">Filtri attivi</span>
-              <div className="active-filters-list">
-                {activeFilters.map((filter) => (
-                  <Link className="active-filter-chip" href={filter.href} key={filter.key} prefetch={false}>
-                    {filter.label}
+        <section className="card card-pad customers-directory-card">
+          <details className="customers-directory-disclosure" open={filters.type !== "ALL"}>
+            <summary className="customers-directory-summary">
+              <div className="customers-directory-summary-copy">
+                <strong>Archivio clienti</strong>
+                <span>Apri solo quando ti serve</span>
+              </div>
+              <div className="customers-directory-summary-aside">
+                <span className="pill">{customers.length} clienti</span>
+                <span aria-hidden="true" className="customers-directory-summary-chevron" />
+              </div>
+            </summary>
+
+            <div className="customers-directory-body">
+              <nav className="customers-type-switch" aria-label="Filtro tipo cliente">
+                {typeTabs.map((tab) => (
+                  <Link
+                    className={`customers-type-link${filters.type === tab.key ? " active" : ""}`}
+                    href={tab.href}
+                    key={tab.key}
+                    prefetch={false}
+                  >
+                    {tab.label}
                   </Link>
                 ))}
-              </div>
-              <Link className="compact-link" href="/customers" prefetch={false}>
-                Azzera tutto
-              </Link>
-            </div>
-          ) : null}
+              </nav>
 
-          <CustomersDirectory customers={customers} />
+              <CustomersDirectory customers={customers} />
+            </div>
+          </details>
         </section>
       </div>
     </div>

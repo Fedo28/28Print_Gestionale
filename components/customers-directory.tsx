@@ -26,13 +26,12 @@ export function CustomersDirectory({ customers }: { customers: CustomerDirectory
   }, [customers, deferredQuery]);
 
   return (
-    <div className="stack">
+    <div className="stack customer-directory-shell">
       <CustomerAutocomplete
         customers={customers.map((customer) => ({
           ...customer,
           orderCount: customer.orders.length
         }))}
-        helperText="Cerca per nome, telefono, email, PEC, codice fiscale, partita IVA o codice univoco."
         label="Cerca cliente"
         onQueryChange={(value) => {
           setQuery(value);
@@ -47,27 +46,57 @@ export function CustomersDirectory({ customers }: { customers: CustomerDirectory
         selectedCustomerId={highlightedCustomerId}
       />
 
-      <div className="mini-list">
+      <div className="mini-list customer-directory-list">
         {visibleCustomers.length === 0 ? (
           <div className="empty">Nessun cliente corrisponde a questa ricerca.</div>
         ) : (
-          visibleCustomers.map((customer) => (
-            <article
-              className={`mini-item customer-directory-item${highlightedCustomerId === customer.id ? " customer-directory-item-highlighted" : ""}`}
-              key={customer.id}
-            >
-              <div className="list-header">
-                <Link href={`/customers/${customer.id}`}>
-                  <strong>{customer.name}</strong>
+          visibleCustomers.map((customer) => {
+            const contactChips = [
+              customer.phone ? customer.phone : null,
+              customer.whatsapp && customer.whatsapp !== customer.phone ? `WA ${customer.whatsapp}` : null,
+              customer.email ? customer.email : null
+            ].filter((value): value is string => Boolean(value));
+
+            return (
+              <article
+                className={`mini-item customer-directory-item${highlightedCustomerId === customer.id ? " customer-directory-item-highlighted" : ""}`}
+                key={customer.id}
+              >
+                <Link className="customer-directory-link" href={`/customers/${customer.id}`} prefetch={false}>
+                  <div className="customer-directory-head">
+                    <div className="customer-directory-title">
+                      <strong>{customer.name}</strong>
+                      <span>{customerTypeLabels[customer.type]}</span>
+                    </div>
+                    <span className="pill">{customer.orders.length} ordini</span>
+                  </div>
+
+                  <div className="customer-directory-meta-grid">
+                    <div className="customer-directory-stat">
+                      <span>Ultimo ordine</span>
+                      <strong>{customer.orders[0] ? formatDate(customer.orders[0].createdAt) : "Nessuno"}</strong>
+                    </div>
+                    <div className="customer-directory-stat">
+                      <span>Contatti</span>
+                      <strong>{contactChips.length > 0 ? contactChips.length : "Nessuno"}</strong>
+                    </div>
+                  </div>
+
+                  <div className="customer-directory-contact-row">
+                    {contactChips.length > 0 ? (
+                      contactChips.slice(0, 3).map((entry) => (
+                        <span className="customer-directory-contact-chip" key={entry}>
+                          {entry}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="customer-directory-contact-chip is-muted">Nessun contatto rapido</span>
+                    )}
+                  </div>
                 </Link>
-                <span className="pill">{customerTypeLabels[customer.type]}</span>
-              </div>
-              <div className="subtle">{customer.orders.length} ordini</div>
-              <div className="subtle">{customer.phone || "Telefono non inserito"}</div>
-              <div className="subtle">{customer.email || customer.whatsapp || "Nessun contatto secondario"}</div>
-              <div className="subtle">Ultimo ordine: {customer.orders[0] ? formatDate(customer.orders[0].createdAt) : "Nessuno"}</div>
-            </article>
-          ))
+              </article>
+            );
+          })
         )}
       </div>
     </div>

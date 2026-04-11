@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { normalizeMainPhaseForWorkflow } from "@/lib/constants";
 import { requireAuth } from "@/lib/auth";
 import { formatCompactDate, formatDate, formatDateKey, formatWeekdayLabel } from "@/lib/format";
+import { buildOrdersFilterHref } from "@/lib/order-filters";
 import { getCalendarOrders, getMonthlyAgendaOrders } from "@/lib/orders";
 
 export const dynamic = "force-dynamic";
@@ -61,7 +62,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
   }[view];
 
   return (
-    <div className="stack">
+    <div className="stack calendar-page-shell">
       <PageHeader
         title="Calendario"
         description={
@@ -107,7 +108,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
         </div>
 
         {view === "day" ? <DayCalendar snapshot={daySnapshot} /> : null}
-        {view === "week" ? <WeekCalendar snapshot={weekSnapshot} /> : null}
+        {view === "week" ? <WeekCalendar focusDate={focusDate} snapshot={weekSnapshot} /> : null}
         {view === "month" ? <MonthCalendar weeks={monthMatrix} focusDate={focusDate} /> : null}
       </section>
     </div>
@@ -135,13 +136,14 @@ function DayCalendar({ snapshot }: { snapshot: CalendarDaySnapshot }) {
   return (
     <div className="stack">
       <CalendarSummaryGrid
+        view="day"
         labelPrefix="oggi"
         summary={snapshot.summary}
         overdueLabel={snapshot.isToday ? "Arretrati già aperti" : "Arretrati prima di questa data"}
       />
 
       <div className="calendar-day-shell">
-        <section className="card card-pad compact-lane-card">
+        <section className="card card-pad compact-lane-card" id="calendar-day-deliveries">
           <div className="list-header compact-section-head">
             <div>
               <h3>Lavori del giorno</h3>
@@ -160,7 +162,7 @@ function DayCalendar({ snapshot }: { snapshot: CalendarDaySnapshot }) {
           </div>
         </section>
 
-        <section className="card card-pad compact-lane-card">
+        <section className="card card-pad compact-lane-card" id="calendar-day-appointments">
           <div className="list-header compact-section-head">
             <div>
               <h3>Appuntamenti del giorno</h3>
@@ -180,7 +182,7 @@ function DayCalendar({ snapshot }: { snapshot: CalendarDaySnapshot }) {
         </section>
 
         {snapshot.overdueOrders.length > 0 ? (
-          <section className="card card-pad compact-lane-card calendar-day-wide">
+          <section className="card card-pad compact-lane-card calendar-day-wide" id="calendar-day-overdue">
             <div className="list-header compact-section-head">
               <div>
                 <h3>Arretrati aperti</h3>
@@ -202,10 +204,23 @@ function DayCalendar({ snapshot }: { snapshot: CalendarDaySnapshot }) {
   );
 }
 
-function WeekCalendar({ snapshot }: { snapshot: CalendarWeekSnapshot }) {
+function WeekCalendar({
+  snapshot,
+  focusDate
+}: {
+  snapshot: CalendarWeekSnapshot;
+  focusDate: Date;
+}) {
+  const activeDay = snapshot.days.find((day) => isSameDay(day.date, focusDate)) || snapshot.days[0];
+
   return (
     <div className="stack">
-      <CalendarSummaryGrid labelPrefix="settimana" summary={snapshot.summary} overdueLabel="Arretrati prima della settimana" />
+      <CalendarSummaryGrid
+        view="week"
+        labelPrefix="settimana"
+        summary={snapshot.summary}
+        overdueLabel="Arretrati prima della settimana"
+      />
 
       {snapshot.summary.overdue > 0 ? (
         <div className="calendar-callout">
@@ -214,7 +229,75 @@ function WeekCalendar({ snapshot }: { snapshot: CalendarWeekSnapshot }) {
         </div>
       ) : null}
 
-      <div className="calendar-week-grid">
+      <div className="calendar-week-mobile">
+        <nav className="calendar-week-day-strip" aria-label="Giorni della settimana">
+          {snapshot.days.map((day) => {
+            const isActive = day.key === activeDay.key;
+
+            return (
+              <Link
+                className={`calendar-week-day-link${isActive ? " active" : ""}${day.isToday ? " today" : ""}`}
+                href={buildCalendarHref("week", day.date)}
+                key={day.key}
+                replace
+                scroll={false}
+              >
+                <span>{weekdayLabel(day.date, "compact")}</span>
+                <strong>{day.date.getDate()}</strong>
+                <small>{day.summary.workload + day.summary.appointments}</small>
+              </Link>
+            );
+          })}
+        </nav>
+
+        <article className="calendar-week-focus">
+          <div className="calendar-week-focus-head">
+            <div>
+              <strong>{weekdayLabel(activeDay.date)}</strong>
+              <span>{formatDate(activeDay.date)}</span>
+            </div>
+          </div>
+
+          <div className="calendar-week-focus-stats">
+            <span className="calendar-day-stat">Lav. {activeDay.summary.workload}</span>
+            <span className="calendar-day-stat">App. {activeDay.summary.appointments}</span>
+            {activeDay.summary.blocked > 0 ? <span className="calendar-day-stat warning">Sosp. {activeDay.summary.blocked}</span> : null}
+            {activeDay.summary.ready > 0 ? <span className="calendar-day-stat success">Pront. {activeDay.summary.ready}</span> : null}
+          </div>
+
+          <section className="calendar-week-focus-section" id="calendar-week-work">
+            <div className="calendar-section-head">
+              <strong>Lavori</strong>
+              <span>{activeDay.dueOrders.length}</span>
+            </div>
+            <div className="calendar-mini-stack">
+              {activeDay.dueOrders.length === 0 ? (
+                <div className="calendar-slot-empty">Nessun lavoro in scadenza</div>
+              ) : (
+                activeDay.dueOrders.map((order) => <CalendarWeekItem key={order.id} order={order} variant="delivery" />)
+              )}
+            </div>
+          </section>
+
+          <section className="calendar-week-focus-section" id="calendar-week-appointments">
+            <div className="calendar-section-head">
+              <strong>Appuntamenti</strong>
+              <span>{activeDay.appointmentOrders.length}</span>
+            </div>
+            <div className="calendar-mini-stack">
+              {activeDay.appointmentOrders.length === 0 ? (
+                <div className="calendar-slot-empty">Nessun appuntamento</div>
+              ) : (
+                activeDay.appointmentOrders.map((order) => (
+                  <CalendarWeekItem key={`${order.id}-appointment`} order={order} variant="appointment" />
+                ))
+              )}
+            </div>
+          </section>
+        </article>
+      </div>
+
+      <div className="calendar-week-grid calendar-week-desktop">
         {snapshot.days.map((day) => (
           <article className={getWeekColumnClassName(day)} key={day.key}>
             <div className="calendar-column-head">
@@ -285,7 +368,7 @@ function MonthCalendar({
   const monthKey = `${focusDate.getFullYear()}-${focusDate.getMonth()}`;
 
   return (
-    <div className="calendar-month-wrap">
+    <div className="calendar-month-wrap" id="calendar-month-grid">
       <div className="calendar-month-weekdays">
         {getWeekdayLabels("compact").map((day) => (
           <span aria-label={day.full} key={day.compact} title={day.full}>
@@ -331,22 +414,26 @@ function MonthCalendar({
 function CalendarSummaryGrid({
   summary,
   labelPrefix,
-  overdueLabel
+  overdueLabel,
+  view
 }: {
   summary: CalendarLoadSummary;
   labelPrefix: "oggi" | "settimana";
   overdueLabel: string;
+  view: CalendarView;
 }) {
   return (
     <div className="grid calendar-summary-grid">
       <CalendarMetricCard
+        href={getCalendarMetricHref(view, "workload")}
         hint={labelPrefix === "oggi" ? "Consegne previste" : "Consegne nei 7 giorni"}
         icon={<CalendarGlyph kind="work" />}
-        label={`Carico ${labelPrefix}`}
+        label="Carico"
         tone="neutral"
         value={summary.workload}
       />
       <CalendarMetricCard
+        href={getCalendarMetricHref(view, "appointments")}
         hint="Installazioni e incontri"
         icon={<CalendarGlyph kind="schedule" />}
         label="Appuntamenti"
@@ -354,6 +441,7 @@ function CalendarSummaryGrid({
         value={summary.appointments}
       />
       <CalendarMetricCard
+        href={getCalendarMetricHref(view, "toStart")}
         hint="Ordini da far partire"
         icon={<CalendarGlyph kind="play" />}
         label="Da avviare"
@@ -361,6 +449,7 @@ function CalendarSummaryGrid({
         value={summary.toStart}
       />
       <CalendarMetricCard
+        href={getCalendarMetricHref(view, "working")}
         hint="Produzione attiva"
         icon={<CalendarGlyph kind="gear" />}
         label="In lavorazione"
@@ -368,6 +457,7 @@ function CalendarSummaryGrid({
         value={summary.working}
       />
       <CalendarMetricCard
+        href={getCalendarMetricHref(view, "blocked")}
         hint="File o approvazioni in attesa"
         icon={<CalendarGlyph kind="pause" />}
         label="Sospesi"
@@ -375,6 +465,7 @@ function CalendarSummaryGrid({
         value={summary.blocked}
       />
       <CalendarMetricCard
+        href={getCalendarMetricHref(view, "overdue")}
         hint={overdueLabel}
         icon={<CalendarGlyph kind="alert" />}
         label="Arretrati"
@@ -382,6 +473,7 @@ function CalendarSummaryGrid({
         value={summary.overdue}
       />
       <CalendarMetricCard
+        href={getCalendarMetricHref(view, "ready")}
         hint="Ordini già pronti"
         icon={<CalendarGlyph kind="spark" />}
         label="Pronti"
@@ -397,24 +489,67 @@ function CalendarMetricCard({
   label,
   value,
   hint,
-  tone
+  tone,
+  href
 }: {
   icon: ReactNode;
   label: string;
   value: number;
   hint: string;
   tone: "neutral" | "danger" | "warning" | "success" | "brand";
+  href: string;
 }) {
-  return (
-    <article className={`card card-pad compact-metric compact-metric-${tone}`}>
-      <div className="compact-metric-top">
+  const className = `card card-pad compact-metric calendar-metric-card calendar-metric-card-link compact-metric-${tone}`;
+  const content = (
+    <>
+      <div className="compact-metric-top calendar-metric-head">
         <span className="compact-icon">{icon}</span>
         <span className="compact-metric-label">{label}</span>
       </div>
       <strong>{value}</strong>
       <span className="hint">{hint}</span>
-    </article>
+    </>
   );
+
+  if (href.startsWith("#")) {
+    return (
+      <a className={className} href={href}>
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <Link className={className} href={href} prefetch={false}>
+      {content}
+    </Link>
+  );
+}
+
+function getCalendarMetricHref(
+  view: CalendarView,
+  kind: "workload" | "appointments" | "toStart" | "working" | "blocked" | "overdue" | "ready"
+) {
+  switch (kind) {
+    case "workload":
+      return view === "day" ? "#calendar-day-deliveries" : view === "week" ? "#calendar-week-work" : "#calendar-month-grid";
+    case "appointments":
+      return view === "day"
+        ? "#calendar-day-appointments"
+        : view === "week"
+          ? "#calendar-week-appointments"
+          : "#calendar-month-grid";
+    case "toStart":
+      return buildOrdersFilterHref({ view: "ACTIVE", preset: "TO_START" });
+    case "working":
+      return buildOrdersFilterHref({ view: "ACTIVE", preset: "WORKING" });
+    case "blocked":
+      return buildOrdersFilterHref({ view: "ACTIVE", preset: "BLOCKED" });
+    case "overdue":
+      return buildOrdersFilterHref({ view: "ACTIVE", preset: "OVERDUE" });
+    case "ready":
+      return buildOrdersFilterHref({ view: "ACTIVE", preset: "READY" });
+  }
 }
 
 function CalendarOrderCard({
@@ -694,8 +829,8 @@ function getWeekColumnClassName(day: CalendarDaySnapshot) {
   return classes.join(" ");
 }
 
-function weekdayLabel(date: Date) {
-  return formatWeekdayLabel(date);
+function weekdayLabel(date: Date, variant: "short" | "compact" = "short") {
+  return formatWeekdayLabel(date, variant);
 }
 
 function getWeekdayLabels(variant: "short" | "compact") {

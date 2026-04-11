@@ -63,6 +63,15 @@ export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; v
             const workdayHighlight = view === "ACTIVE" ? getWorkdayHighlight(order.deliveryAt) : null;
             const deliveredLabel = order.deliveredAt ? formatDateTime(order.deliveredAt) : formatDateTime(order.deliveryAt);
             const whatsappNotified = order.mainPhase === "SVILUPPO_COMPLETATO" && Boolean(order.readyWhatsappSentAt);
+            const deliveryPrimaryLabel = view === "DELIVERED" ? deliveredLabel : formatDateTime(order.deliveryAt);
+            const deliverySecondaryLabel =
+              view === "DELIVERED"
+                ? order.deliveredAt
+                  ? `Prevista ${formatDateTime(order.deliveryAt)}`
+                  : "Consegnato"
+                : workdayHighlight === "weekend"
+                  ? "Weekend"
+                  : deliveryColumnLabel;
 
             return (
               <Fragment key={order.id}>
@@ -71,19 +80,84 @@ export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; v
                   key={order.id}
                 >
                   <td data-label="Ordine">
-                    <div className="order-inline-head">
-                      <QuickOrderTriggerButton
-                        ariaControls={panelId}
-                        isOpen={isOpen}
-                        onClick={() => setOpenOrderId((current) => (current === order.id ? null : order.id))}
-                      />
-                      <Link href={`/orders/${order.id}`}>
-                        <div className="order-code">{order.orderCode}</div>
-                      </Link>
+                    <div className="order-mobile-card">
+                      <div className="order-mobile-card-head">
+                        <div className="order-inline-head">
+                          <QuickOrderTriggerButton
+                            ariaControls={panelId}
+                            isOpen={isOpen}
+                            onClick={() => setOpenOrderId((current) => (current === order.id ? null : order.id))}
+                          />
+                          <div className="order-mobile-card-copy">
+                            <Link href={`/orders/${order.id}`}>
+                              <div className="order-code">{order.orderCode}</div>
+                            </Link>
+                            <div className="subtle">
+                              {order.title}
+                              {order.isQuote ? " • Preventivo" : ""}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="order-mobile-card-total">
+                          <strong>{formatCurrency(order.totalCents)}</strong>
+                          <span>Residuo {formatCurrency(order.balanceDueCents)}</span>
+                        </div>
+                      </div>
+
+                      <div className="order-mobile-card-customer">
+                        <strong>{order.customer.name}</strong>
+                        <span>{order.customer.phone || "Senza telefono"}</span>
+                      </div>
+
+                      <div className="order-mobile-card-meta">
+                        <div
+                          className={`order-deadline-chip order-mobile-card-deadline${workdayHighlight ? ` ${workdayHighlight}` : ""}${view === "DELIVERED" ? " delivered" : ""}`}
+                        >
+                          <strong>{deliveryPrimaryLabel}</strong>
+                          <span>{deliverySecondaryLabel}</span>
+                        </div>
+                        <div className="order-mobile-card-priority">
+                          <span>Priorita</span>
+                          <strong>{priorityLabels[order.priority]}</strong>
+                        </div>
+                        <div className="order-mobile-card-whatsapp">
+                          <ReadyWhatsAppButton
+                            compact
+                            disabled={order.mainPhase !== "SVILUPPO_COMPLETATO"}
+                            hasPhone={order.hasWhatsapp}
+                            notifiedAt={order.readyWhatsappSentAt}
+                            orderId={order.id}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="order-mobile-card-status">
+                        <StatusPills
+                          hideNeutralStatus
+                          isQuote={order.isQuote}
+                          linked={false}
+                          phase={order.mainPhase}
+                          status={order.operationalStatus}
+                          payment={order.paymentStatus}
+                        />
+                      </div>
                     </div>
-                    <div className="subtle">
-                      {order.title}
-                      {order.isQuote ? " • Preventivo" : ""}
+
+                    <div className="order-desktop-cell">
+                      <div className="order-inline-head">
+                        <QuickOrderTriggerButton
+                          ariaControls={panelId}
+                          isOpen={isOpen}
+                          onClick={() => setOpenOrderId((current) => (current === order.id ? null : order.id))}
+                        />
+                        <Link href={`/orders/${order.id}`}>
+                          <div className="order-code">{order.orderCode}</div>
+                        </Link>
+                      </div>
+                      <div className="subtle">
+                        {order.title}
+                        {order.isQuote ? " • Preventivo" : ""}
+                      </div>
                     </div>
                   </td>
                   <td data-label="Cliente">

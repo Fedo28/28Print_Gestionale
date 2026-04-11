@@ -125,7 +125,7 @@ export default async function OrdersPage({ searchParams }: Props) {
   ] as const;
 
   return (
-    <div className="stack">
+    <div className="stack orders-page-shell">
       <PageHeader
         title={view === "DELIVERED" ? "Storico ordini" : "Ordini"}
         description={
@@ -142,7 +142,7 @@ export default async function OrdersPage({ searchParams }: Props) {
         }
       />
 
-      <section className="card card-pad">
+      <section className="card card-pad orders-page-filters-card">
         <nav className="calendar-view-switch orders-view-switch" aria-label="Selettore vista ordini">
           {tabLinks.map((tab) => (
             <Link
@@ -255,7 +255,7 @@ export default async function OrdersPage({ searchParams }: Props) {
         ) : null}
       </section>
 
-      <section className="card card-pad table-wrap orders-table-wrap">
+      <section className="card card-pad table-wrap orders-table-wrap orders-page-results-card">
         <OrdersTable
           view={view}
           orders={orders.map((order) => ({

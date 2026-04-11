@@ -67,6 +67,37 @@ const emptyItem = (): ItemState => ({
   priceOverridden: false
 });
 
+function isBlankEditorItem(item: ItemState) {
+  return (
+    !item.serviceQuery.trim() &&
+    !item.photoMode &&
+    !item.photoFormat.trim() &&
+    !item.label.trim() &&
+    (item.quantity.trim() === "" || item.quantity.trim() === "1") &&
+    !item.unitPrice.trim() &&
+    item.discountMode === "NONE" &&
+    !item.discountValue.trim() &&
+    item.extraMode === "NONE" &&
+    !item.extraValue.trim() &&
+    !item.format.trim() &&
+    !item.material.trim() &&
+    !item.finishing.trim() &&
+    !item.notes.trim() &&
+    !item.serviceCatalogId &&
+    !item.priceOverridden
+  );
+}
+
+function normalizeEditorItems(items: ItemState[]) {
+  const nextItems = [...items];
+
+  while (nextItems.length > 1 && isBlankEditorItem(nextItems[nextItems.length - 1])) {
+    nextItems.pop();
+  }
+
+  return nextItems.length > 0 ? nextItems : [emptyItem()];
+}
+
 function createItemStateFromDraft(item?: Partial<OrderDraftSnapshot["items"][number]>): ItemState {
   return {
     serviceQuery: typeof item?.serviceQuery === "string" ? item.serviceQuery : "",
@@ -318,7 +349,7 @@ export function OrderForm({
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [mobileStep, setMobileStep] = useState<MobileOrderStep>("customer");
   const [mobileMeta, setMobileMeta] = useState<MobileOrderMeta>(createEmptyMobileOrderMeta());
-  const [openMobileItemIndex, setOpenMobileItemIndex] = useState(0);
+  const [openMobileItemIndex, setOpenMobileItemIndex] = useState<number | null>(null);
   const [activeServiceField, setActiveServiceField] = useState<number | null>(null);
   const [openTierIndex, setOpenTierIndex] = useState<number | null>(null);
   const [catalogDraftRowIndex, setCatalogDraftRowIndex] = useState<number | null>(null);
@@ -342,6 +373,62 @@ export function OrderForm({
   const draftStorageKey = buildOrderDraftStorageKey(kind as OrderDraftMode);
   const submittedDraftKey = buildOrderDraftSubmittedKey(kind as OrderDraftMode);
   const mobileStepIndex = MOBILE_ORDER_STEPS.findIndex((step) => step.id === mobileStep);
+  const isMobileItemSheetOpen = openMobileItemIndex !== null;
+
+  function addEmptyItemLine() {
+    const nextIndex = items.length;
+    setItems((current) => [...current, emptyItem()]);
+    setOpenMobileItemIndex(isMobileViewport ? nextIndex : null);
+  }
+
+  function openMobileItemEditor(index: number) {
+    setOpenMobileItemIndex(index);
+  }
+
+  function closeMobileItemEditor() {
+    setOpenMobileItemIndex(null);
+    setActiveServiceField(null);
+    setOpenTierIndex(null);
+    closeInlineCatalogDraft();
+  }
+
+  function removeItemLine(index: number) {
+    setItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setActiveServiceField((current) => {
+      if (current === null) {
+        return null;
+      }
+
+      if (current === index) {
+        return null;
+      }
+
+      return current > index ? current - 1 : current;
+    });
+    setOpenTierIndex((current) => {
+      if (current === null) {
+        return null;
+      }
+
+      if (current === index) {
+        return null;
+      }
+
+      return current > index ? current - 1 : current;
+    });
+    closeInlineCatalogDraft();
+    setOpenMobileItemIndex((current) => {
+      if (current === null) {
+        return null;
+      }
+
+      if (current === index) {
+        return null;
+      }
+
+      return current > index ? current - 1 : current;
+    });
+  }
 
   function readDraftFieldsFromForm(): OrderDraftFieldValues {
     const form = formRef.current;
@@ -396,7 +483,7 @@ export function OrderForm({
     setMobileStep("customer");
     setAppointmentNoteValue("");
     setItems([emptyItem()]);
-    setOpenMobileItemIndex(0);
+    setOpenMobileItemIndex(null);
     setActiveServiceField(null);
     setOpenTierIndex(null);
     setCatalogDraftRowIndex(null);
@@ -550,7 +637,9 @@ export function OrderForm({
     setSelectedCustomerId(nextSelectedCustomerId);
     setCustomerQuery(draft.customerQuery);
     setAppointmentNoteValue(draft.fields.appointmentNote);
-    setItems(draft.items.length > 0 ? draft.items.map((item) => createItemStateFromDraft(item)) : [emptyItem()]);
+    setItems(
+      normalizeEditorItems(draft.items.length > 0 ? draft.items.map((item) => createItemStateFromDraft(item)) : [emptyItem()])
+    );
     setHasSavedDraft(true);
     setLastDraftSavedAt(draft.savedAt);
     setDraftRestoredAt(draft.savedAt);
@@ -591,12 +680,31 @@ export function OrderForm({
 
   useEffect(() => {
     if (!items.length) {
-      setOpenMobileItemIndex(0);
+      setOpenMobileItemIndex(null);
       return;
     }
 
-    setOpenMobileItemIndex((current) => Math.min(current, items.length - 1));
+    setOpenMobileItemIndex((current) => (current === null ? null : Math.min(current, items.length - 1)));
   }, [items.length]);
+
+  useEffect(() => {
+    if (!isMobileViewport || mobileStep !== "items") {
+      setOpenMobileItemIndex(null);
+    }
+  }, [isMobileViewport, mobileStep]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const shouldLockBody = isMobileViewport && isMobileItemSheetOpen;
+    document.body.classList.toggle("order-mobile-line-sheet-open", shouldLockBody);
+
+    return () => {
+      document.body.classList.remove("order-mobile-line-sheet-open");
+    };
+  }, [isMobileViewport, isMobileItemSheetOpen]);
 
   function getCatalogPriceDisplay(service: ServiceCatalog | undefined, quantity: number) {
     if (!service) {
@@ -946,6 +1054,546 @@ export function OrderForm({
     }))
     .filter((item) => item.label)
     .slice(0, 4);
+  const activeMobileLineState =
+    isMobileViewport && openMobileItemIndex !== null && items[openMobileItemIndex]
+      ? buildLineEditorState(items[openMobileItemIndex], openMobileItemIndex)
+      : null;
+
+  function buildLineEditorState(item: ItemState, index: number) {
+    const selectedService = catalogServices.find((entry) => entry.id === item.serviceCatalogId);
+    const exactMatchedService =
+      !selectedService && item.serviceQuery.trim()
+        ? catalogServices.find((entry) => normalizeCatalogSearch(entry.name) === normalizeCatalogSearch(item.serviceQuery))
+        : undefined;
+    const deactivatableService = selectedService || exactMatchedService;
+    const suggestions = getServiceSuggestions(item.serviceQuery);
+    const parsedTiers = getServiceTiers(selectedService);
+    const lineQuantity = parseQuantityValue(item.quantity, 1);
+    const selectedPhotographyOption = photographyFormats.find(
+      (entry) => entry.serviceId === item.serviceCatalogId && entry.label === item.photoFormat
+    );
+    const isPhotographyRow = item.photoMode || item.serviceQuery === "Fotografie" || Boolean(selectedPhotographyOption);
+    const showSuggestions =
+      activeServiceField === index &&
+      item.serviceQuery.trim().length > 0 &&
+      (!selectedService || normalizeCatalogSearch(item.serviceQuery) !== normalizeCatalogSearch(selectedService.name) || isPhotographyRow);
+    const hasTierEntries = parsedTiers.length > 0;
+    const lineFinalWithExtraCents = computeLineTotalWithAdjustmentsCents(
+      parseDisplayPriceToCents(item.unitPrice),
+      lineQuantity,
+      item.discountMode,
+      parseDiscountValue(item.discountMode, item.discountValue),
+      item.extraMode,
+      parseDiscountValue(item.extraMode, item.extraValue)
+    );
+
+    return {
+      item,
+      index,
+      selectedService,
+      deactivatableService,
+      suggestions,
+      parsedTiers,
+      lineQuantity,
+      selectedPhotographyOption,
+      isPhotographyRow,
+      showSuggestions,
+      hasTierEntries,
+      lineFinalWithExtraCents
+    };
+  }
+
+  function renderLineEditor(state: ReturnType<typeof buildLineEditorState>) {
+    const {
+      item,
+      index,
+      selectedService,
+      deactivatableService,
+      suggestions,
+      parsedTiers,
+      lineQuantity,
+      selectedPhotographyOption,
+      isPhotographyRow,
+      showSuggestions,
+      hasTierEntries,
+      lineFinalWithExtraCents
+    } = state;
+
+    return (
+      <div className="form-grid order-line-grid">
+        <div className={`field wide order-line-service${isPhotographyRow ? " order-line-service-photo" : ""}`}>
+          <label htmlFor={`service-${index}`}>Articolo / servizio</label>
+          <input
+            autoComplete="off"
+            id={`service-${index}`}
+            onChange={(event) => {
+              const nextValue = event.target.value;
+              const normalizedNextValue = normalizeCatalogSearch(nextValue);
+              const matchesSelectedService =
+                selectedService && normalizedNextValue === normalizeCatalogSearch(selectedService.name);
+
+              setItems((current) =>
+                current.map((entry, itemIndex) =>
+                  itemIndex === index
+                    ? {
+                        ...entry,
+                        serviceQuery: nextValue,
+                        photoMode: matchesSelectedService ? entry.photoMode : false,
+                        photoFormat: matchesSelectedService ? entry.photoFormat : "",
+                        label: nextValue,
+                        serviceCatalogId: matchesSelectedService ? entry.serviceCatalogId : "",
+                        unitPrice: matchesSelectedService ? entry.unitPrice : entry.priceOverridden ? entry.unitPrice : "",
+                        priceOverridden: matchesSelectedService ? entry.priceOverridden : entry.priceOverridden,
+                        format: matchesSelectedService ? entry.format : ""
+                      }
+                    : entry
+                )
+              );
+              setActiveServiceField(index);
+              if (!event.target.value.trim()) {
+                setOpenTierIndex((current) => (current === index ? null : current));
+              }
+            }}
+            onBlur={() => {
+              window.setTimeout(() => {
+                setActiveServiceField((current) => (current === index ? null : current));
+              }, 120);
+            }}
+            onFocus={() => setActiveServiceField(index)}
+            placeholder="Scrivi per cercare nel catalogo o inserire una voce libera"
+            value={item.serviceQuery}
+          />
+          <div className="order-line-service-tools">
+            {hasTierEntries ? <span className="pill order-line-tier-badge">Prezzo a scaglioni</span> : null}
+            <button
+              className="ghost order-line-tier-toggle"
+              onClick={(event) => {
+                event.preventDefault();
+                if (catalogDraftRowIndex === index) {
+                  closeInlineCatalogDraft();
+                } else {
+                  openInlineCatalogDraft(index);
+                }
+              }}
+              type="button"
+            >
+              {catalogDraftRowIndex === index ? "Chiudi nuovo servizio" : "Nuovo in catalogo"}
+            </button>
+            {deactivatableService ? (
+              <button
+                className="ghost order-line-catalog-remove"
+                disabled={catalogMutatingServiceId === deactivatableService.id}
+                onClick={(event) => {
+                  event.preventDefault();
+                  void deactivateCatalogService(index, deactivatableService);
+                }}
+                type="button"
+              >
+                {catalogMutatingServiceId === deactivatableService.id ? "Disattivazione..." : "Disattiva dal catalogo"}
+              </button>
+            ) : null}
+            <button
+              className="ghost order-line-tier-toggle"
+              disabled={!hasTierEntries}
+              onClick={(event) => {
+                event.preventDefault();
+                if (!hasTierEntries) {
+                  return;
+                }
+
+                setOpenTierIndex((current) => (current === index ? null : index));
+              }}
+              type="button"
+            >
+              Scaglioni
+            </button>
+          </div>
+          {showSuggestions ? (
+            <div className="order-line-suggestions">
+              {suggestions.length > 0 ? (
+                suggestions.map((suggestion) => (
+                  <button
+                    className="order-line-suggestion"
+                    key={suggestion.key}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      if (suggestion.type === "photography") {
+                        selectPhotographyForRow(index);
+                        return;
+                      }
+
+                      selectServiceForRow(index, suggestion.service);
+                    }}
+                    onMouseDown={(event) => event.preventDefault()}
+                    type="button"
+                  >
+                    <strong>{suggestion.label}</strong>
+                    <span>{suggestion.meta}</span>
+                  </button>
+                ))
+              ) : (
+                <div className="order-line-suggestion order-line-empty-state">
+                  <strong>{isCatalogEmpty ? "Catalogo servizi vuoto" : "Nessun servizio trovato"}</strong>
+                  <span>
+                    {isCatalogEmpty
+                      ? "Importa il listino da Impostazioni o verifica che il bootstrap del template Excel sia andato a buon fine."
+                      : "Prova con codice, nome o una parola piu specifica del servizio."}
+                  </span>
+                </div>
+              )}
+            </div>
+          ) : null}
+          {catalogActionFeedback?.rowIndex === index ? (
+            <p className={`hint order-line-catalog-feedback${catalogActionFeedback.tone === "error" ? " is-error" : ""}`}>
+              {catalogActionFeedback.message}
+            </p>
+          ) : null}
+          {hasTierEntries && openTierIndex === index ? (
+            <div className="order-line-tier-panel">
+              {parsedTiers.map((tier) => (
+                <button
+                  className={`order-line-tier-chip${isTierSelected(tier, lineQuantity) && !item.priceOverridden ? " is-selected" : ""}`}
+                  key={`${index}-${tier.minQuantity}-${tier.maxQuantity ?? "plus"}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    if (!selectedService) {
+                      return;
+                    }
+
+                    setItems((current) =>
+                      current.map((entry, itemIndex) =>
+                        itemIndex === index
+                          ? {
+                              ...entry,
+                              quantity: formatQuantityInput(tier.minQuantity),
+                              unitPrice: (tier.unitPriceCents / 100).toFixed(2).replace(".", ","),
+                              priceOverridden: false
+                            }
+                          : entry
+                      )
+                    );
+                  }}
+                  type="button"
+                >
+                  <strong>{formatTierLabel(tier)}</strong>
+                  <span>{(tier.unitPriceCents / 100).toFixed(2).replace(".", ",")} €</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {catalogDraftRowIndex === index ? (
+            <div className="order-line-inline-catalog">
+              <div className="order-line-inline-catalog-head">
+                <div className="order-line-inline-catalog-title">
+                  <div className="order-line-inline-catalog-copy">
+                    <strong>Nuovo servizio catalogo</strong>
+                  </div>
+                  <span className="pill">Codice automatico se vuoto</span>
+                </div>
+              </div>
+              <div className="order-line-inline-catalog-sections">
+                <section className="order-line-inline-catalog-section">
+                  <div className="order-line-inline-catalog-section-head">
+                    <strong>Dati base</strong>
+                  </div>
+                  <div className="form-grid order-line-inline-catalog-grid">
+                    <div className="field full order-line-inline-catalog-name">
+                      <label htmlFor={`inline-service-name-${index}`}>Nome servizio</label>
+                      <input
+                        id={`inline-service-name-${index}`}
+                        onChange={(event) => setCatalogDraft((current) => ({ ...current, name: event.target.value }))}
+                        value={catalogDraft.name}
+                      />
+                    </div>
+                    <div className="field full order-line-inline-catalog-code">
+                      <label htmlFor={`inline-service-code-${index}`}>Codice</label>
+                      <input
+                        id={`inline-service-code-${index}`}
+                        onChange={(event) => setCatalogDraft((current) => ({ ...current, code: event.target.value }))}
+                        placeholder="Facoltativo"
+                        value={catalogDraft.code}
+                      />
+                    </div>
+                    <div className="field full order-line-inline-catalog-price">
+                      <label htmlFor={`inline-service-price-${index}`}>Prezzo base</label>
+                      <input
+                        id={`inline-service-price-${index}`}
+                        onChange={(event) => setCatalogDraft((current) => ({ ...current, basePrice: event.target.value }))}
+                        placeholder="0,00"
+                        value={catalogDraft.basePrice}
+                      />
+                    </div>
+                  </div>
+                </section>
+                <section className="order-line-inline-catalog-section">
+                  <div className="order-line-inline-catalog-section-head">
+                    <strong>Dettagli facoltativi</strong>
+                  </div>
+                  <div className="form-grid order-line-inline-catalog-grid">
+                    <div className="field full">
+                      <label htmlFor={`inline-service-description-${index}`}>Descrizione</label>
+                      <textarea
+                        id={`inline-service-description-${index}`}
+                        onChange={(event) => setCatalogDraft((current) => ({ ...current, description: event.target.value }))}
+                        value={catalogDraft.description}
+                      />
+                    </div>
+                  </div>
+                </section>
+                <section className="order-line-inline-catalog-section">
+                  <div className="order-line-inline-catalog-section-head">
+                    <strong>Scaglioni quantita</strong>
+                  </div>
+                  <div className="form-grid order-line-inline-catalog-grid">
+                    <div className="field full">
+                      <label htmlFor={`inline-service-tiers-${index}`}>Scaglioni quantita</label>
+                      <input
+                        id={`inline-service-tiers-${index}`}
+                        onChange={(event) => setCatalogDraft((current) => ({ ...current, quantityTiers: event.target.value }))}
+                        placeholder="1-9:0,50 | 10-49:0,30 | 50+:0,20"
+                        value={catalogDraft.quantityTiers}
+                      />
+                    </div>
+                  </div>
+                </section>
+              </div>
+              {catalogDraftMessage ? <p className="hint order-line-inline-catalog-message">{catalogDraftMessage}</p> : null}
+              <div className="button-row order-line-inline-catalog-actions">
+                <button className="secondary" onClick={closeInlineCatalogDraft} type="button">
+                  Annulla
+                </button>
+                <button
+                  className="primary"
+                  disabled={isCatalogDraftSubmitting}
+                  onClick={() => void saveInlineCatalogDraft(index)}
+                  type="button"
+                >
+                  {isCatalogDraftSubmitting ? "Salvataggio..." : "Salva e usa"}
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+        {isPhotographyRow ? (
+          <div className="field order-line-photo-format">
+            <label htmlFor={`photo-format-${index}`}>Taglio foto</label>
+            <select
+              id={`photo-format-${index}`}
+              onChange={(event) => {
+                const nextOption = photographyFormats.find((entry) => entry.key === event.target.value);
+
+                setItems((current) =>
+                  current.map((entry, itemIndex) => {
+                    if (itemIndex !== index) {
+                      return entry;
+                    }
+
+                    if (!nextOption) {
+                      return {
+                        ...entry,
+                        photoMode: true,
+                        photoFormat: "",
+                        serviceCatalogId: "",
+                        unitPrice: "",
+                        format: "",
+                        priceOverridden: false
+                      };
+                    }
+
+                    return {
+                      ...entry,
+                      serviceQuery: "Fotografie",
+                      photoMode: true,
+                      photoFormat: nextOption.label,
+                      label: "Fotografie",
+                      serviceCatalogId: nextOption.serviceId,
+                      format: nextOption.label,
+                      unitPrice: getCatalogPriceDisplay(nextOption.service, parseQuantityValue(entry.quantity)),
+                      discountMode: "NONE",
+                      discountValue: "",
+                      extraMode: "NONE",
+                      extraValue: "",
+                      priceOverridden: false
+                    };
+                  })
+                );
+              }}
+              value={selectedPhotographyOption?.key || ""}
+            >
+              <option value="">Seleziona formato</option>
+              {photographyFormats.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+        <div className="field order-line-qty">
+          <label htmlFor={`quantity-${index}`}>Qta</label>
+          <input
+            inputMode="decimal"
+            id={`quantity-${index}`}
+            onChange={(event) => {
+              const nextQuantityInput = event.target.value;
+              const nextQuantity = parseQuantityValue(nextQuantityInput, 1);
+
+              setItems((current) =>
+                current.map((entry, itemIndex) => {
+                  if (itemIndex !== index) {
+                    return entry;
+                  }
+
+                  const service = catalogServices.find((serviceEntry) => serviceEntry.id === entry.serviceCatalogId);
+
+                  if (!service || entry.priceOverridden) {
+                    return { ...entry, quantity: nextQuantityInput };
+                  }
+
+                  return {
+                    ...entry,
+                    quantity: nextQuantityInput,
+                    unitPrice: getCatalogPriceDisplay(service, nextQuantity)
+                  };
+                })
+              );
+            }}
+            onBlur={() =>
+              setItems((current) =>
+                current.map((entry, itemIndex) =>
+                  itemIndex === index ? { ...entry, quantity: formatQuantityInput(entry.quantity) } : entry
+                )
+              )
+            }
+            placeholder="1 oppure 0,5"
+            type="text"
+            value={item.quantity}
+          />
+        </div>
+        <div className="field order-line-price">
+          <label htmlFor={`unitPrice-${index}`}>Prezzo listino</label>
+          <input
+            id={`unitPrice-${index}`}
+            onChange={(event) =>
+              setItems((current) =>
+                current.map((entry, itemIndex) =>
+                  itemIndex === index ? { ...entry, unitPrice: event.target.value, priceOverridden: true } : entry
+                )
+              )
+            }
+            placeholder="0,00"
+            value={item.unitPrice}
+          />
+        </div>
+        <div className="field order-line-discount-mode">
+          <label htmlFor={`discountMode-${index}`}>Sconto</label>
+          <select
+            id={`discountMode-${index}`}
+            onChange={(event) =>
+              setItems((current) =>
+                current.map((entry, itemIndex) =>
+                  itemIndex === index
+                    ? {
+                        ...entry,
+                        discountMode: event.target.value as DiscountModeValue,
+                        discountValue: event.target.value === "NONE" ? "" : entry.discountValue
+                      }
+                    : entry
+                )
+              )
+            }
+            value={item.discountMode}
+          >
+            {Object.entries(discountModeLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field order-line-discount-value">
+          <label htmlFor={`discountValue-${index}`}>Valore sconto</label>
+          <input
+            disabled={item.discountMode === "NONE"}
+            id={`discountValue-${index}`}
+            onChange={(event) =>
+              setItems((current) =>
+                current.map((entry, itemIndex) =>
+                  itemIndex === index ? { ...entry, discountValue: event.target.value } : entry
+                )
+              )
+            }
+            placeholder={item.discountMode === "PERCENT" ? "10" : "0,00"}
+            value={item.discountValue}
+          />
+        </div>
+        <div className="field order-line-extra-mode">
+          <label htmlFor={`extraMode-${index}`}>Lavorazione extra</label>
+          <select
+            id={`extraMode-${index}`}
+            onChange={(event) =>
+              setItems((current) =>
+                current.map((entry, itemIndex) =>
+                  itemIndex === index
+                    ? {
+                        ...entry,
+                        extraMode: event.target.value as DiscountModeValue,
+                        extraValue: event.target.value === "NONE" ? "" : entry.extraValue
+                      }
+                    : entry
+                )
+              )
+            }
+            value={item.extraMode}
+          >
+            {Object.entries(discountModeLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field order-line-extra-value">
+          <label htmlFor={`extraValue-${index}`}>Valore extra</label>
+          <input
+            disabled={item.extraMode === "NONE"}
+            id={`extraValue-${index}`}
+            onChange={(event) =>
+              setItems((current) =>
+                current.map((entry, itemIndex) =>
+                  itemIndex === index ? { ...entry, extraValue: event.target.value } : entry
+                )
+              )
+            }
+            placeholder={item.extraMode === "PERCENT" ? "10" : "0,00"}
+            value={item.extraValue}
+          />
+        </div>
+        <div className="field order-line-final">
+          <label htmlFor={`finalPrice-${index}`}>Prezzo finale</label>
+          <input
+            disabled
+            id={`finalPrice-${index}`}
+            value={new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(lineFinalWithExtraCents / 100)}
+          />
+        </div>
+        <div className="field full order-line-notes">
+          <label htmlFor={`notes-${index}`}>Note riga</label>
+          <textarea
+            id={`notes-${index}`}
+            onChange={(event) =>
+              setItems((current) =>
+                current.map((entry, itemIndex) =>
+                  itemIndex === index ? { ...entry, notes: event.target.value } : entry
+                )
+              )
+            }
+            value={item.notes}
+          />
+        </div>
+      </div>
+    );
+  }
 
   function renderMobilePanelHead() {
     return (
@@ -1222,18 +1870,18 @@ export function OrderForm({
           <div className="order-mobile-panel-heading-only">
             {renderMobilePanelHead()}
           </div>
-          <button
-            className="ghost"
-            onClick={(event) => {
-              event.preventDefault();
-              const nextIndex = items.length;
-              setItems((current) => [...current, emptyItem()]);
-              setOpenMobileItemIndex(nextIndex);
-            }}
-            type="button"
-          >
-            Aggiungi riga
-          </button>
+          {!isMobileViewport ? (
+            <button
+              className="ghost"
+              onClick={(event) => {
+                event.preventDefault();
+                addEmptyItemLine();
+              }}
+              type="button"
+            >
+              Aggiungi riga
+            </button>
+          ) : null}
         </div>
         {isCatalogEmpty ? (
           <div className="empty">
@@ -1245,562 +1893,91 @@ export function OrderForm({
 
         <div className="order-lines-stack">
           {items.map((item, index) => {
-            const selectedService = catalogServices.find((entry) => entry.id === item.serviceCatalogId);
-            const exactMatchedService =
-              !selectedService && item.serviceQuery.trim()
-                ? catalogServices.find(
-                    (entry) => normalizeCatalogSearch(entry.name) === normalizeCatalogSearch(item.serviceQuery)
-                  )
-                : undefined;
-            const deactivatableService = selectedService || exactMatchedService;
-            const suggestions = getServiceSuggestions(item.serviceQuery);
-            const parsedTiers = getServiceTiers(selectedService);
-            const lineQuantity = parseQuantityValue(item.quantity, 1);
-            const selectedPhotographyOption = photographyFormats.find((entry) => entry.serviceId === item.serviceCatalogId && entry.label === item.photoFormat);
-            const isPhotographyRow = item.photoMode || item.serviceQuery === "Fotografie" || Boolean(selectedPhotographyOption);
-            const showSuggestions =
-              activeServiceField === index &&
-              item.serviceQuery.trim().length > 0 &&
-              (!selectedService || normalizeCatalogSearch(item.serviceQuery) !== normalizeCatalogSearch(selectedService.name) || isPhotographyRow);
-            const hasTierEntries = parsedTiers.length > 0;
-            const lineFinalWithExtraCents = computeLineTotalWithAdjustmentsCents(
-              parseDisplayPriceToCents(item.unitPrice),
-              lineQuantity,
-              item.discountMode,
-              parseDiscountValue(item.discountMode, item.discountValue),
-              item.extraMode,
-              parseDiscountValue(item.extraMode, item.extraValue)
-            );
+            const lineState = buildLineEditorState(item, index);
             const lineHeadline = item.label.trim() || item.serviceQuery.trim() || `Riga ${index + 1}`;
-            const lineSummaryParts = [`Qta ${formatQuantity(lineQuantity)}`];
+            const lineSummaryParts = [`Qta ${formatQuantity(lineState.lineQuantity)}`];
             if (item.photoFormat.trim()) {
               lineSummaryParts.push(item.photoFormat.trim());
             } else if (item.format.trim()) {
               lineSummaryParts.push(item.format.trim());
             }
-            const isMobileLineOpen = !isMobileViewport || openMobileItemIndex === index;
+            const isMobileLineActive = isMobileViewport && openMobileItemIndex === index;
+            const isMobileLineOpen = !isMobileViewport;
 
             return (
-              <article className={`order-line-card${isMobileLineOpen ? "" : " is-mobile-collapsed"}`} key={index}>
+              <article
+                className={`order-line-card${isMobileLineOpen ? "" : " is-mobile-collapsed"}${
+                  isMobileViewport ? " is-mobile-tappable" : ""
+                }${isMobileLineActive ? " is-mobile-active" : ""}`}
+                aria-expanded={isMobileViewport ? isMobileLineActive : undefined}
+                key={index}
+                onClick={() => {
+                  if (isMobileViewport && !isMobileLineActive) {
+                    openMobileItemEditor(index);
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (!isMobileViewport || isMobileLineActive) {
+                    return;
+                  }
+
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    openMobileItemEditor(index);
+                  }
+                }}
+                role={isMobileViewport && !isMobileLineActive ? "button" : undefined}
+                tabIndex={isMobileViewport && !isMobileLineActive ? 0 : undefined}
+              >
                 <div className="order-line-head">
-                  <div className="order-line-index">#{index + 1}</div>
-                  <strong>{`Riga ${index + 1}`}</strong>
-                  <span className="order-line-mobile-summary">
-                    <span>{lineHeadline}</span>
-                    <span>{lineSummaryParts.join(" • ")}</span>
-                  </span>
-                  <span className="pill">{new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(lineFinalWithExtraCents / 100)}</span>
-                  <button
-                    className="ghost order-line-mobile-toggle"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      setOpenMobileItemIndex((current) => (current === index ? current : index));
-                    }}
-                    type="button"
-                  >
-                    {isMobileLineOpen ? "Aperta" : "Modifica"}
-                  </button>
-                  {items.length > 1 ? (
-                    <button
-                      className="ghost"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        setItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
-                        setOpenMobileItemIndex((current) => {
-                          if (index === current) {
-                            return Math.max(0, current - 1);
-                          }
-
-                          return index < current ? current - 1 : current;
-                        });
-                        closeInlineCatalogDraft();
-                      }}
-                      type="button"
-                    >
-                      Rimuovi
-                    </button>
-                  ) : null}
-                </div>
-                <div className="form-grid order-line-grid">
-                  <div className={`field wide order-line-service${isPhotographyRow ? " order-line-service-photo" : ""}`}>
-                    <label htmlFor={`service-${index}`}>Articolo / servizio</label>
-                    <input
-                      autoComplete="off"
-                      id={`service-${index}`}
-                      onChange={(event) => {
-                        const nextValue = event.target.value;
-                        const normalizedNextValue = normalizeCatalogSearch(nextValue);
-                        const matchesSelectedService =
-                          selectedService && normalizedNextValue === normalizeCatalogSearch(selectedService.name);
-
-                        setItems((current) =>
-                          current.map((entry, itemIndex) =>
-                            itemIndex === index
-                                ? {
-                                    ...entry,
-                                    serviceQuery: nextValue,
-                                    photoMode: matchesSelectedService ? entry.photoMode : false,
-                                    photoFormat: matchesSelectedService ? entry.photoFormat : "",
-                                    label: nextValue,
-                                    serviceCatalogId: matchesSelectedService ? entry.serviceCatalogId : "",
-                                    unitPrice: matchesSelectedService ? entry.unitPrice : entry.priceOverridden ? entry.unitPrice : "",
-                                    priceOverridden: matchesSelectedService ? entry.priceOverridden : entry.priceOverridden,
-                                    format: matchesSelectedService ? entry.format : ""
-                                }
-                              : entry
-                          )
-                        );
-                        setActiveServiceField(index);
-                        if (!event.target.value.trim()) {
-                          setOpenTierIndex((current) => (current === index ? null : current));
-                        }
-                      }}
-                      onBlur={() => {
-                        window.setTimeout(() => {
-                          setActiveServiceField((current) => (current === index ? null : current));
-                        }, 120);
-                      }}
-                      onFocus={() => setActiveServiceField(index)}
-                      placeholder="Scrivi per cercare nel catalogo o inserire una voce libera"
-                      value={item.serviceQuery}
-                    />
-                    <div className="order-line-service-tools">
-                      {hasTierEntries ? <span className="pill order-line-tier-badge">Prezzo a scaglioni</span> : null}
+                  <div className="order-line-head-main">
+                    <div className="order-line-index">#{index + 1}</div>
+                    <div className="order-line-head-copy">
+                      <strong className="order-line-heading-label">{`Riga ${index + 1}`}</strong>
+                      <span className="order-line-mobile-summary">
+                        <span>{lineHeadline}</span>
+                        <span>{lineSummaryParts.join(" • ")}</span>
+                      </span>
+                    </div>
+                  </div>
+                  <div className="order-line-head-actions">
+                    <span className="pill order-line-total-pill">
+                      {new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(
+                        lineState.lineFinalWithExtraCents / 100
+                      )}
+                    </span>
+                    {items.length > 1 && !isMobileViewport ? (
                       <button
-                        className="ghost order-line-tier-toggle"
+                        className="ghost order-line-remove"
                         onClick={(event) => {
                           event.preventDefault();
-                          if (catalogDraftRowIndex === index) {
-                            closeInlineCatalogDraft();
-                          } else {
-                            openInlineCatalogDraft(index);
-                          }
+                          event.stopPropagation();
+                          removeItemLine(index);
                         }}
                         type="button"
                       >
-                        {catalogDraftRowIndex === index ? "Chiudi nuovo servizio" : "Nuovo in catalogo"}
+                        Rimuovi
                       </button>
-                      {deactivatableService ? (
-                        <button
-                          className="ghost order-line-catalog-remove"
-                          disabled={catalogMutatingServiceId === deactivatableService.id}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            void deactivateCatalogService(index, deactivatableService);
-                          }}
-                          type="button"
-                        >
-                          {catalogMutatingServiceId === deactivatableService.id ? "Disattivazione..." : "Disattiva dal catalogo"}
-                        </button>
-                      ) : null}
-                      <button
-                        className="ghost order-line-tier-toggle"
-                        disabled={!hasTierEntries}
-                        onClick={(event) => {
-                          event.preventDefault();
-                          if (!hasTierEntries) {
-                            return;
-                          }
-
-                          setOpenTierIndex((current) => (current === index ? null : index));
-                        }}
-                        type="button"
-                      >
-                        Scaglioni
-                      </button>
-                    </div>
-                    {showSuggestions ? (
-                      <div className="order-line-suggestions">
-                        {suggestions.length > 0 ? (
-                          suggestions.map((suggestion) => (
-                            <button
-                              className="order-line-suggestion"
-                              key={suggestion.key}
-                              onClick={(event) => {
-                                event.preventDefault();
-                                if (suggestion.type === "photography") {
-                                  selectPhotographyForRow(index);
-                                  return;
-                                }
-
-                                selectServiceForRow(index, suggestion.service);
-                              }}
-                              onMouseDown={(event) => event.preventDefault()}
-                              type="button"
-                            >
-                              <strong>{suggestion.label}</strong>
-                              <span>{suggestion.meta}</span>
-                            </button>
-                          ))
-                        ) : (
-                          <div className="order-line-suggestion order-line-empty-state">
-                            <strong>{isCatalogEmpty ? "Catalogo servizi vuoto" : "Nessun servizio trovato"}</strong>
-                            <span>
-                              {isCatalogEmpty
-                                ? "Importa il listino da Impostazioni o verifica che il bootstrap del template Excel sia andato a buon fine."
-                                : "Prova con codice, nome o una parola piu specifica del servizio."}
-                            </span>
-                          </div>
-                        )}
-                      </div>
                     ) : null}
-                    {catalogActionFeedback?.rowIndex === index ? (
-                      <p
-                        className={`hint order-line-catalog-feedback${
-                          catalogActionFeedback.tone === "error" ? " is-error" : ""
-                        }`}
-                      >
-                        {catalogActionFeedback.message}
-                      </p>
-                    ) : null}
-                    {hasTierEntries && openTierIndex === index ? (
-                      <div className="order-line-tier-panel">
-                          {parsedTiers.map((tier) => (
-                          <button
-                            className={`order-line-tier-chip${isTierSelected(tier, lineQuantity) && !item.priceOverridden ? " is-selected" : ""}`}
-                            key={`${index}-${tier.minQuantity}-${tier.maxQuantity ?? "plus"}`}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              if (!selectedService) {
-                                return;
-                              }
-
-                              setItems((current) =>
-                                current.map((entry, itemIndex) =>
-                                  itemIndex === index
-                                    ? {
-                                        ...entry,
-                                        quantity: formatQuantityInput(tier.minQuantity),
-                                        unitPrice: (tier.unitPriceCents / 100).toFixed(2).replace(".", ","),
-                                        priceOverridden: false
-                                      }
-                                    : entry
-                                )
-                              );
-                            }}
-                            type="button"
-                          >
-                            <strong>{formatTierLabel(tier)}</strong>
-                            <span>{(tier.unitPriceCents / 100).toFixed(2).replace(".", ",")} €</span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                    {catalogDraftRowIndex === index ? (
-                        <div className="mini-item order-line-inline-catalog">
-                          <div className="order-line-inline-catalog-head">
-                            <div className="order-line-inline-catalog-title">
-                              <div className="order-line-inline-catalog-copy">
-                                <strong>Nuovo servizio catalogo</strong>
-                              </div>
-                              <span className="pill">Codice automatico se vuoto</span>
-                            </div>
-                        </div>
-                        <div className="order-line-inline-catalog-sections">
-                          <section className="order-line-inline-catalog-section">
-                            <div className="order-line-inline-catalog-section-head">
-                              <strong>Dati base</strong>
-                            </div>
-                            <div className="form-grid order-line-inline-catalog-grid">
-                              <div className="field full order-line-inline-catalog-name">
-                                <label htmlFor={`inline-service-name-${index}`}>Nome servizio</label>
-                                <input
-                                  id={`inline-service-name-${index}`}
-                                  onChange={(event) => setCatalogDraft((current) => ({ ...current, name: event.target.value }))}
-                                  value={catalogDraft.name}
-                                />
-                              </div>
-                              <div className="field full order-line-inline-catalog-code">
-                                <label htmlFor={`inline-service-code-${index}`}>Codice</label>
-                                <input
-                                  id={`inline-service-code-${index}`}
-                                  onChange={(event) => setCatalogDraft((current) => ({ ...current, code: event.target.value }))}
-                                  placeholder="Facoltativo"
-                                  value={catalogDraft.code}
-                                />
-                              </div>
-                              <div className="field full order-line-inline-catalog-price">
-                                <label htmlFor={`inline-service-price-${index}`}>Prezzo base</label>
-                                <input
-                                  id={`inline-service-price-${index}`}
-                                  onChange={(event) => setCatalogDraft((current) => ({ ...current, basePrice: event.target.value }))}
-                                  placeholder="0,00"
-                                  value={catalogDraft.basePrice}
-                                />
-                              </div>
-                            </div>
-                          </section>
-                          <section className="order-line-inline-catalog-section">
-                            <div className="order-line-inline-catalog-section-head">
-                              <strong>Dettagli facoltativi</strong>
-                            </div>
-                            <div className="form-grid order-line-inline-catalog-grid">
-                              <div className="field full">
-                                <label htmlFor={`inline-service-description-${index}`}>Descrizione</label>
-                                <textarea
-                                  id={`inline-service-description-${index}`}
-                                  onChange={(event) => setCatalogDraft((current) => ({ ...current, description: event.target.value }))}
-                                  value={catalogDraft.description}
-                                />
-                              </div>
-                            </div>
-                          </section>
-                          <section className="order-line-inline-catalog-section">
-                            <div className="order-line-inline-catalog-section-head">
-                              <strong>Scaglioni quantita</strong>
-                            </div>
-                            <div className="form-grid order-line-inline-catalog-grid">
-                              <div className="field full">
-                                <label htmlFor={`inline-service-tiers-${index}`}>Scaglioni quantita</label>
-                                <input
-                                  id={`inline-service-tiers-${index}`}
-                                  onChange={(event) => setCatalogDraft((current) => ({ ...current, quantityTiers: event.target.value }))}
-                                  placeholder="1-9:0,50 | 10-49:0,30 | 50+:0,20"
-                                  value={catalogDraft.quantityTiers}
-                                />
-                              </div>
-                            </div>
-                          </section>
-                        </div>
-                        {catalogDraftMessage ? <p className="hint order-line-inline-catalog-message">{catalogDraftMessage}</p> : null}
-                        <div className="button-row order-line-inline-catalog-actions">
-                          <button className="secondary" onClick={closeInlineCatalogDraft} type="button">
-                            Annulla
-                          </button>
-                          <button
-                            className="primary"
-                            disabled={isCatalogDraftSubmitting}
-                            onClick={() => void saveInlineCatalogDraft(index)}
-                            type="button"
-                          >
-                            {isCatalogDraftSubmitting ? "Salvataggio..." : "Salva e usa"}
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                  {isPhotographyRow ? (
-                    <div className="field order-line-photo-format">
-                      <label htmlFor={`photo-format-${index}`}>Taglio foto</label>
-                      <select
-                        id={`photo-format-${index}`}
-                        onChange={(event) => {
-                          const nextOption = photographyFormats.find((entry) => entry.key === event.target.value);
-
-                          setItems((current) =>
-                            current.map((entry, itemIndex) => {
-                              if (itemIndex !== index) {
-                                return entry;
-                              }
-
-                              if (!nextOption) {
-                                return {
-                                  ...entry,
-                                  photoMode: true,
-                                  photoFormat: "",
-                                  serviceCatalogId: "",
-                                  unitPrice: "",
-                                  format: "",
-                                  priceOverridden: false
-                                };
-                              }
-
-                              return {
-                                ...entry,
-                                serviceQuery: "Fotografie",
-                                photoMode: true,
-                                photoFormat: nextOption.label,
-                                label: "Fotografie",
-                                serviceCatalogId: nextOption.serviceId,
-                                format: nextOption.label,
-                                unitPrice: getCatalogPriceDisplay(nextOption.service, parseQuantityValue(entry.quantity)),
-                                discountMode: "NONE",
-                                discountValue: "",
-                                extraMode: "NONE",
-                                extraValue: "",
-                                priceOverridden: false
-                              };
-                            })
-                          );
-                        }}
-                        value={selectedPhotographyOption?.key || ""}
-                      >
-                        <option value="">Seleziona formato</option>
-                        {photographyFormats.map((option) => (
-                          <option key={option.key} value={option.key}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  ) : null}
-                  <div className="field order-line-qty">
-                    <label htmlFor={`quantity-${index}`}>Qta</label>
-                    <input
-                      inputMode="decimal"
-                      id={`quantity-${index}`}
-                      onChange={(event) => {
-                        const nextQuantityInput = event.target.value;
-                        const nextQuantity = parseQuantityValue(nextQuantityInput, 1);
-
-                        setItems((current) =>
-                          current.map((entry, itemIndex) => {
-                            if (itemIndex !== index) {
-                              return entry;
-                            }
-
-                            const service = catalogServices.find((serviceEntry) => serviceEntry.id === entry.serviceCatalogId);
-
-                            if (!service || entry.priceOverridden) {
-                              return { ...entry, quantity: nextQuantityInput };
-                            }
-
-                            return {
-                              ...entry,
-                              quantity: nextQuantityInput,
-                              unitPrice: getCatalogPriceDisplay(service, nextQuantity)
-                            };
-                          })
-                        );
-                      }}
-                      onBlur={() =>
-                        setItems((current) =>
-                          current.map((entry, itemIndex) =>
-                            itemIndex === index ? { ...entry, quantity: formatQuantityInput(entry.quantity) } : entry
-                          )
-                        )
-                      }
-                      placeholder="1 oppure 0,5"
-                      type="text"
-                      value={item.quantity}
-                    />
-                  </div>
-                  <div className="field order-line-price">
-                    <label htmlFor={`unitPrice-${index}`}>Prezzo listino</label>
-                    <input
-                      id={`unitPrice-${index}`}
-                      onChange={(event) =>
-                        setItems((current) =>
-                          current.map((entry, itemIndex) =>
-                            itemIndex === index ? { ...entry, unitPrice: event.target.value, priceOverridden: true } : entry
-                          )
-                        )
-                      }
-                      placeholder="0,00"
-                      value={item.unitPrice}
-                    />
-                  </div>
-                  <div className="field order-line-discount-mode">
-                    <label htmlFor={`discountMode-${index}`}>Sconto</label>
-                    <select
-                      id={`discountMode-${index}`}
-                      onChange={(event) =>
-                        setItems((current) =>
-                          current.map((entry, itemIndex) =>
-                            itemIndex === index
-                              ? {
-                                  ...entry,
-                                  discountMode: event.target.value as DiscountModeValue,
-                                  discountValue: event.target.value === "NONE" ? "" : entry.discountValue
-                                }
-                              : entry
-                          )
-                        )
-                      }
-                      value={item.discountMode}
-                    >
-                      {Object.entries(discountModeLabels).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="field order-line-discount-value">
-                    <label htmlFor={`discountValue-${index}`}>Valore sconto</label>
-                    <input
-                      disabled={item.discountMode === "NONE"}
-                      id={`discountValue-${index}`}
-                      onChange={(event) =>
-                        setItems((current) =>
-                          current.map((entry, itemIndex) =>
-                            itemIndex === index ? { ...entry, discountValue: event.target.value } : entry
-                          )
-                        )
-                      }
-                      placeholder={item.discountMode === "PERCENT" ? "10" : "0,00"}
-                      value={item.discountValue}
-                    />
-                  </div>
-                  <div className="field order-line-extra-mode">
-                    <label htmlFor={`extraMode-${index}`}>Lavorazione extra</label>
-                    <select
-                      id={`extraMode-${index}`}
-                      onChange={(event) =>
-                        setItems((current) =>
-                          current.map((entry, itemIndex) =>
-                            itemIndex === index
-                              ? {
-                                  ...entry,
-                                  extraMode: event.target.value as DiscountModeValue,
-                                  extraValue: event.target.value === "NONE" ? "" : entry.extraValue
-                                }
-                              : entry
-                          )
-                        )
-                      }
-                      value={item.extraMode}
-                    >
-                      {Object.entries(discountModeLabels).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="field order-line-extra-value">
-                    <label htmlFor={`extraValue-${index}`}>Valore extra</label>
-                    <input
-                      disabled={item.extraMode === "NONE"}
-                      id={`extraValue-${index}`}
-                      onChange={(event) =>
-                        setItems((current) =>
-                          current.map((entry, itemIndex) =>
-                            itemIndex === index ? { ...entry, extraValue: event.target.value } : entry
-                          )
-                        )
-                      }
-                      placeholder={item.extraMode === "PERCENT" ? "10" : "0,00"}
-                      value={item.extraValue}
-                    />
-                  </div>
-                  <div className="field order-line-final">
-                    <label htmlFor={`finalPrice-${index}`}>Prezzo finale</label>
-                    <input
-                      disabled
-                      id={`finalPrice-${index}`}
-                      value={new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(lineFinalWithExtraCents / 100)}
-                    />
-                  </div>
-                  <div className="field full order-line-notes">
-                    <label htmlFor={`notes-${index}`}>Note riga</label>
-                    <textarea
-                      id={`notes-${index}`}
-                      onChange={(event) =>
-                        setItems((current) =>
-                          current.map((entry, itemIndex) =>
-                            itemIndex === index ? { ...entry, notes: event.target.value } : entry
-                          )
-                        )
-                      }
-                      value={item.notes}
-                    />
                   </div>
                 </div>
+                {!isMobileViewport ? renderLineEditor(lineState) : null}
               </article>
           );
           })}
         </div>
+        {isMobileViewport ? (
+          <button
+            className="ghost order-lines-add-row"
+            onClick={(event) => {
+              event.preventDefault();
+              addEmptyItemLine();
+            }}
+            type="button"
+          >
+            Aggiungi riga
+          </button>
+        ) : null}
         {!isMobileViewport ? (
           <div className="order-sheet-footer">
             <div className="form-grid order-sheet-payment-row">
@@ -1827,29 +2004,52 @@ export function OrderForm({
         ) : null}
       </section>
 
-      <section className="card card-pad order-mobile-summary-panel">
-        <div className="order-mobile-summary-head">
-          <span className="compact-kicker">Riassunto</span>
-        </div>
-        <div className="order-mobile-summary-grid">
-          <div className="order-mobile-overview-chip">
-            <span>Cliente</span>
-            <strong>{reviewCustomerName}</strong>
+      {isMobileViewport ? (
+        <button
+          aria-label="Chiudi editor riga"
+          className={`order-line-sheet-backdrop${isMobileItemSheetOpen ? " open" : ""}`}
+          onClick={(event) => {
+            event.preventDefault();
+            closeMobileItemEditor();
+          }}
+          type="button"
+        />
+      ) : null}
+      {isMobileViewport && activeMobileLineState ? (
+        <section className="order-line-mobile-sheet" aria-label={`Editor ${activeMobileLineState.item.label || `Riga ${activeMobileLineState.index + 1}`}`}>
+          <div className="order-line-mobile-sheet-head">
+            <div className="order-line-mobile-sheet-copy">
+              <span className="subtle">{`Riga ${activeMobileLineState.index + 1}`}</span>
+              <strong>{activeMobileLineState.item.label.trim() || activeMobileLineState.item.serviceQuery.trim() || "Nuova lavorazione"}</strong>
+            </div>
+            <div className="order-line-mobile-sheet-actions">
+              {items.length > 1 ? (
+                <button
+                  className="ghost order-line-remove"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    removeItemLine(activeMobileLineState.index);
+                  }}
+                  type="button"
+                >
+                  Rimuovi
+                </button>
+              ) : null}
+              <button
+                className="ghost order-line-mobile-sheet-close"
+                onClick={(event) => {
+                  event.preventDefault();
+                  closeMobileItemEditor();
+                }}
+                type="button"
+              >
+                Chiudi
+              </button>
+            </div>
           </div>
-          <div className="order-mobile-overview-chip">
-            <span>Lavoro</span>
-            <strong>{reviewTitle}</strong>
-          </div>
-          <div className="order-mobile-overview-chip">
-            <span>Righe</span>
-            <strong>{filledRows}</strong>
-          </div>
-          <div className="order-mobile-overview-chip">
-            <span>Totale</span>
-            <strong>{formatCurrency(previewTotalCents)}</strong>
-          </div>
-        </div>
-      </section>
+          {renderLineEditor(activeMobileLineState)}
+        </section>
+      ) : null}
 
       {isMobileViewport ? (
         <section className="card card-pad order-sheet-panel order-mobile-review-panel">
