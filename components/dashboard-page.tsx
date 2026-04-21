@@ -30,9 +30,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
   const priorityOrders = mergeUniqueOrders(overdueOrders, todayOrders);
   const nextDelivery = priorityOrders[0];
   const nextAppointment = todayAppointments[0];
-  const nextToStart = toStartOrders[0];
-  const currentWork = workingOrders[0];
-  const totalWorkshop = countUniqueOrders(toStartOrders, workingOrders, blockedOrders, readyOrders);
   const totalAttention = countUniqueOrders(priorityOrders, blockedOrders, balanceOrders);
   const weeklyWorkload = weekLoad.reduce((sum, day) => sum + day.workload, 0);
   const weeklyAppointments = weekLoad.reduce((sum, day) => sum + day.appointments, 0);
@@ -229,106 +226,59 @@ export async function DashboardPage({ panel }: { panel?: string }) {
         />
       </section>
 
-      <section className="grid dashboard-focus-grid">
-        <article className="card card-pad compact-focus-card dashboard-ops-card">
-          <div className="compact-focus-head">
-            <div>
-              <span className="compact-kicker">Cantiere aperto</span>
-              <h3>Situazione operativa</h3>
-            </div>
-            <strong className="focus-total">{totalWorkshop}</strong>
+      <section className="card card-pad compact-lane-card dashboard-week-card dashboard-week-card-expanded">
+        <div className="list-header compact-section-head">
+          <div>
+            <span className="compact-kicker">Calendario</span>
+            <h3>Settimana sotto controllo</h3>
+            <p className="card-muted">
+              {weeklyWorkload} lavori in consegna e {weeklyAppointments} appuntamenti nei prossimi 7 giorni.
+            </p>
           </div>
-          <div className="compact-signal-list dashboard-ops-signal-list">
-            <CompactSignal
-              href={links.toStart}
-              icon={<DashboardGlyph kind="play" />}
-              label="Da avviare"
-              value={String(toStartOrders.length)}
-              detail={
-                nextToStart ? `${nextToStart.orderCode} • ${nextToStart.customer.name}` : "Nessun ordine in attesa di partenza"
-              }
-            />
-            <CompactSignal
-              href={links.working}
-              icon={<DashboardGlyph kind="tools" />}
-              label="In lavorazione"
-              value={String(workingOrders.length)}
-              detail={currentWork ? `${currentWork.orderCode} • ${currentWork.customer.name}` : "Banco libero"}
-            />
-            <CompactSignal
-              href={links.blocked}
-              icon={<DashboardGlyph kind="pause" />}
-              label="Sospesi"
-              value={String(blockedOrders.length)}
-              detail={
-                blockedOrders[0]
-                  ? `${blockedOrders[0].orderCode} • ${blockedOrders[0].operationalNote || blockedOrders[0].customer.name}`
-                  : "Nessun blocco aperto"
-              }
-            />
-            <CompactSignal
-              href={links.ready}
-              icon={<DashboardGlyph kind="spark" />}
-              label="Pronti"
-              value={String(readyOrders.length)}
-              detail={readyOrders[0] ? `${readyOrders[0].orderCode} • ${readyOrders[0].customer.name}` : "Nessun ritiro pronto"}
-            />
-          </div>
-        </article>
-
-        <article className="card card-pad compact-lane-card dashboard-week-card">
-          <div className="list-header compact-section-head">
-            <div>
-              <h3>Settimana sotto controllo</h3>
-              <p className="card-muted">
-                {weeklyWorkload} lavori in consegna e {weeklyAppointments} appuntamenti nei prossimi 7 giorni.
-              </p>
-            </div>
-            <Link className="compact-link" href="/calendar?view=week">
-              Apri settimana
+          <Link className="compact-link" href="/calendar?view=week">
+            Apri settimana
+          </Link>
+        </div>
+        <div className="dashboard-week-grid">
+          {weekLoad.map((day) => (
+            <Link
+              className={getDashboardWeekDayClassName(day)}
+              href={`/calendar?view=day&date=${formatDateKey(day.date)}`}
+              key={day.key}
+            >
+              <div className="dashboard-week-head">
+                <span className="dashboard-week-label">{day.shortLabel}</span>
+                <strong className="dashboard-week-date">{day.dayLabel}</strong>
+              </div>
+              <div className="dashboard-week-stats">
+                <span>Lav. {day.workload}</span>
+                <span>App. {day.appointments}</span>
+                {day.blocked > 0 ? <span className="warning">Sosp. {day.blocked}</span> : null}
+                {day.ready > 0 ? <span className="success">Pront. {day.ready}</span> : null}
+              </div>
             </Link>
-          </div>
-          <div className="dashboard-week-grid">
-            {weekLoad.map((day) => (
-              <Link
-                className={getDashboardWeekDayClassName(day)}
-                href={`/calendar?view=day&date=${formatDateKey(day.date)}`}
-                key={day.key}
-              >
-                <div className="dashboard-week-head">
-                  <span className="dashboard-week-label">{day.shortLabel}</span>
-                  <strong className="dashboard-week-date">{day.dayLabel}</strong>
-                </div>
-                <div className="dashboard-week-stats">
-                  <span>Lav. {day.workload}</span>
-                  <span>App. {day.appointments}</span>
-                  {day.blocked > 0 ? <span className="warning">Sosp. {day.blocked}</span> : null}
-                  {day.ready > 0 ? <span className="success">Pront. {day.ready}</span> : null}
-                </div>
-              </Link>
-            ))}
-          </div>
-          <div className="compact-signal-list">
-            <CompactSignal
-              href={links.priorityToday}
-              icon={<DashboardGlyph kind="clock" />}
-              label="Prossima consegna"
-              value={nextDelivery ? nextDelivery.orderCode : "Nessuna"}
-              detail={nextDelivery ? `${nextDelivery.customer.name} • ${formatDateTime(nextDelivery.deliveryAt)}` : "Nessuna scadenza vicina"}
-            />
-            <CompactSignal
-              href={links.appointments}
-              icon={<DashboardGlyph kind="calendar" />}
-              label="Primo appuntamento"
-              value={nextAppointment ? nextAppointment.orderCode : "Nessuno"}
-              detail={
-                nextAppointment
-                  ? `${nextAppointment.customer.name} • ${formatDateTime(nextAppointment.appointmentAt || nextAppointment.deliveryAt)}`
-                  : "Nessun appuntamento oggi"
-              }
-            />
-          </div>
-        </article>
+          ))}
+        </div>
+        <div className="compact-signal-list dashboard-week-summary-list">
+          <CompactSignal
+            href={links.priorityToday}
+            icon={<DashboardGlyph kind="clock" />}
+            label="Prossima consegna"
+            value={nextDelivery ? nextDelivery.orderCode : "Nessuna"}
+            detail={nextDelivery ? `${nextDelivery.customer.name} • ${formatDateTime(nextDelivery.deliveryAt)}` : "Nessuna scadenza vicina"}
+          />
+          <CompactSignal
+            href={links.appointments}
+            icon={<DashboardGlyph kind="calendar" />}
+            label="Primo appuntamento"
+            value={nextAppointment ? nextAppointment.orderCode : "Nessuno"}
+            detail={
+              nextAppointment
+                ? `${nextAppointment.customer.name} • ${formatDateTime(nextAppointment.appointmentAt || nextAppointment.deliveryAt)}`
+                : "Nessun appuntamento oggi"
+            }
+          />
+        </div>
       </section>
 
       <section className="card card-pad compact-focus-card dashboard-panel-shell" id="dashboard-operativa">
@@ -535,6 +485,10 @@ function DashboardLane({
   renderAside?: (order: DashboardOrder) => string | undefined;
   density?: "default" | "dense";
 }) {
+  const visibleLimit = density === "dense" ? 4 : 6;
+  const visibleOrders = orders.slice(0, visibleLimit);
+  const hasHiddenOrders = orders.length > visibleLimit;
+
   return (
     <article className="card card-pad compact-lane-card">
       <div className="list-header compact-section-head">
@@ -552,36 +506,48 @@ function DashboardLane({
         {orders.length === 0 ? (
           <div className="empty">{emptyMessage}</div>
         ) : (
-          <div className={`compact-order-grid${density === "dense" ? " compact-order-grid-dense" : ""}`}>
-            {orders.slice(0, 30).map((order) => (
-              <CompactOrderItem
-                key={order.id}
-                hasWhatsapp={Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""))}
-                orderId={order.id}
-                href={`/orders/${order.id}`}
-                code={order.orderCode}
-                deliveryAt={order.deliveryAt}
-                readyWhatsappSentAt={order.readyWhatsappSentAt}
-                title={order.customer.name}
-                meta={renderMeta(order)}
-                aside={renderAside?.(order)}
-                tone={getOrderTone(order.deliveryAt, order.mainPhase, order.paymentStatus)}
-                phase={order.mainPhase}
-                density={density}
-                pills={
-                  <StatusPills
-                    hideNeutralStatus
-                    linked={false}
-                    phase={order.mainPhase}
-                    payment={order.paymentStatus}
-                    status={order.operationalStatus}
-                  />
-                }
-                status={order.operationalStatus}
-                note={renderNote?.(order)}
-              />
-            ))}
-          </div>
+          <>
+            <div className={`compact-order-grid${density === "dense" ? " compact-order-grid-dense" : ""}`}>
+              {visibleOrders.map((order) => (
+                <CompactOrderItem
+                  key={order.id}
+                  hasWhatsapp={Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""))}
+                  orderId={order.id}
+                  href={`/orders/${order.id}`}
+                  code={order.orderCode}
+                  deliveryAt={order.deliveryAt}
+                  readyWhatsappSentAt={order.readyWhatsappSentAt}
+                  title={order.customer.name}
+                  meta={renderMeta(order)}
+                  aside={renderAside?.(order)}
+                  tone={getOrderTone(order.deliveryAt, order.mainPhase, order.paymentStatus)}
+                  phase={order.mainPhase}
+                  density={density}
+                  pills={
+                    <StatusPills
+                      hideNeutralStatus
+                      linked={false}
+                      phase={order.mainPhase}
+                      payment={order.paymentStatus}
+                      status={order.operationalStatus}
+                    />
+                  }
+                  status={order.operationalStatus}
+                  note={renderNote?.(order)}
+                />
+              ))}
+            </div>
+            {hasHiddenOrders && viewHref ? (
+              <Link
+                aria-label={`Apri la lista completa di ${title.toLowerCase()}`}
+                className="compact-order-overflow-link"
+                href={viewHref}
+                title={`Vedi gli altri ${orders.length - visibleLimit} ordini`}
+              >
+                ...
+              </Link>
+            ) : null}
+          </>
         )}
       </div>
     </article>
@@ -744,6 +710,7 @@ function CompactOrderItem({
           <QuickOrderControls
             align="start"
             hasWhatsapp={hasWhatsapp}
+            mode="inline"
             orderId={orderId}
             phase={phase}
             readyWhatsappSentAt={readyWhatsappSentAt}

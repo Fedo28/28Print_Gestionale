@@ -53,7 +53,7 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
   const monthLabel = getMonthLabel(focusDate);
 
   return (
-    <div className="stack">
+    <div className="stack billboards-page-shell">
       <PageHeader
         title="Cartelloni"
         description="Prenotazioni pubblicitarie su cartelloni, monitor e vela itinerante con stato campagna, importi e storico clienti nello stesso spazio operativo."
@@ -69,7 +69,7 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
       </section>
 
       <div className="grid grid-2 billboard-top-grid">
-        <section className="card card-pad">
+        <section className="card card-pad billboards-booking-card">
           <div className="list-header">
             <div>
               <h3>Nuova prenotazione</h3>
@@ -104,7 +104,7 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
           />
         </section>
 
-        <section className="card card-pad billboard-assets-panel">
+        <section className="card card-pad billboard-assets-panel billboards-assets-card">
           <div className="list-header">
             <div>
               <h3>Impianti</h3>
@@ -178,7 +178,7 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
       </div>
 
       {selectedAsset ? (
-        <section className="card card-pad calendar-shell billboard-detail-shell" id="selected-billboard">
+        <section className="card card-pad calendar-shell billboard-detail-shell billboards-selected-card" id="selected-billboard">
           <div className="calendar-nav">
             <div>
               <span className="compact-kicker">Impianto selezionato</span>
@@ -190,16 +190,16 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
             </div>
             <div className="calendar-nav-actions">
               <Link className="button secondary" href={buildAssetHref(new Date(focusDate.getFullYear(), focusDate.getMonth() - 1, 1), selectedAsset.code)}>
-                Mese precedente
+                Precedente
               </Link>
               <Link className="button ghost" href={buildAssetHref(new Date(), selectedAsset.code)}>
                 Oggi
               </Link>
               <Link className="button secondary" href={buildAssetHref(new Date(focusDate.getFullYear(), focusDate.getMonth() + 1, 1), selectedAsset.code)}>
-                Mese successivo
+                Successivo
               </Link>
               <Link className="button ghost" href={buildMonthHref(focusDate)}>
-                Chiudi dettaglio
+                Chiudi
               </Link>
             </div>
           </div>
@@ -321,7 +321,7 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
         </section>
       ) : null}
 
-      <section className="card card-pad calendar-shell">
+      <section className="card card-pad calendar-shell billboards-calendar-card">
         <div className="calendar-nav">
           <div>
             <span className="compact-kicker">Prenotazioni</span>
@@ -330,13 +330,13 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
           </div>
           <div className="calendar-nav-actions">
             <Link className="button secondary" href={buildMonthHref(new Date(focusDate.getFullYear(), focusDate.getMonth() - 1, 1), selectedAsset?.code)}>
-              Mese precedente
+              Precedente
             </Link>
             <Link className="button ghost" href={buildMonthHref(new Date(), selectedAsset?.code)}>
               Oggi
             </Link>
             <Link className="button secondary" href={buildMonthHref(new Date(focusDate.getFullYear(), focusDate.getMonth() + 1, 1), selectedAsset?.code)}>
-              Mese successivo
+              Successivo
             </Link>
           </div>
         </div>
@@ -382,7 +382,7 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
         </div>
       </section>
 
-      <section className="card card-pad">
+      <section className="card card-pad billboards-upcoming-card">
         <div className="list-header">
           <div>
             <h3>Prenotazioni in programma</h3>
@@ -432,7 +432,7 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
         </div>
       </section>
 
-      <section className="card card-pad">
+      <section className="card card-pad billboards-history-card">
         <div className="list-header">
           <div>
             <h3>Storico campagne cliente</h3>

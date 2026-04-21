@@ -13,7 +13,8 @@ import {
 } from "@prisma/client";
 import { APP_TIMEZONE, mainPhaseLabels, normalizeMainPhaseForWorkflow, operationalStatusLabels, phaseOrder } from "@/lib/constants";
 import { canTransitionPhase } from "@/lib/order-phase-transitions";
-import { formatCompactDate, formatDateKey, formatWeekdayLabel } from "@/lib/format";
+import { formatCompactDate, formatDateKey, formatQuantity, formatWeekdayLabel } from "@/lib/format";
+import { comparePriorityDesc, computeAutomaticPriority } from "@/lib/priorities";
 import {
   clampDiscountValue,
   computeLineTotalWithAdjustmentsCents,
@@ -69,7 +70,6 @@ export type CreateOrderInput = {
   deliveryAt: Date;
   appointmentAt?: Date | null;
   appointmentNote?: string;
-  priority: Priority;
   notes?: string;
   invoiceStatus: InvoiceStatus;
   isQuote?: boolean;
@@ -83,10 +83,36 @@ export type UpdateOrderInput = {
   deliveryAt: Date;
   appointmentAt?: Date | null;
   appointmentNote?: string;
-  priority: Priority;
   notes?: string;
   invoiceStatus: InvoiceStatus;
   isQuote?: boolean;
+};
+
+export type UpdateOrderItemInput = {
+  orderId: string;
+  itemId: string;
+  label: string;
+  quantity: number;
+  catalogBasePriceCents: number;
+  discountMode: DiscountMode;
+  discountValue: number;
+  extraMode: DiscountMode;
+  extraValue: number;
+  format?: string;
+  material?: string;
+  finishing?: string;
+  notes?: string;
+};
+
+export type ToggleOrderItemDeliveryInput = {
+  orderId: string;
+  itemId: string;
+  delivered: boolean;
+};
+
+export type CloneOrderItemInput = {
+  orderId: string;
+  itemId: string;
 };
 
 export type UpdateCustomerInput = {
@@ -244,6 +270,47 @@ function getDashboardDayFormatter() {
     day: "2-digit",
     month: "2-digit",
     timeZone: APP_TIMEZONE
+  });
+}
+
+function withEffectiveOrderPriority<T extends { deliveryAt: Date | string; priority: Priority; mainPhase?: MainPhase }>(
+  order: T,
+  referenceDate: Date = new Date()
+) {
+  if (order.mainPhase === "CONSEGNATO") {
+    return order;
+  }
+
+  const nextPriority = computeAutomaticPriority(order.deliveryAt, referenceDate);
+  if (order.priority === nextPriority) {
+    return order;
+  }
+
+  return {
+    ...order,
+    priority: nextPriority
+  };
+}
+
+function sortByDeliveryThenPriority<T extends { deliveryAt: Date | string; priority: Priority }>(orders: T[]) {
+  return [...orders].sort((left, right) => {
+    const byDelivery = new Date(left.deliveryAt).getTime() - new Date(right.deliveryAt).getTime();
+    if (byDelivery !== 0) {
+      return byDelivery;
+    }
+
+    return comparePriorityDesc(left.priority, right.priority);
+  });
+}
+
+function sortByPriorityThenDelivery<T extends { deliveryAt: Date | string; priority: Priority }>(orders: T[]) {
+  return [...orders].sort((left, right) => {
+    const byPriority = comparePriorityDesc(left.priority, right.priority);
+    if (byPriority !== 0) {
+      return byPriority;
+    }
+
+    return new Date(left.deliveryAt).getTime() - new Date(right.deliveryAt).getTime();
   });
 }
 
@@ -762,6 +829,7 @@ export async function createOrder(input: CreateOrderInput) {
     const paymentStatus = computePaymentStatus(totalCents, paidCents, paidCents > 0 ? 1 : 0);
     const appointmentAt = input.appointmentAt ?? undefined;
     const appointmentNote = appointmentAt ? input.appointmentNote?.trim() || undefined : undefined;
+    const priority = computeAutomaticPriority(input.deliveryAt);
 
     const order = await tx.order.create({
       data: {
@@ -773,7 +841,7 @@ export async function createOrder(input: CreateOrderInput) {
         deliveryAt: input.deliveryAt,
         appointmentAt,
         appointmentNote,
-        priority: input.priority,
+        priority,
         isQuote: Boolean(input.isQuote),
         notes: input.notes?.trim() || undefined,
         invoiceStatus: input.invoiceStatus,
@@ -868,6 +936,7 @@ export async function updateOrder(input: UpdateOrderInput) {
     const nextIsQuote = Boolean(input.isQuote);
     const appointmentAt = input.appointmentAt ?? null;
     const appointmentNote = appointmentAt ? input.appointmentNote?.trim() || null : null;
+    const priority = computeAutomaticPriority(input.deliveryAt);
     const updated = await tx.order.update({
       where: { id: input.id },
       data: {
@@ -876,7 +945,7 @@ export async function updateOrder(input: UpdateOrderInput) {
         deliveryAt: input.deliveryAt,
         appointmentAt,
         appointmentNote,
-        priority: input.priority,
+        priority,
         notes: input.notes?.trim() || undefined,
         invoiceStatus: input.invoiceStatus,
         ...getQuoteTransitionPatch(order.isQuote, nextIsQuote)
@@ -977,6 +1046,229 @@ export async function updateOperationalStatus(orderId: string, status: Operation
   });
 }
 
+export async function updateOrderItem(input: UpdateOrderItemInput) {
+  const item = await prisma.orderItem.findUnique({
+    where: { id: input.itemId },
+    include: {
+      order: {
+        include: {
+          payments: true
+        }
+      }
+    }
+  });
+
+  if (!item || item.orderId !== input.orderId) {
+    throw new Error("Riga ordine non trovata.");
+  }
+
+  const normalized = computeOrderTotals([
+    {
+      label: input.label,
+      quantity: input.quantity,
+      catalogBasePriceCents: input.catalogBasePriceCents,
+      discountMode: input.discountMode,
+      discountValue: input.discountValue,
+      extraMode: input.extraMode,
+      extraValue: input.extraValue,
+      unitPriceCents: input.catalogBasePriceCents,
+      format: input.format,
+      material: input.material,
+      finishing: input.finishing,
+      notes: input.notes,
+      serviceCatalogId: item.serviceCatalogId || undefined
+    }
+  ]).items[0];
+
+  if (!normalized) {
+    throw new Error("La riga ordine deve avere almeno un titolo.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.orderItem.update({
+      where: { id: input.itemId },
+      data: {
+        label: normalized.label,
+        quantity: normalized.quantity,
+        catalogBasePriceCents: normalized.catalogBasePriceCents,
+        discountMode: normalized.discountMode,
+        discountValue: normalized.discountValue,
+        extraMode: normalized.extraMode,
+        extraValue: normalized.extraValue,
+        unitPriceCents: normalized.unitPriceCents,
+        lineTotalCents: normalized.lineTotalCents,
+        format: normalized.format?.trim() || null,
+        material: normalized.material?.trim() || null,
+        finishing: normalized.finishing?.trim() || null,
+        notes: normalized.notes?.trim() || null
+      }
+    });
+
+    const updatedItems = await tx.orderItem.findMany({
+      where: { orderId: input.orderId },
+      orderBy: { createdAt: "asc" }
+    });
+
+    const totalCents = updatedItems.reduce((sum, entry) => sum + entry.lineTotalCents, 0);
+    const paymentSummary = computePaymentSummary(totalCents, item.order.payments);
+
+    await tx.order.update({
+      where: { id: input.orderId },
+      data: {
+        totalCents,
+        paidCents: paymentSummary.paidCents,
+        balanceDueCents: paymentSummary.balanceDueCents,
+        paymentStatus: paymentSummary.paymentStatus,
+        depositCents: paymentSummary.depositCents
+      }
+    });
+
+    await tx.orderHistory.create({
+      data: {
+        orderId: input.orderId,
+        type: "UPDATED",
+        description: `Riga ordine aggiornata: ${normalized.label}`,
+        details: `${formatQuantity(normalized.quantity)} • ${(normalized.lineTotalCents / 100).toFixed(2)} EUR`
+      }
+    });
+  });
+}
+
+export async function toggleOrderItemDelivery(input: ToggleOrderItemDeliveryInput) {
+  const item = await prisma.orderItem.findUnique({
+    where: { id: input.itemId },
+    include: {
+      order: true
+    }
+  });
+
+  if (!item || item.orderId !== input.orderId) {
+    throw new Error("Riga ordine non trovata.");
+  }
+
+  const deliveredAt = input.delivered ? new Date() : null;
+
+  return prisma.$transaction(async (tx) => {
+    await tx.orderItem.update({
+      where: { id: input.itemId },
+      data: {
+        deliveredAt
+      }
+    });
+
+    const siblingItems = await tx.orderItem.findMany({
+      where: { orderId: input.orderId },
+      select: {
+        id: true,
+        deliveredAt: true
+      }
+    });
+
+    const deliveredCount = siblingItems.filter((entry) => Boolean(entry.deliveredAt)).length;
+
+    await tx.orderHistory.create({
+      data: {
+        orderId: input.orderId,
+        type: "UPDATED",
+        description: input.delivered ? `Riga consegnata: ${item.label}` : `Riga riaperta: ${item.label}`,
+        details: `${deliveredCount}/${siblingItems.length} righe segnate come consegnate`
+      }
+    });
+  });
+}
+
+export async function cloneOrderItem(input: CloneOrderItemInput) {
+  const item = await prisma.orderItem.findUnique({
+    where: { id: input.itemId },
+    include: {
+      order: {
+        include: {
+          payments: true
+        }
+      }
+    }
+  });
+
+  if (!item || item.orderId !== input.orderId) {
+    throw new Error("Riga ordine non trovata.");
+  }
+
+  const normalized = computeOrderTotals([
+    {
+      label: item.label,
+      description: item.description || undefined,
+      quantity: item.quantity,
+      catalogBasePriceCents: item.catalogBasePriceCents || item.unitPriceCents,
+      discountMode: item.discountMode,
+      discountValue: item.discountValue,
+      extraMode: item.extraMode,
+      extraValue: item.extraValue,
+      unitPriceCents: item.catalogBasePriceCents || item.unitPriceCents,
+      format: item.format || undefined,
+      material: item.material || undefined,
+      finishing: item.finishing || undefined,
+      notes: item.notes || undefined,
+      serviceCatalogId: item.serviceCatalogId || undefined
+    }
+  ]).items[0];
+
+  if (!normalized) {
+    throw new Error("La riga da clonare non e valida.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.orderItem.create({
+      data: {
+        orderId: input.orderId,
+        serviceCatalogId: item.serviceCatalogId,
+        label: normalized.label,
+        description: item.description?.trim() || null,
+        quantity: normalized.quantity,
+        catalogBasePriceCents: normalized.catalogBasePriceCents,
+        discountMode: normalized.discountMode,
+        discountValue: normalized.discountValue,
+        extraMode: normalized.extraMode,
+        extraValue: normalized.extraValue,
+        unitPriceCents: normalized.unitPriceCents,
+        lineTotalCents: normalized.lineTotalCents,
+        format: normalized.format?.trim() || null,
+        material: normalized.material?.trim() || null,
+        finishing: normalized.finishing?.trim() || null,
+        notes: normalized.notes?.trim() || null,
+        deliveredAt: null
+      }
+    });
+
+    const updatedItems = await tx.orderItem.findMany({
+      where: { orderId: input.orderId },
+      orderBy: { createdAt: "asc" }
+    });
+
+    const totalCents = updatedItems.reduce((sum, entry) => sum + entry.lineTotalCents, 0);
+    const paymentSummary = computePaymentSummary(totalCents, item.order.payments);
+
+    await tx.order.update({
+      where: { id: input.orderId },
+      data: {
+        totalCents,
+        paidCents: paymentSummary.paidCents,
+        balanceDueCents: paymentSummary.balanceDueCents,
+        paymentStatus: paymentSummary.paymentStatus,
+        depositCents: paymentSummary.depositCents
+      }
+    });
+
+    await tx.orderHistory.create({
+      data: {
+        orderId: input.orderId,
+        type: "UPDATED",
+        description: `Riga clonata: ${normalized.label}`,
+        details: `${formatQuantity(normalized.quantity)} • ${(normalized.lineTotalCents / 100).toFixed(2)} EUR`
+      }
+    });
+  });
+}
+
 export async function transitionOrderPhase(orderId: string, nextPhase: MainPhase, overrideNote?: string) {
   const order = await prisma.order.findUnique({ where: { id: orderId } });
   if (!order) {
@@ -1000,6 +1292,7 @@ export async function transitionOrderPhase(orderId: string, nextPhase: MainPhase
       data: {
         mainPhase: normalizedNextPhase,
         deliveredAt,
+        priority: computeAutomaticPriority(order.deliveryAt),
         ...(shouldResetReadyWhatsappSentAt ? { readyWhatsappSentAt: null } : {})
       }
     });
@@ -1295,7 +1588,7 @@ export async function markOrderReady(orderId: string) {
   await transitionOrderPhase(orderId, "SVILUPPO_COMPLETATO");
 }
 
-export function normalizeServiceCode(code: string) {
+export function normalizeServiceCode(code: string, options?: { allowEmpty?: boolean }) {
   const normalized = code
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -1304,6 +1597,10 @@ export function normalizeServiceCode(code: string) {
     .replace(/^_+|_+$/g, "");
 
   if (!normalized) {
+    if (options?.allowEmpty) {
+      return "";
+    }
+
     throw new Error("Il codice servizio e obbligatorio.");
   }
 
@@ -1370,7 +1667,7 @@ export async function createService(
     throw new Error("Il nome servizio e obbligatorio.");
   }
 
-  const normalizedCode = normalizeServiceCode(code);
+  const normalizedCode = normalizeServiceCode(code, { allowEmpty: true });
   let resolvedCode = normalizedCode;
 
   if (resolvedCode) {
@@ -1524,7 +1821,7 @@ export async function getDashboardData() {
   const todayStart = startOfDay(now);
   const tomorrowStart = addDays(todayStart, 1);
   const weekEnd = addDays(todayStart, 7);
-  const [todayOrders, todayAppointments, overdueOrders, blockedOrders, readyOrders, balanceOrders, toStartOrders, workingOrders, weekLoadOrders] = await Promise.all([
+  const [todayOrdersRaw, todayAppointments, overdueOrders, blockedOrders, readyOrders, balanceOrders, toStartOrdersRaw, workingOrdersRaw, weekLoadOrders] = await Promise.all([
     prisma.order.findMany({
       where: {
         ...operationalOrderWhere(),
@@ -1630,6 +1927,10 @@ export async function getDashboardData() {
       }
     })
   ]);
+
+  const todayOrders = sortByPriorityThenDelivery(todayOrdersRaw.map((order) => withEffectiveOrderPriority(order, now)));
+  const toStartOrders = sortByPriorityThenDelivery(toStartOrdersRaw.map((order) => withEffectiveOrderPriority(order, now)));
+  const workingOrders = sortByPriorityThenDelivery(workingOrdersRaw.map((order) => withEffectiveOrderPriority(order, now)));
 
   return {
     todayOrders,
@@ -1779,7 +2080,7 @@ export async function getOrdersList(filters: {
         mainPhase: { not: "CONSEGNATO" as MainPhase }
       };
 
-  return prisma.order.findMany({
+  const orders = await prisma.order.findMany({
     where: {
       ...viewWhere,
       ...presetWhere,
@@ -1795,19 +2096,37 @@ export async function getOrdersList(filters: {
       ...(filters.status && filters.status !== "ALL" ? { operationalStatus: filters.status } : {}),
       ...(filters.payment && filters.payment !== "ALL" ? { paymentStatus: filters.payment } : {}),
       ...(filters.invoice && filters.invoice !== "ALL" ? { invoiceStatus: filters.invoice } : {}),
-      ...(filters.priority && filters.priority !== "ALL" ? { priority: filters.priority } : {}),
+      ...(isDeliveredView && filters.priority && filters.priority !== "ALL" ? { priority: filters.priority } : {}),
       ...(filters.quote === "QUOTE" ? { isQuote: true } : {}),
       ...(filters.quote === "ORDER" ? { isQuote: false } : {})
     },
     include: {
-      customer: true
+      customer: true,
+      items: {
+        select: {
+          id: true,
+          deliveredAt: true
+        }
+      }
     },
     orderBy: isDeliveredView ? [{ deliveredAt: "desc" }, { updatedAt: "desc" }] : [{ deliveryAt: "asc" }, { priority: "desc" }]
   });
+
+  if (isDeliveredView) {
+    return orders;
+  }
+
+  const ordersWithPriority = sortByDeliveryThenPriority(orders.map((order) => withEffectiveOrderPriority(order)));
+
+  if (filters.priority && filters.priority !== "ALL") {
+    return ordersWithPriority.filter((order) => order.priority === filters.priority);
+  }
+
+  return ordersWithPriority;
 }
 
 export async function getOrderById(id: string) {
-  return prisma.order.findUnique({
+  const order = await prisma.order.findUnique({
     where: { id },
     include: {
       customer: true,
@@ -1831,10 +2150,16 @@ export async function getOrderById(id: string) {
       }
     }
   });
+
+  if (!order) {
+    return null;
+  }
+
+  return withEffectiveOrderPriority(order);
 }
 
 export async function getCalendarOrders() {
-  return prisma.order.findMany({
+  const orders = await prisma.order.findMany({
     where: {
       ...operationalOrderWhere(),
       mainPhase: { not: "CONSEGNATO" }
@@ -1842,6 +2167,8 @@ export async function getCalendarOrders() {
     include: { customer: true },
     orderBy: [{ deliveryAt: "asc" }, { priority: "desc" }]
   });
+
+  return sortByDeliveryThenPriority(orders.map((order) => withEffectiveOrderPriority(order)));
 }
 
 export async function getProductionQueues() {
@@ -1854,7 +2181,7 @@ export async function getProductionQueues() {
     orderBy: [{ priority: "desc" }, { deliveryAt: "asc" }]
   });
 
-  return classifyProductionQueues(orders);
+  return classifyProductionQueues(sortByPriorityThenDelivery(orders.map((order) => withEffectiveOrderPriority(order))));
 }
 
 export async function getServices() {

@@ -9,7 +9,7 @@ import { StatusPills } from "@/components/status-pills";
 import { priorityLabels } from "@/lib/constants";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import type { OrderListView } from "@/lib/order-filters";
-import { getWorkdayHighlight } from "@/lib/workday-highlights";
+import { getPriorityToneClass } from "@/lib/priorities";
 
 type OrderRow = {
   id: string;
@@ -29,8 +29,27 @@ type OrderRow = {
   customer: {
     name: string;
     phone?: string | null;
+    whatsapp?: string | null;
   };
+  items: {
+    id: string;
+    deliveredAt?: Date | string | null;
+  }[];
 };
+
+function getCustomerContact(customer: { phone?: string | null; whatsapp?: string | null }) {
+  return customer.phone?.trim() || customer.whatsapp?.trim() || "Telefono non inserito";
+}
+
+function getPartialDeliveryMeta(items: Array<{ deliveredAt?: Date | string | null }>) {
+  const deliveredCount = items.filter((item) => Boolean(item.deliveredAt)).length;
+  return {
+    deliveredCount,
+    totalCount: items.length,
+    isPartial: deliveredCount > 0 && deliveredCount < items.length,
+    isFullyDeliveredByItems: items.length > 0 && deliveredCount === items.length
+  };
+}
 
 export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; view?: OrderListView }) {
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
@@ -60,23 +79,22 @@ export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; v
           orders.map((order) => {
             const isOpen = openOrderId === order.id;
             const panelId = `order-row-panel-${order.id}`;
-            const workdayHighlight = view === "ACTIVE" ? getWorkdayHighlight(order.deliveryAt) : null;
+            const priorityToneClass = view === "ACTIVE" ? getPriorityToneClass(order.priority) : "";
             const deliveredLabel = order.deliveredAt ? formatDateTime(order.deliveredAt) : formatDateTime(order.deliveryAt);
             const whatsappNotified = order.mainPhase === "SVILUPPO_COMPLETATO" && Boolean(order.readyWhatsappSentAt);
+            const partialDelivery = getPartialDeliveryMeta(order.items);
             const deliveryPrimaryLabel = view === "DELIVERED" ? deliveredLabel : formatDateTime(order.deliveryAt);
             const deliverySecondaryLabel =
               view === "DELIVERED"
                 ? order.deliveredAt
                   ? `Prevista ${formatDateTime(order.deliveryAt)}`
                   : "Consegnato"
-                : workdayHighlight === "weekend"
-                  ? "Weekend"
-                  : deliveryColumnLabel;
+                : priorityLabels[order.priority];
 
             return (
               <Fragment key={order.id}>
                 <tr
-                  className={`${isOpen ? "order-row-open" : ""}${workdayHighlight ? ` order-row-${workdayHighlight}` : ""}${whatsappNotified ? " order-row-whatsapp-notified" : ""}`}
+                  className={`${isOpen ? "order-row-open" : ""}${priorityToneClass ? ` order-row-${priorityToneClass}` : ""}${whatsappNotified ? " order-row-whatsapp-notified" : ""}`}
                   key={order.id}
                 >
                   <td data-label="Ordine">
@@ -106,17 +124,17 @@ export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; v
 
                       <div className="order-mobile-card-customer">
                         <strong>{order.customer.name}</strong>
-                        <span>{order.customer.phone || "Senza telefono"}</span>
+                        <span>{getCustomerContact(order.customer)}</span>
                       </div>
 
                       <div className="order-mobile-card-meta">
                         <div
-                          className={`order-deadline-chip order-mobile-card-deadline${workdayHighlight ? ` ${workdayHighlight}` : ""}${view === "DELIVERED" ? " delivered" : ""}`}
+                          className={`order-deadline-chip order-mobile-card-deadline${priorityToneClass ? ` ${priorityToneClass}` : ""}${view === "DELIVERED" ? " delivered" : ""}`}
                         >
                           <strong>{deliveryPrimaryLabel}</strong>
                           <span>{deliverySecondaryLabel}</span>
                         </div>
-                        <div className="order-mobile-card-priority">
+                        <div className={`order-mobile-card-priority${priorityToneClass ? ` ${priorityToneClass}` : ""}`}>
                           <span>Priorita</span>
                           <strong>{priorityLabels[order.priority]}</strong>
                         </div>
@@ -140,6 +158,9 @@ export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; v
                           status={order.operationalStatus}
                           payment={order.paymentStatus}
                         />
+                        {partialDelivery.isPartial ? (
+                          <span className="pill warning">{`Parziale ${partialDelivery.deliveredCount}/${partialDelivery.totalCount}`}</span>
+                        ) : null}
                       </div>
                     </div>
 
@@ -162,23 +183,21 @@ export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; v
                   </td>
                   <td data-label="Cliente">
                     <strong>{order.customer.name}</strong>
-                    <div className="subtle">{order.customer.phone || "Telefono non inserito"}</div>
+                    <div className="subtle">{getCustomerContact(order.customer)}</div>
                   </td>
                   <td
-                    className={`orders-table-delivery-cell${workdayHighlight ? ` ${workdayHighlight}` : ""}`}
+                    className={`orders-table-delivery-cell${priorityToneClass ? ` ${priorityToneClass}` : ""}`}
                     data-label={deliveryColumnLabel}
                   >
-                    <div className={`order-deadline-chip${workdayHighlight ? ` ${workdayHighlight}` : ""}${view === "DELIVERED" ? " delivered" : ""}`}>
+                    <div className={`order-deadline-chip${priorityToneClass ? ` ${priorityToneClass}` : ""}${view === "DELIVERED" ? " delivered" : ""}`}>
                       <strong>{view === "DELIVERED" ? deliveredLabel : formatDateTime(order.deliveryAt)}</strong>
-                      {view === "DELIVERED" ? (
-                        <span>Consegnato</span>
-                      ) : workdayHighlight === "weekend" ? (
-                        <span>Weekend</span>
-                      ) : null}
+                      <span>{deliverySecondaryLabel}</span>
                       {view === "DELIVERED" && order.deliveredAt ? <span>Prevista {formatDateTime(order.deliveryAt)}</span> : null}
                     </div>
                   </td>
-                  <td data-label="Priorita">{priorityLabels[order.priority]}</td>
+                  <td data-label="Priorita">
+                    <span className={`order-priority-chip${priorityToneClass ? ` ${priorityToneClass}` : ""}`}>{priorityLabels[order.priority]}</span>
+                  </td>
                   <td data-label="Stato">
                     <StatusPills
                       hideNeutralStatus
@@ -187,6 +206,7 @@ export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; v
                       status={order.operationalStatus}
                       payment={order.paymentStatus}
                     />
+                    {partialDelivery.isPartial ? <div className="subtle order-partial-delivery-note">{`Parziale ${partialDelivery.deliveredCount}/${partialDelivery.totalCount}`}</div> : null}
                   </td>
                   <td data-label="Importi">
                     <div className="strong">{formatCurrency(order.totalCents)}</div>

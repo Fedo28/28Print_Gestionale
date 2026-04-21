@@ -21,6 +21,7 @@ export type QuickOrderControlProps = {
   isQuote?: boolean;
   includeQuote?: boolean;
   align?: "start" | "end";
+  mode?: "popover" | "inline";
 };
 
 export function QuickOrderTriggerButton({
@@ -148,7 +149,8 @@ export function QuickOrderControls({
   showWhatsapp = true,
   isQuote = false,
   includeQuote = false,
-  align = "start"
+  align = "start",
+  mode = "popover"
 }: QuickOrderControlProps) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -180,7 +182,7 @@ export function QuickOrderControls({
   }, [isOpen]);
 
   return (
-    <div className={`quick-order-menu quick-order-menu-${align}${isOpen ? " open" : ""}`} ref={menuRef}>
+    <div className={`quick-order-menu quick-order-menu-${align} quick-order-menu-${mode}${isOpen ? " open" : ""}`} ref={menuRef}>
       <QuickOrderTriggerButton isOpen={isOpen} onClick={() => setIsOpen((current) => !current)} />
       {isOpen ? (
         <div className="quick-order-panel">

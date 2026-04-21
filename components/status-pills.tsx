@@ -42,7 +42,7 @@ export function StatusPills({
   const visiblePhase = normalizeMainPhaseForWorkflow(phase);
 
   return (
-    <div className="toolbar">
+    <div className="toolbar status-pills">
       {isQuote ? (
         <PillLink className="pill quote" href="/quotes" linked={linked}>
           Preventivo

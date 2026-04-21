@@ -16,11 +16,12 @@ import {
   parseOptionalDateTime,
   parseOperationalStatus,
   parsePaymentMethod,
-  parsePriority,
   parseUserRole
 } from "@/lib/forms";
 import { formatDateKey } from "@/lib/format";
+import type { DiscountMode } from "@prisma/client";
 import {
+  cloneOrderItem,
   correctPayment,
   createOrder,
   createService,
@@ -29,8 +30,10 @@ import {
   updateServiceCatalogEntry,
   markOrderReady,
   recordPayment,
+  toggleOrderItemDelivery,
   transitionOrderPhase,
   updateCustomer,
+  updateOrderItem,
   updateOrderQuoteFlag,
   updateOperationalStatus,
   updateOrder
@@ -82,7 +85,6 @@ function parseOrderFormInput(formData: FormData, options?: { forceQuote?: boolea
     deliveryAt: parseDateTime(formData.get("deliveryAt")?.toString() || null),
     appointmentAt: parseOptionalDateTime(formData.get("appointmentAt")?.toString() || null),
     appointmentNote: String(formData.get("appointmentNote") || ""),
-    priority: parsePriority(formData.get("priority")?.toString() || null),
     notes: String(formData.get("notes") || ""),
     invoiceStatus: parseInvoiceStatus(formData.get("invoiceStatus")?.toString() || null),
     isQuote: options?.forceQuote ?? parseBooleanFlag(formData.get("isQuote")),
@@ -197,7 +199,6 @@ export async function updateOrderAction(formData: FormData) {
     deliveryAt: parseDateTime(formData.get("deliveryAt")?.toString() || null),
     appointmentAt: parseOptionalDateTime(formData.get("appointmentAt")?.toString() || null),
     appointmentNote: String(formData.get("appointmentNote") || ""),
-    priority: parsePriority(formData.get("priority")?.toString() || null),
     notes: String(formData.get("notes") || ""),
     invoiceStatus: parseInvoiceStatus(formData.get("invoiceStatus")?.toString() || null),
     isQuote: parseBooleanFlag(formData.get("isQuote"))
@@ -223,6 +224,62 @@ export async function updateOrderStatusDetailAction(formData: FormData) {
   const note = String(formData.get("note") || "");
 
   await updateOperationalStatus(orderId, status, note);
+  revalidateOperationalSurfaces(orderId);
+  redirect(`/orders/${orderId}`);
+}
+
+export async function updateOrderItemAction(formData: FormData) {
+  await requireAuth();
+  const orderId = String(formData.get("orderId") || "");
+  const itemId = String(formData.get("itemId") || "");
+  const discountModeRaw = String(formData.get("discountMode") || "NONE");
+  const extraModeRaw = String(formData.get("extraMode") || "NONE");
+  const discountMode = (["NONE", "AMOUNT", "PERCENT"].includes(discountModeRaw) ? discountModeRaw : "NONE") as DiscountMode;
+  const extraMode = (["NONE", "AMOUNT", "PERCENT"].includes(extraModeRaw) ? extraModeRaw : "NONE") as DiscountMode;
+  const quantityRaw = String(formData.get("quantity") || "").trim().replace(",", ".");
+  const quantity = Number.parseFloat(quantityRaw || "1");
+
+  await updateOrderItem({
+    orderId,
+    itemId,
+    label: String(formData.get("label") || ""),
+    quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+    catalogBasePriceCents: parseCurrencyToCents(formData.get("catalogBasePrice")?.toString() || null),
+    discountMode,
+    discountValue: parseCurrencyToCents(
+      discountMode === "PERCENT" ? null : formData.get("discountValue")?.toString() || null
+    ) || Math.max(0, Number.parseInt(String(formData.get("discountValue") || "0"), 10) || 0),
+    extraMode,
+    extraValue: parseCurrencyToCents(
+      extraMode === "PERCENT" ? null : formData.get("extraValue")?.toString() || null
+    ) || Math.max(0, Number.parseInt(String(formData.get("extraValue") || "0"), 10) || 0),
+    format: String(formData.get("format") || ""),
+    material: String(formData.get("material") || ""),
+    finishing: String(formData.get("finishing") || ""),
+    notes: String(formData.get("notes") || "")
+  });
+
+  revalidateOperationalSurfaces(orderId);
+  redirect(`/orders/${orderId}`);
+}
+
+export async function toggleOrderItemDeliveryAction(formData: FormData) {
+  await requireAuth();
+  const orderId = String(formData.get("orderId") || "");
+  const itemId = String(formData.get("itemId") || "");
+  const delivered = String(formData.get("delivered") || "") === "true";
+
+  await toggleOrderItemDelivery({ orderId, itemId, delivered });
+  revalidateOperationalSurfaces(orderId);
+  redirect(`/orders/${orderId}`);
+}
+
+export async function cloneOrderItemAction(formData: FormData) {
+  await requireAuth();
+  const orderId = String(formData.get("orderId") || "");
+  const itemId = String(formData.get("itemId") || "");
+
+  await cloneOrderItem({ orderId, itemId });
   revalidateOperationalSurfaces(orderId);
   redirect(`/orders/${orderId}`);
 }

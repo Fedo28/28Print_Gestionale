@@ -6,7 +6,9 @@
     "node": "20.x"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "./scripts/dev-clean.sh",
+    "dev:clean": "./scripts/dev-clean.sh",
+    "dev:raw": "next dev",
     "build": "next build",
     "start": "next start",
     "postinstall": "prisma generate",

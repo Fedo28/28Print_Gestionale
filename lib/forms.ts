@@ -7,7 +7,6 @@ import {
   OperationalStatus,
   PaymentMethod,
   PaymentStatus,
-  Priority,
   UserRole
 } from "@prisma/client";
 import { normalizeOrderTitle, OrderItemInput } from "@/lib/orders";
@@ -71,15 +70,6 @@ export function parseOptionalDateTime(raw: string | null) {
   }
 
   return date;
-}
-
-export function parsePriority(raw: string | null): Priority {
-  const value = raw as Priority | null;
-  if (!value || !["BASSA", "MEDIA", "ALTA", "URGENTE"].includes(value)) {
-    return "MEDIA";
-  }
-
-  return value;
 }
 
 export function parseInvoiceStatus(raw: string | null): InvoiceStatus {

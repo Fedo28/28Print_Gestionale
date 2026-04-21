@@ -12,7 +12,6 @@ export type OrderDraftFieldValues = {
   title: string;
   deliveryAt: string;
   appointmentAt: string;
-  priority: string;
   invoiceStatus: string;
   initialDeposit: string;
   appointmentNote: string;
@@ -60,7 +59,6 @@ export const ORDER_DRAFT_FIELD_NAMES = [
   "title",
   "deliveryAt",
   "appointmentAt",
-  "priority",
   "invoiceStatus",
   "initialDeposit",
   "appointmentNote",
@@ -88,7 +86,6 @@ export function createEmptyOrderDraftFields(): OrderDraftFieldValues {
     title: "",
     deliveryAt: "",
     appointmentAt: "",
-    priority: "",
     invoiceStatus: "",
     initialDeposit: "",
     appointmentNote: "",

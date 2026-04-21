@@ -19,6 +19,7 @@ import {
 } from "../lib/orders";
 import { buildOrdersFilterHref, parseDashboardPreset, parseOrderListView, parsePhaseFilter } from "../lib/order-filters";
 import { getSelectablePhaseTargets } from "../lib/order-phase-transitions";
+import { automaticPriorityValues, computeAutomaticPriority } from "../lib/priorities";
 import { getTieredUnitPrice, normalizeQuantityTiers, parseQuantityTiers } from "../lib/pricing";
 
 describe("order domain", () => {
@@ -228,6 +229,18 @@ describe("order domain", () => {
     expect(week[0]?.appointments).toBe(1);
     expect(week[1]?.blocked).toBe(1);
     expect(week[2]?.ready).toBe(1);
+  });
+
+  it("computes automatic priorities from the delivery date", () => {
+    const referenceDate = new Date("2026-04-21T09:00:00.000Z");
+
+    expect(automaticPriorityValues).toEqual(["URGENTE", "ALTA", "BASSA"]);
+    expect(computeAutomaticPriority("2026-04-20T10:00:00.000Z", referenceDate)).toBe("URGENTE");
+    expect(computeAutomaticPriority("2026-04-21T10:00:00.000Z", referenceDate)).toBe("URGENTE");
+    expect(computeAutomaticPriority("2026-04-22T10:00:00.000Z", referenceDate)).toBe("URGENTE");
+    expect(computeAutomaticPriority("2026-04-23T10:00:00.000Z", referenceDate)).toBe("ALTA");
+    expect(computeAutomaticPriority("2026-04-24T10:00:00.000Z", referenceDate)).toBe("ALTA");
+    expect(computeAutomaticPriority("2026-04-25T10:00:00.000Z", referenceDate)).toBe("BASSA");
   });
 
   it("computes order totals applying discounts and extras to the line total", () => {

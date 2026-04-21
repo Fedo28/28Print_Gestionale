@@ -272,9 +272,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Image
               alt="28 Print"
               className="brand-logo"
+              height={132}
               priority
               sizes="220px"
               src={brandLogo}
+              width={132}
             />
           </div>
 
@@ -288,9 +290,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Image
               alt="28 Print"
               className="mobile-brand-logo"
+              height={112}
               priority
               sizes="120px"
               src={brandLogo}
+              width={112}
             />
           </Link>
 

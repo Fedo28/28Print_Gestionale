@@ -189,11 +189,13 @@ model OrderItem {
   material         String?
   finishing        String?
   notes            String?
+  deliveredAt      DateTime?
   createdAt        DateTime        @default(now())
   order            Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   serviceCatalog   ServiceCatalog? @relation(fields: [serviceCatalogId], references: [id], onDelete: SetNull)
 
   @@index([orderId])
+  @@index([orderId, deliveredAt])
 }
 
 model ServiceCatalog {

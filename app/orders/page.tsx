@@ -25,6 +25,7 @@ import {
   parseStatusFilter
 } from "@/lib/order-filters";
 import { getOrdersList } from "@/lib/orders";
+import { automaticPriorityValues } from "@/lib/priorities";
 
 export const dynamic = "force-dynamic";
 
@@ -220,9 +221,9 @@ export default async function OrdersPage({ searchParams }: Props) {
               <div className="filters-field">
                 <select aria-label="Priorita" defaultValue={filters.priority} name="priority">
                   <option value="ALL">Tutte le priorita</option>
-                  {Object.entries(priorityLabels).map(([value, label]) => (
+                  {automaticPriorityValues.map((value) => (
                     <option key={value} value={value}>
-                      {label}
+                      {priorityLabels[value]}
                     </option>
                   ))}
                 </select>

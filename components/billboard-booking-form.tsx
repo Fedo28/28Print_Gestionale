@@ -30,6 +30,19 @@ function SubmitButton() {
   );
 }
 
+function getPreferredCustomerPrimaryContact(
+  customer: Pick<CustomerAutocompleteOption, "phone" | "whatsapp">
+) {
+  return customer.phone?.trim() || customer.whatsapp?.trim() || "Telefono non inserito";
+}
+
+function getPreferredCustomerSecondaryContact(
+  customer: Pick<CustomerAutocompleteOption, "email" | "whatsapp" | "phone">
+) {
+  const primaryContact = customer.phone?.trim() || customer.whatsapp?.trim() || "";
+  return customer.email?.trim() || (customer.whatsapp?.trim() && customer.whatsapp?.trim() !== primaryContact ? customer.whatsapp.trim() : "") || "Nessun contatto secondario";
+}
+
 export function BillboardBookingForm({
   customers,
   assets,
@@ -54,7 +67,7 @@ export function BillboardBookingForm({
   const balancePreviewCents = Math.max(0, pricePreviewCents - paidPreviewCents);
 
   return (
-    <form action={createBillboardBookingAction} className="form-grid" encType="multipart/form-data">
+    <form action={createBillboardBookingAction} className="form-grid billboard-booking-form" encType="multipart/form-data">
       <input name="customerId" type="hidden" value={selectedCustomerId} />
       <input name="billboardAssetId" type="hidden" value={selectedAssetId} />
 
@@ -97,8 +110,8 @@ export function BillboardBookingForm({
               Cambia cliente
             </button>
           </div>
-          <div className="subtle">{selectedCustomer.phone || "Telefono non inserito"}</div>
-          <div className="subtle">{selectedCustomer.email || selectedCustomer.whatsapp || "Nessun contatto secondario"}</div>
+          <div className="subtle">{getPreferredCustomerPrimaryContact(selectedCustomer)}</div>
+          <div className="subtle">{getPreferredCustomerSecondaryContact(selectedCustomer)}</div>
         </div>
       ) : null}
 
@@ -148,12 +161,12 @@ export function BillboardBookingForm({
 
       <div className="field">
         <label htmlFor="startsAt">Dal</label>
-        <input defaultValue={defaultStartDate} id="startsAt" name="startsAt" required type="date" />
+        <input className="date-time-input" defaultValue={defaultStartDate} id="startsAt" name="startsAt" required type="date" />
       </div>
 
       <div className="field">
         <label htmlFor="endsAt">Al</label>
-        <input defaultValue={defaultEndDate} id="endsAt" name="endsAt" required type="date" />
+        <input className="date-time-input" defaultValue={defaultEndDate} id="endsAt" name="endsAt" required type="date" />
       </div>
 
       <div className="field">
@@ -170,6 +183,7 @@ export function BillboardBookingForm({
       <div className="field">
         <label htmlFor="price">Valore prenotazione</label>
         <input
+          className="currency-input"
           id="price"
           inputMode="decimal"
           name="price"
@@ -183,6 +197,7 @@ export function BillboardBookingForm({
       <div className="field">
         <label htmlFor="paid">Incassato</label>
         <input
+          className="currency-input"
           id="paid"
           inputMode="decimal"
           name="paid"
@@ -225,7 +240,7 @@ export function BillboardBookingForm({
         <p className="hint">Facoltativo. Utile per bozza grafica, conferma cliente o materiale da esporre.</p>
       </div>
 
-      <div className="button-row">
+      <div className="button-row billboard-booking-submit-row">
         <SubmitButton />
       </div>
     </form>

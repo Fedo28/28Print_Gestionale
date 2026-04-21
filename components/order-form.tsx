@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { CustomerAutocomplete } from "@/components/customer-autocomplete";
 import { customerTypeLabels, getAppointmentNoteOptions, invoiceStatusLabels, priorityLabels } from "@/lib/constants";
 import { formatCurrency, formatDateTime, formatQuantity } from "@/lib/format";
+import { computeAutomaticPriority } from "@/lib/priorities";
 import {
   buildOrderDraftStorageKey,
   buildOrderDraftSubmittedKey,
@@ -66,6 +67,15 @@ const emptyItem = (): ItemState => ({
   serviceCatalogId: "",
   priceOverridden: false
 });
+
+function getPreferredCustomerPrimaryContact(customer: Pick<Customer, "phone" | "whatsapp">) {
+  return customer.phone?.trim() || customer.whatsapp?.trim() || "Telefono non inserito";
+}
+
+function getPreferredCustomerSecondaryContact(customer: Pick<Customer, "email" | "pec" | "whatsapp" | "phone">) {
+  const primaryContact = customer.phone?.trim() || customer.whatsapp?.trim() || "";
+  return customer.email?.trim() || customer.pec?.trim() || (customer.whatsapp?.trim() && customer.whatsapp?.trim() !== primaryContact ? customer.whatsapp.trim() : "") || "Nessun contatto secondario";
+}
 
 function isBlankEditorItem(item: ItemState) {
   return (
@@ -284,7 +294,6 @@ type MobileOrderMeta = {
   title: string;
   deliveryAt: string;
   appointmentAt: string;
-  priority: string;
   appointmentNote: string;
   notes: string;
   invoiceStatus: string;
@@ -298,7 +307,7 @@ const MOBILE_ORDER_STEPS: Array<{
   description: string;
 }> = [
   { id: "customer", label: "Cliente", description: "Scegli un cliente esistente oppure creane uno nuovo." },
-  { id: "details", label: "Dettagli", description: "Compila titolo, consegna, appuntamento e priorita." },
+  { id: "details", label: "Dettagli", description: "Compila titolo, consegna e appuntamento. La priorita viene assegnata da sola." },
   { id: "items", label: "Lavorazioni", description: "Aggiungi e rifinisci le righe di lavorazione." },
   { id: "review", label: "Riepilogo", description: "Controlla i dati finali e conferma l'ordine." }
 ] as const;
@@ -320,7 +329,6 @@ function createEmptyMobileOrderMeta(): MobileOrderMeta {
     title: "",
     deliveryAt: "",
     appointmentAt: "",
-    priority: "MEDIA",
     appointmentNote: "",
     notes: "",
     invoiceStatus: "DA_FATTURARE",
@@ -546,7 +554,6 @@ export function OrderForm({
       title: String(formData.get("title") || ""),
       deliveryAt: String(formData.get("deliveryAt") || ""),
       appointmentAt: String(formData.get("appointmentAt") || ""),
-      priority: String(formData.get("priority") || "MEDIA"),
       appointmentNote: String(formData.get("appointmentNote") || ""),
       notes: String(formData.get("notes") || ""),
       invoiceStatus: String(formData.get("invoiceStatus") || "DA_FATTURARE"),
@@ -1014,7 +1021,19 @@ export function OrderForm({
   const reviewTitle = mobileMeta.title.trim() || "Titolo da definire";
   const reviewDelivery = mobileMeta.deliveryAt ? formatDateTime(mobileMeta.deliveryAt) : "Da impostare";
   const reviewAppointment = mobileMeta.appointmentAt ? formatDateTime(mobileMeta.appointmentAt) : "Non programmato";
-  const reviewPriority = priorityLabels[mobileMeta.priority as keyof typeof priorityLabels] || priorityLabels.MEDIA;
+  const reviewPriority = (() => {
+    const deliveryAt = mobileMeta.deliveryAt.trim();
+    if (!deliveryAt) {
+      return "Da calcolare";
+    }
+
+    const date = new Date(deliveryAt);
+    if (Number.isNaN(date.getTime())) {
+      return "Da calcolare";
+    }
+
+    return priorityLabels[computeAutomaticPriority(date)];
+  })();
   const reviewInvoice = invoiceStatusLabels[mobileMeta.invoiceStatus as keyof typeof invoiceStatusLabels] || invoiceStatusLabels.DA_FATTURARE;
   const mobileDraftStatusMessage = draftRestoredAt
     ? `Bozza recuperata da ${formatDateTime(draftRestoredAt)}`
@@ -1317,7 +1336,9 @@ export function OrderForm({
                     <div className="field full order-line-inline-catalog-price">
                       <label htmlFor={`inline-service-price-${index}`}>Prezzo base</label>
                       <input
+                        className="currency-input"
                         id={`inline-service-price-${index}`}
+                        inputMode="decimal"
                         onChange={(event) => setCatalogDraft((current) => ({ ...current, basePrice: event.target.value }))}
                         placeholder="0,00"
                         value={catalogDraft.basePrice}
@@ -1432,6 +1453,7 @@ export function OrderForm({
         <div className="field order-line-qty">
           <label htmlFor={`quantity-${index}`}>Qta</label>
           <input
+            className="numeric-input"
             inputMode="decimal"
             id={`quantity-${index}`}
             onChange={(event) => {
@@ -1473,7 +1495,9 @@ export function OrderForm({
         <div className="field order-line-price">
           <label htmlFor={`unitPrice-${index}`}>Prezzo listino</label>
           <input
+            className="currency-input"
             id={`unitPrice-${index}`}
+            inputMode="decimal"
             onChange={(event) =>
               setItems((current) =>
                 current.map((entry, itemIndex) =>
@@ -1514,8 +1538,10 @@ export function OrderForm({
         <div className="field order-line-discount-value">
           <label htmlFor={`discountValue-${index}`}>Valore sconto</label>
           <input
+            className="numeric-input"
             disabled={item.discountMode === "NONE"}
             id={`discountValue-${index}`}
+            inputMode="decimal"
             onChange={(event) =>
               setItems((current) =>
                 current.map((entry, itemIndex) =>
@@ -1556,8 +1582,10 @@ export function OrderForm({
         <div className="field order-line-extra-value">
           <label htmlFor={`extraValue-${index}`}>Valore extra</label>
           <input
+            className="numeric-input"
             disabled={item.extraMode === "NONE"}
             id={`extraValue-${index}`}
+            inputMode="decimal"
             onChange={(event) =>
               setItems((current) =>
                 current.map((entry, itemIndex) =>
@@ -1572,6 +1600,7 @@ export function OrderForm({
         <div className="field order-line-final">
           <label htmlFor={`finalPrice-${index}`}>Prezzo finale</label>
           <input
+            className="currency-input"
             disabled
             id={`finalPrice-${index}`}
             value={new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(lineFinalWithExtraCents / 100)}
@@ -1656,53 +1685,76 @@ export function OrderForm({
       </section>
 
       <section className="card card-pad order-sheet-hero order-desktop-only">
-        <div className="order-sheet-head">
-          <div className="stack compact-stack">
-            <span className="compact-kicker">{isQuoteMode ? "Scheda preventivo" : "Scheda ordine"}</span>
-            <h3>{isQuoteMode ? "Preventivo rapido da banco" : "Copia commissione digitale"}</h3>
+        <div className="order-sheet-hero-layout">
+          <div className="order-sheet-head">
+            <div className="stack compact-stack">
+              <span className="compact-kicker">{isQuoteMode ? "Scheda preventivo" : "Scheda ordine"}</span>
+              <div className="order-sheet-head-title-row">
+                <h3>{isQuoteMode ? "Preventivo rapido da banco" : "Copia commissione digitale"}</h3>
+                <div className="order-draft-banner order-draft-banner-inline">
+                  <div className="compact-stack">
+                    <strong>{hasSavedDraft ? "Bozza attiva" : "Autosalvataggio pronto"}</strong>
+                    <span className="subtle">
+                      {draftRestoredAt
+                        ? `Recuperata da ${formatDateTime(draftRestoredAt)}`
+                        : lastDraftSavedAt
+                          ? `Ultimo salvataggio ${formatDateTime(lastDraftSavedAt)}`
+                          : "Salvataggio automatico attivo"}
+                    </span>
+                  </div>
+                  {hasSavedDraft ? (
+                    <button
+                      className="ghost"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        resetDraftAndForm();
+                      }}
+                      type="button"
+                    >
+                      Svuota bozza
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+            <div className="order-sheet-summary">
+              <div className="order-sheet-chip">
+                <span className="subtle">Cliente</span>
+                <strong>{selectedCustomer ? selectedCustomer.name : "Nuovo cliente"}</strong>
+              </div>
+              <div className="order-sheet-chip">
+                <span className="subtle">Tipo cliente</span>
+                <strong>{selectedCustomer ? customerTypeLabels[selectedCustomer.type] : customerTypeLabels[defaultCustomerType]}</strong>
+              </div>
+              <div className="order-sheet-chip">
+                <span className="subtle">Righe</span>
+                <strong>{filledRows}</strong>
+              </div>
+              <div className="order-sheet-chip">
+                <span className="subtle">Totale</span>
+                <strong>{new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(previewTotalCents / 100)}</strong>
+              </div>
+            </div>
           </div>
-          <div className="order-sheet-summary">
-            <div className="order-sheet-chip">
-              <span className="subtle">Cliente</span>
-              <strong>{selectedCustomer ? selectedCustomer.name : "Nuovo cliente"}</strong>
-            </div>
-            <div className="order-sheet-chip">
-              <span className="subtle">Tipo cliente</span>
-              <strong>{selectedCustomer ? customerTypeLabels[selectedCustomer.type] : customerTypeLabels[defaultCustomerType]}</strong>
-            </div>
-            <div className="order-sheet-chip">
-              <span className="subtle">Righe</span>
-              <strong>{filledRows}</strong>
-            </div>
-            <div className="order-sheet-chip">
-              <span className="subtle">Totale</span>
-              <strong>{new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(previewTotalCents / 100)}</strong>
-            </div>
+          <div className="order-sheet-hero-flow" aria-label="Percorso nuovo ordine desktop">
+            {MOBILE_ORDER_STEPS.map((step, index) => (
+              <div className="order-sheet-flow-step" key={step.id}>
+                <span className="order-sheet-flow-index">{index + 1}</span>
+                <div className="order-sheet-flow-copy">
+                  <strong>{step.label}</strong>
+                  <span>
+                    {step.id === "customer"
+                      ? "Selezione o creazione cliente"
+                      : step.id === "details"
+                        ? "Titolo, scadenza e note"
+                        : step.id === "items"
+                          ? "Righe e prezzi"
+                          : "Controllo finale e invio"}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
-        <div className="order-draft-banner">
-          <div className="compact-stack">
-            <strong>{hasSavedDraft ? "Bozza attiva" : "Autosalvataggio pronto"}</strong>
-            <span className="subtle">
-              {draftRestoredAt
-                ? `Bozza recuperata automaticamente da ${formatDateTime(draftRestoredAt)}`
-                : lastDraftSavedAt
-                  ? `Ultimo autosalvataggio ${formatDateTime(lastDraftSavedAt)}`
-                  : "Compilo e salvo da solo la scheda mentre lavori."}
-            </span>
-          </div>
-          {hasSavedDraft ? (
-            <button
-              className="ghost"
-              onClick={(event) => {
-                event.preventDefault();
-                resetDraftAndForm();
-              }}
-              type="button"
-            >
-              Svuota bozza
-            </button>
-          ) : null}
         </div>
       </section>
 
@@ -1754,8 +1806,8 @@ export function OrderForm({
                       Nuovo cliente
                     </button>
                   </div>
-                  <div className="subtle">{selectedCustomer.phone || "Telefono non inserito"}</div>
-                  <div className="subtle">{selectedCustomer.email || selectedCustomer.pec || selectedCustomer.whatsapp || "Nessun contatto secondario"}</div>
+                  <div className="subtle">{getPreferredCustomerPrimaryContact(selectedCustomer)}</div>
+                  <div className="subtle">{getPreferredCustomerSecondaryContact(selectedCustomer)}</div>
                 </div>
               ) : null}
 
@@ -1783,26 +1835,31 @@ export function OrderForm({
                     <label htmlFor="customerWhatsapp">WhatsApp</label>
                     <input id="customerWhatsapp" name="customerWhatsapp" />
                   </div>
-                  <div className="field wide">
-                    <label htmlFor="customerEmail">Email</label>
-                    <input id="customerEmail" name="customerEmail" type="email" />
-                  </div>
-                  <div className="field wide">
-                    <label htmlFor="customerPec">PEC</label>
-                    <input id="customerPec" name="customerPec" type="email" />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="customerVatNumber">P. IVA</label>
-                    <input id="customerVatNumber" name="customerVatNumber" />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="customerTaxCode">Codice fiscale</label>
-                    <input id="customerTaxCode" name="customerTaxCode" />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="customerUniqueCode">Codice univoco (CU)</label>
-                    <input id="customerUniqueCode" name="customerUniqueCode" />
-                  </div>
+                  <details className="field full order-advanced-disclosure">
+                    <summary>Info avanzate</summary>
+                    <div className="form-grid order-advanced-grid">
+                      <div className="field wide">
+                        <label htmlFor="customerEmail">Email</label>
+                        <input id="customerEmail" name="customerEmail" type="email" />
+                      </div>
+                      <div className="field wide">
+                        <label htmlFor="customerPec">PEC</label>
+                        <input id="customerPec" name="customerPec" type="email" />
+                      </div>
+                      <div className="field">
+                        <label htmlFor="customerVatNumber">P. IVA</label>
+                        <input id="customerVatNumber" name="customerVatNumber" />
+                      </div>
+                      <div className="field">
+                        <label htmlFor="customerTaxCode">Codice fiscale</label>
+                        <input id="customerTaxCode" name="customerTaxCode" />
+                      </div>
+                      <div className="field">
+                        <label htmlFor="customerUniqueCode">Codice univoco (CU)</label>
+                        <input id="customerUniqueCode" name="customerUniqueCode" />
+                      </div>
+                    </div>
+                  </details>
                   <div className="field full">
                     <label htmlFor="customerNotes">Note cliente</label>
                     <textarea id="customerNotes" name="customerNotes" />
@@ -1826,22 +1883,15 @@ export function OrderForm({
               </div>
               <div className="field wide">
                 <label htmlFor="deliveryAt">Consegna prevista</label>
-                <input id="deliveryAt" name="deliveryAt" required type="datetime-local" />
+                <input className="date-time-input" id="deliveryAt" name="deliveryAt" required type="datetime-local" />
               </div>
               <div className="field wide">
                 <label htmlFor="appointmentAt">Appuntamento programmato</label>
-                <input id="appointmentAt" name="appointmentAt" type="datetime-local" />
+                <input className="date-time-input" id="appointmentAt" name="appointmentAt" type="datetime-local" />
               </div>
-              <div className="field">
-                <label htmlFor="priority">Priorita</label>
-                <select defaultValue="MEDIA" id="priority" name="priority">
-                  {Object.entries(priorityLabels).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <p className="hint order-priority-auto-hint">
+                Priorita automatica: urgente per oggi e domani, alta per i due giorni successivi, bassa dal quarto giorno in poi.
+              </p>
               <div className="field full">
                 <label htmlFor="appointmentNote">Nota appuntamento</label>
                 <select id="appointmentNote" name="appointmentNote" onChange={(event) => setAppointmentNoteValue(event.target.value)} value={appointmentNoteValue}>
@@ -1993,7 +2043,7 @@ export function OrderForm({
               </div>
               <div className="field order-sheet-deposit-field">
                 <label htmlFor="initialDeposit">Acconto iniziale</label>
-                <input id="initialDeposit" name="initialDeposit" placeholder="0,00" />
+                <input className="currency-input" id="initialDeposit" inputMode="decimal" name="initialDeposit" placeholder="0,00" />
               </div>
               <div className="order-sheet-chip order-sheet-total-card">
                 <span className="card-muted">Totale anteprima</span>
@@ -2124,7 +2174,7 @@ export function OrderForm({
                 </div>
                 <div className="field order-sheet-deposit-field">
                   <label htmlFor="initialDeposit">Acconto iniziale</label>
-                  <input id="initialDeposit" name="initialDeposit" placeholder="0,00" />
+                  <input className="currency-input" id="initialDeposit" inputMode="decimal" name="initialDeposit" placeholder="0,00" />
                 </div>
                 <div className="order-sheet-chip order-sheet-total-card">
                   <span className="card-muted">Totale anteprima</span>
@@ -2143,37 +2193,44 @@ export function OrderForm({
       </div>
 
       <div className="order-mobile-footer">
-        <button
-          className="secondary"
-          disabled={mobileStepIndex === 0}
-          onClick={() => {
-            if (mobileStepIndex > 0) {
-              jumpToMobileStep(MOBILE_ORDER_STEPS[mobileStepIndex - 1].id);
-            }
-          }}
-          type="button"
-        >
-          Indietro
-        </button>
-        {mobileStep === "review" ? (
-          <button className="primary" type="submit">
-            {mobileContinueLabel}
-          </button>
-        ) : (
+        <div className="order-mobile-footer-meta">
+          <span className="compact-kicker">{`Step ${mobileStepIndex + 1} di ${MOBILE_ORDER_STEPS.length}`}</span>
+          <strong>{MOBILE_ORDER_STEPS[mobileStepIndex].label}</strong>
+          <span className="subtle">{`${filledRows} righe compilate • ${formatCurrency(previewTotalCents)}`}</span>
+        </div>
+        <div className="order-mobile-footer-actions">
           <button
-            className="primary"
-            disabled={!canContinueMobileStep}
+            className="secondary"
+            disabled={mobileStepIndex === 0}
             onClick={() => {
-              if (!canContinueMobileStep || mobileStepIndex >= MOBILE_ORDER_STEPS.length - 1) {
-                return;
+              if (mobileStepIndex > 0) {
+                jumpToMobileStep(MOBILE_ORDER_STEPS[mobileStepIndex - 1].id);
               }
-              jumpToMobileStep(MOBILE_ORDER_STEPS[mobileStepIndex + 1].id);
             }}
             type="button"
           >
-            {mobileContinueLabel}
+            Indietro
           </button>
-        )}
+          {mobileStep === "review" ? (
+            <button className="primary" type="submit">
+              {mobileContinueLabel}
+            </button>
+          ) : (
+            <button
+              className="primary"
+              disabled={!canContinueMobileStep}
+              onClick={() => {
+                if (!canContinueMobileStep || mobileStepIndex >= MOBILE_ORDER_STEPS.length - 1) {
+                  return;
+                }
+                jumpToMobileStep(MOBILE_ORDER_STEPS[mobileStepIndex + 1].id);
+              }}
+              type="button"
+            >
+              {mobileContinueLabel}
+            </button>
+          )}
+        </div>
       </div>
     </form>
   );

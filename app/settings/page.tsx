@@ -86,7 +86,7 @@ export default async function SettingsPage() {
               </div>
               <div className="field">
                 <label htmlFor="basePrice">Prezzo base</label>
-                <input id="basePrice" name="basePrice" placeholder="0,00" />
+                <input className="currency-input" id="basePrice" inputMode="decimal" name="basePrice" placeholder="0,00" />
               </div>
               <div className="field full">
                 <label htmlFor="description">Descrizione</label>
