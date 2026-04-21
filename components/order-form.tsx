@@ -18,6 +18,7 @@ import {
   type OrderDraftSnapshot
 } from "@/lib/order-drafts";
 import {
+  type CatalogPriceMode,
   computeLineTotalWithAdjustmentsCents,
   computeEffectiveUnitPriceCents,
   discountModeLabels,
@@ -48,6 +49,26 @@ type ItemState = {
   serviceCatalogId: string;
   priceOverridden: boolean;
 };
+
+type LabelCalculatorDraft = {
+  widthCm: string;
+  heightCm: string;
+  quantity: string;
+  materialServiceId: string;
+  singleCut: boolean;
+};
+
+const LABEL_CALCULATOR_FORMAT_PREFIX = "Calcolatore etichette";
+const LABEL_CALCULATOR_MATERIAL_NAMES = [
+  "Etichette - Polimerico laminato stampa e taglio",
+  "Etichette - Polimerico stampa e taglio",
+  "Etichette - Monomerico laminato stampa e taglio",
+  "Etichette - Monomerico stampa e taglio"
+] as const;
+
+const normalizedLabelCalculatorMaterials = new Set(
+  LABEL_CALCULATOR_MATERIAL_NAMES.map((entry) => entry.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim())
+);
 
 const emptyItem = (): ItemState => ({
   serviceQuery: "",
@@ -108,6 +129,66 @@ function normalizeEditorItems(items: ItemState[]) {
   return nextItems.length > 0 ? nextItems : [emptyItem()];
 }
 
+function getCatalogPriceModeForService(service: ServiceCatalog | undefined): CatalogPriceMode {
+  return service?.quantityTiers?.trim() ? "LINE_TOTAL" : "UNIT";
+}
+
+function isLabelCalculatorMaterialService(service: ServiceCatalog | undefined) {
+  if (!service) {
+    return false;
+  }
+
+  const normalizedName = service.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  return normalizedLabelCalculatorMaterials.has(normalizedName);
+}
+
+function isLabelCalculatorFormat(format: string | null | undefined) {
+  return normalizeCatalogSearch(format || "").startsWith(normalizeCatalogSearch(LABEL_CALCULATOR_FORMAT_PREFIX));
+}
+
+function createEmptyLabelCalculatorDraft(): LabelCalculatorDraft {
+  return {
+    widthCm: "",
+    heightCm: "",
+    quantity: "",
+    materialServiceId: "",
+    singleCut: false
+  };
+}
+
+function parseLabelCalculatorFormat(format: string | null | undefined) {
+  const value = String(format || "");
+  const match = value.match(/(\d+(?:[.,]\d+)?)\s*x\s*(\d+(?:[.,]\d+)?)\s*cm/i);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    widthCm: match[1].replace(".", ","),
+    heightCm: match[2].replace(".", ",")
+  };
+}
+
+function buildLabelCalculatorFormat(widthCm: string, heightCm: string) {
+  return `${LABEL_CALCULATOR_FORMAT_PREFIX} • ${widthCm}x${heightCm} cm`;
+}
+
+function computeLabelCalculatorTotalCents(
+  widthCm: number,
+  heightCm: number,
+  quantity: number,
+  materialPriceCents: number,
+  singleCut: boolean
+) {
+  const expandedWidthMeters = (widthCm + 1) / 100;
+  const expandedHeightMeters = (heightCm + 1) / 100;
+  const materialCostCents = Math.round(expandedWidthMeters * expandedHeightMeters * quantity * materialPriceCents);
+  const machineSetupCents = 2000;
+  const subtotalCents = materialCostCents + machineSetupCents;
+
+  return singleCut ? Math.round(subtotalCents * 1.2) : subtotalCents;
+}
+
 function createItemStateFromDraft(item?: Partial<OrderDraftSnapshot["items"][number]>): ItemState {
   return {
     serviceQuery: typeof item?.serviceQuery === "string" ? item.serviceQuery : "",
@@ -132,6 +213,10 @@ function createItemStateFromDraft(item?: Partial<OrderDraftSnapshot["items"][num
     serviceCatalogId: typeof item?.serviceCatalogId === "string" ? item.serviceCatalogId : "",
     priceOverridden: Boolean(item?.priceOverridden)
   };
+}
+
+function formatLabelCalculatorDraftValue(value: string) {
+  return value.trim().replace(/\./g, ",");
 }
 
 function parseDisplayPriceToCents(value: string) {
@@ -363,6 +448,8 @@ export function OrderForm({
   const [catalogDraftRowIndex, setCatalogDraftRowIndex] = useState<number | null>(null);
   const [catalogDraft, setCatalogDraft] = useState<InlineCatalogDraft>(createEmptyInlineCatalogDraft());
   const [catalogDraftMessage, setCatalogDraftMessage] = useState<string | null>(null);
+  const [labelCalculatorRowIndex, setLabelCalculatorRowIndex] = useState<number | null>(null);
+  const [labelCalculatorDraft, setLabelCalculatorDraft] = useState<LabelCalculatorDraft>(createEmptyLabelCalculatorDraft());
   const [isCatalogDraftSubmitting, setIsCatalogDraftSubmitting] = useState(false);
   const [catalogMutatingServiceId, setCatalogMutatingServiceId] = useState<string | null>(null);
   const [catalogActionFeedback, setCatalogActionFeedback] = useState<CatalogActionFeedback | null>(null);
@@ -374,6 +461,9 @@ export function OrderForm({
   const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId);
   const photographyFormats = getPhotographyFormatOptions(catalogServices);
   const photographyServices = catalogServices.filter(isPhotographyService);
+  const labelCalculatorMaterials = LABEL_CALCULATOR_MATERIAL_NAMES.map((name) =>
+    catalogServices.find((service) => service.name === name)
+  ).filter((service): service is ServiceCatalog => Boolean(service));
   const isCatalogEmpty = catalogServices.length === 0;
   const defaultCustomerType: CustomerType = "PUBBLICO";
   const isQuoteMode = kind === "quote";
@@ -398,6 +488,7 @@ export function OrderForm({
     setActiveServiceField(null);
     setOpenTierIndex(null);
     closeInlineCatalogDraft();
+    closeLabelCalculator();
   }
 
   function removeItemLine(index: number) {
@@ -425,6 +516,7 @@ export function OrderForm({
       return current > index ? current - 1 : current;
     });
     closeInlineCatalogDraft();
+    closeLabelCalculator();
     setOpenMobileItemIndex((current) => {
       if (current === null) {
         return null;
@@ -497,6 +589,8 @@ export function OrderForm({
     setCatalogDraftRowIndex(null);
     setCatalogDraft(createEmptyInlineCatalogDraft());
     setCatalogDraftMessage(null);
+    setLabelCalculatorRowIndex(null);
+    setLabelCalculatorDraft(createEmptyLabelCalculatorDraft());
     setCatalogActionFeedback(null);
   }
 
@@ -729,6 +823,15 @@ export function OrderForm({
     return (cents / 100).toFixed(2).replace(".", ",");
   }
 
+  function getCatalogPriceModeForItem(item: ItemState) {
+    if (isLabelCalculatorFormat(item.format)) {
+      return "LINE_TOTAL";
+    }
+
+    const service = catalogServices.find((entry) => entry.id === item.serviceCatalogId);
+    return getCatalogPriceModeForService(service);
+  }
+
   function getServiceSuggestions(query: string) {
     const normalizedQuery = normalizeCatalogSearch(query);
 
@@ -742,7 +845,7 @@ export function OrderForm({
         type: "service" as const,
         key: service.id,
         label: service.name,
-        meta: `${service.code || "Senza codice"} • ${(service.basePriceCents / 100).toFixed(2).replace(".", ",")} €`,
+        meta: formatCurrency(service.basePriceCents),
         service,
         score: getServiceSearchScore(service, normalizedQuery)
       }))
@@ -793,6 +896,70 @@ export function OrderForm({
     setCatalogDraftRowIndex(null);
     setCatalogDraft(createEmptyInlineCatalogDraft());
     setCatalogDraftMessage(null);
+  }
+
+  function openLabelCalculator(index: number) {
+    const row = items[index];
+    const parsedFormat = parseLabelCalculatorFormat(row?.format);
+
+    setLabelCalculatorRowIndex(index);
+    setLabelCalculatorDraft({
+      widthCm: parsedFormat?.widthCm || "",
+      heightCm: parsedFormat?.heightCm || "",
+      quantity: row?.quantity || "",
+      materialServiceId:
+        row?.serviceCatalogId && labelCalculatorMaterials.some((service) => service.id === row.serviceCatalogId)
+          ? row.serviceCatalogId
+          : "",
+      singleCut: normalizeCatalogSearch(row?.finishing || "") === normalizeCatalogSearch("Taglio singolo")
+    });
+  }
+
+  function closeLabelCalculator() {
+    setLabelCalculatorRowIndex(null);
+    setLabelCalculatorDraft(createEmptyLabelCalculatorDraft());
+  }
+
+  function applyLabelCalculator(index: number) {
+    const materialService = labelCalculatorMaterials.find((service) => service.id === labelCalculatorDraft.materialServiceId);
+    const widthCm = parseQuantityValue(labelCalculatorDraft.widthCm, 0);
+    const heightCm = parseQuantityValue(labelCalculatorDraft.heightCm, 0);
+    const quantity = parseQuantityValue(labelCalculatorDraft.quantity, 0);
+
+    if (!materialService || widthCm <= 0 || heightCm <= 0 || quantity <= 0) {
+      return;
+    }
+
+    const totalCents = computeLabelCalculatorTotalCents(
+      widthCm,
+      heightCm,
+      quantity,
+      materialService.basePriceCents,
+      labelCalculatorDraft.singleCut
+    );
+    const quantityInput = formatQuantityInput(quantity);
+    const widthInput = formatLabelCalculatorDraftValue(labelCalculatorDraft.widthCm);
+    const heightInput = formatLabelCalculatorDraftValue(labelCalculatorDraft.heightCm);
+
+    setItems((current) =>
+      current.map((entry, itemIndex) =>
+        itemIndex === index
+          ? {
+              ...entry,
+              serviceQuery: materialService.name,
+              label: materialService.name,
+              serviceCatalogId: materialService.id,
+              quantity: quantityInput,
+              unitPrice: (totalCents / 100).toFixed(2).replace(".", ","),
+              priceOverridden: true,
+              format: buildLabelCalculatorFormat(widthInput, heightInput),
+              material: materialService.name,
+              finishing: labelCalculatorDraft.singleCut ? "Taglio singolo" : ""
+            }
+          : entry
+      )
+    );
+    closeLabelCalculator();
   }
 
   async function saveInlineCatalogDraft(index: number) {
@@ -888,7 +1055,10 @@ export function OrderForm({
           entry.serviceCatalogId === service.id
             ? {
                 ...entry,
-                serviceCatalogId: ""
+                serviceCatalogId: "",
+                format: isLabelCalculatorFormat(entry.format) ? "" : entry.format,
+                material: isLabelCalculatorFormat(entry.format) ? "" : entry.material,
+                finishing: isLabelCalculatorFormat(entry.format) ? "" : entry.finishing
               }
             : entry
         )
@@ -926,6 +1096,9 @@ export function OrderForm({
               discountValue: "",
               extraMode: "NONE",
               extraValue: "",
+              format: "",
+              material: "",
+              finishing: "",
               priceOverridden: false
             }
           : entry
@@ -933,6 +1106,7 @@ export function OrderForm({
     );
     setActiveServiceField(null);
     setCatalogActionFeedback(null);
+    closeLabelCalculator();
     if (catalogDraftRowIndex === index) {
       closeInlineCatalogDraft();
     }
@@ -962,6 +1136,7 @@ export function OrderForm({
     );
     setActiveServiceField(null);
     setCatalogActionFeedback(null);
+    closeLabelCalculator();
     if (catalogDraftRowIndex === index) {
       closeInlineCatalogDraft();
     }
@@ -975,13 +1150,15 @@ export function OrderForm({
         const catalogBasePriceCents = parseDisplayPriceToCents(item.unitPrice);
         const discountValue = parseDiscountValue(item.discountMode, item.discountValue);
         const extraValue = parseDiscountValue(item.extraMode, item.extraValue);
+        const catalogPriceMode = getCatalogPriceModeForItem(item);
         const lineTotalCents = computeLineTotalWithAdjustmentsCents(
           catalogBasePriceCents,
           quantity,
           item.discountMode,
           discountValue,
           item.extraMode,
-          extraValue
+          extraValue,
+          catalogPriceMode
         );
         const unitPriceCents = computeEffectiveUnitPriceCents(lineTotalCents, quantity);
 
@@ -994,6 +1171,7 @@ export function OrderForm({
           priceOverridden: undefined,
           quantity,
           catalogBasePriceCents,
+          catalogPriceMode,
           discountValue,
           extraValue,
           unitPriceCents
@@ -1003,13 +1181,15 @@ export function OrderForm({
   );
   const previewTotalCents = items.reduce((sum, item) => {
     const quantity = parseQuantityValue(item.quantity, 1);
+    const catalogPriceMode = getCatalogPriceModeForItem(item);
     const lineTotalCents = computeLineTotalWithAdjustmentsCents(
       parseDisplayPriceToCents(item.unitPrice),
       quantity,
       item.discountMode,
       parseDiscountValue(item.discountMode, item.discountValue),
       item.extraMode,
-      parseDiscountValue(item.extraMode, item.extraValue)
+      parseDiscountValue(item.extraMode, item.extraValue),
+      catalogPriceMode
     );
     return sum + (Number.isFinite(lineTotalCents) ? lineTotalCents : 0);
   }, 0);
@@ -1068,7 +1248,8 @@ export function OrderForm({
         item.discountMode,
         parseDiscountValue(item.discountMode, item.discountValue),
         item.extraMode,
-        parseDiscountValue(item.extraMode, item.extraValue)
+        parseDiscountValue(item.extraMode, item.extraValue),
+        getCatalogPriceModeForItem(item)
       )
     }))
     .filter((item) => item.label)
@@ -1097,13 +1278,15 @@ export function OrderForm({
       item.serviceQuery.trim().length > 0 &&
       (!selectedService || normalizeCatalogSearch(item.serviceQuery) !== normalizeCatalogSearch(selectedService.name) || isPhotographyRow);
     const hasTierEntries = parsedTiers.length > 0;
+    const catalogPriceMode = getCatalogPriceModeForItem(item);
     const lineFinalWithExtraCents = computeLineTotalWithAdjustmentsCents(
       parseDisplayPriceToCents(item.unitPrice),
       lineQuantity,
       item.discountMode,
       parseDiscountValue(item.discountMode, item.discountValue),
       item.extraMode,
-      parseDiscountValue(item.extraMode, item.extraValue)
+      parseDiscountValue(item.extraMode, item.extraValue),
+      catalogPriceMode
     );
 
     return {
@@ -1154,20 +1337,22 @@ export function OrderForm({
               setItems((current) =>
                 current.map((entry, itemIndex) =>
                   itemIndex === index
-                    ? {
-                        ...entry,
-                        serviceQuery: nextValue,
-                        photoMode: matchesSelectedService ? entry.photoMode : false,
-                        photoFormat: matchesSelectedService ? entry.photoFormat : "",
-                        label: nextValue,
-                        serviceCatalogId: matchesSelectedService ? entry.serviceCatalogId : "",
-                        unitPrice: matchesSelectedService ? entry.unitPrice : entry.priceOverridden ? entry.unitPrice : "",
-                        priceOverridden: matchesSelectedService ? entry.priceOverridden : entry.priceOverridden,
-                        format: matchesSelectedService ? entry.format : ""
-                      }
-                    : entry
-                )
-              );
+                      ? {
+                          ...entry,
+                          serviceQuery: nextValue,
+                          photoMode: matchesSelectedService ? entry.photoMode : false,
+                          photoFormat: matchesSelectedService ? entry.photoFormat : "",
+                          label: nextValue,
+                          serviceCatalogId: matchesSelectedService ? entry.serviceCatalogId : "",
+                          unitPrice: matchesSelectedService ? entry.unitPrice : entry.priceOverridden ? entry.unitPrice : "",
+                          priceOverridden: matchesSelectedService ? entry.priceOverridden : entry.priceOverridden,
+                          format: matchesSelectedService ? entry.format : "",
+                          material: matchesSelectedService ? entry.material : "",
+                          finishing: matchesSelectedService ? entry.finishing : ""
+                        }
+                      : entry
+                  )
+                );
               setActiveServiceField(index);
               if (!event.target.value.trim()) {
                 setOpenTierIndex((current) => (current === index ? null : current));
@@ -1185,12 +1370,13 @@ export function OrderForm({
           <div className="order-line-service-tools">
             {hasTierEntries ? <span className="pill order-line-tier-badge">Prezzo a scaglioni</span> : null}
             <button
-              className="ghost order-line-tier-toggle"
+              className="ghost order-line-service-action order-line-tier-toggle"
               onClick={(event) => {
                 event.preventDefault();
                 if (catalogDraftRowIndex === index) {
                   closeInlineCatalogDraft();
                 } else {
+                  closeLabelCalculator();
                   openInlineCatalogDraft(index);
                 }
               }}
@@ -1198,9 +1384,25 @@ export function OrderForm({
             >
               {catalogDraftRowIndex === index ? "Chiudi nuovo servizio" : "Nuovo in catalogo"}
             </button>
+            <button
+              className="ghost order-line-service-action order-line-calculator-toggle"
+              disabled={labelCalculatorMaterials.length === 0}
+              onClick={(event) => {
+                event.preventDefault();
+                if (labelCalculatorRowIndex === index) {
+                  closeLabelCalculator();
+                } else {
+                  closeInlineCatalogDraft();
+                  openLabelCalculator(index);
+                }
+              }}
+              type="button"
+            >
+              Calcolatore etichette
+            </button>
             {deactivatableService ? (
               <button
-                className="ghost order-line-catalog-remove"
+                className="ghost order-line-service-action order-line-catalog-remove"
                 disabled={catalogMutatingServiceId === deactivatableService.id}
                 onClick={(event) => {
                   event.preventDefault();
@@ -1212,7 +1414,7 @@ export function OrderForm({
               </button>
             ) : null}
             <button
-              className="ghost order-line-tier-toggle"
+              className="ghost order-line-service-action order-line-tier-toggle"
               disabled={!hasTierEntries}
               onClick={(event) => {
                 event.preventDefault();
@@ -1394,13 +1596,135 @@ export function OrderForm({
               </div>
             </div>
           ) : null}
+          {labelCalculatorRowIndex === index ? (
+            <div className="order-line-inline-catalog order-line-inline-calculator">
+              <div className="order-line-inline-catalog-head">
+                <div className="order-line-inline-catalog-title">
+                  <div className="order-line-inline-catalog-copy">
+                    <strong>Calcolatore etichette</strong>
+                    <span className="subtle">Aggiunge sempre 1 cm per lato, 20 euro di messa in macchina e il 20% se scegli taglio singolo.</span>
+                  </div>
+                  <span className="pill">Prezzo totale riga</span>
+                </div>
+              </div>
+              <div className="form-grid order-line-inline-catalog-grid order-line-inline-calculator-grid">
+                <div className="field order-line-inline-calculator-width">
+                  <label htmlFor={`label-calculator-width-${index}`}>Larghezza cm</label>
+                  <input
+                    className="numeric-input"
+                    id={`label-calculator-width-${index}`}
+                    inputMode="decimal"
+                    onChange={(event) => setLabelCalculatorDraft((current) => ({ ...current, widthCm: event.target.value }))}
+                    placeholder="10"
+                    value={labelCalculatorDraft.widthCm}
+                  />
+                </div>
+                <div className="field order-line-inline-calculator-height">
+                  <label htmlFor={`label-calculator-height-${index}`}>Altezza cm</label>
+                  <input
+                    className="numeric-input"
+                    id={`label-calculator-height-${index}`}
+                    inputMode="decimal"
+                    onChange={(event) => setLabelCalculatorDraft((current) => ({ ...current, heightCm: event.target.value }))}
+                    placeholder="5"
+                    value={labelCalculatorDraft.heightCm}
+                  />
+                </div>
+                <div className="field order-line-inline-calculator-quantity">
+                  <label htmlFor={`label-calculator-quantity-${index}`}>Numero etichette</label>
+                  <input
+                    className="numeric-input"
+                    id={`label-calculator-quantity-${index}`}
+                    inputMode="decimal"
+                    onChange={(event) => setLabelCalculatorDraft((current) => ({ ...current, quantity: event.target.value }))}
+                    placeholder="100"
+                    value={labelCalculatorDraft.quantity}
+                  />
+                </div>
+                <div className="field wide order-line-inline-calculator-material">
+                  <label htmlFor={`label-calculator-material-${index}`}>Materiale</label>
+                  <select
+                    id={`label-calculator-material-${index}`}
+                    onChange={(event) => setLabelCalculatorDraft((current) => ({ ...current, materialServiceId: event.target.value }))}
+                    value={labelCalculatorDraft.materialServiceId}
+                  >
+                    <option value="">Seleziona materiale</option>
+                    {labelCalculatorMaterials.map((service) => (
+                      <option key={service.id} value={service.id}>
+                        {service.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field full order-line-inline-calculator-single-cut">
+                  <label className="toggle-field" htmlFor={`label-calculator-single-cut-${index}`}>
+                    <input
+                      checked={labelCalculatorDraft.singleCut}
+                      id={`label-calculator-single-cut-${index}`}
+                      onChange={(event) => setLabelCalculatorDraft((current) => ({ ...current, singleCut: event.target.checked }))}
+                      type="checkbox"
+                    />
+                    <span>Taglio singolo</span>
+                  </label>
+                </div>
+              </div>
+              {(() => {
+                const materialService = labelCalculatorMaterials.find((service) => service.id === labelCalculatorDraft.materialServiceId);
+                const widthCm = parseQuantityValue(labelCalculatorDraft.widthCm, 0);
+                const heightCm = parseQuantityValue(labelCalculatorDraft.heightCm, 0);
+                const quantity = parseQuantityValue(labelCalculatorDraft.quantity, 0);
+                const previewReady = Boolean(materialService) && widthCm > 0 && heightCm > 0 && quantity > 0;
+                const totalCents = previewReady
+                  ? computeLabelCalculatorTotalCents(
+                      widthCm,
+                      heightCm,
+                      quantity,
+                      materialService?.basePriceCents || 0,
+                      labelCalculatorDraft.singleCut
+                    )
+                  : 0;
+                const expandedWidth = previewReady ? ((widthCm + 1) / 100).toFixed(3).replace(".", ",") : "0,000";
+                const expandedHeight = previewReady ? ((heightCm + 1) / 100).toFixed(3).replace(".", ",") : "0,000";
+
+                return (
+                  <div className="order-line-inline-calculator-preview">
+                    <strong>{previewReady ? formatCurrency(totalCents) : "Compila i campi per vedere il totale"}</strong>
+                    <span>
+                      {previewReady
+                        ? `${expandedWidth} m x ${expandedHeight} m x ${formatQuantity(quantity)} x ${formatCurrency(materialService?.basePriceCents || 0)} + 20,00 €${labelCalculatorDraft.singleCut ? " + 20%" : ""}`
+                        : "Il prezzo finale verra inserito nel prezzo listino della riga come totale gia calcolato."}
+                    </span>
+                  </div>
+                );
+              })()}
+              <div className="button-row order-line-inline-catalog-actions">
+                <button className="secondary" onClick={closeLabelCalculator} type="button">
+                  Annulla
+                </button>
+                <button
+                  className="primary"
+                  disabled={
+                    labelCalculatorMaterials.length === 0 ||
+                    !labelCalculatorDraft.materialServiceId ||
+                    parseQuantityValue(labelCalculatorDraft.widthCm, 0) <= 0 ||
+                    parseQuantityValue(labelCalculatorDraft.heightCm, 0) <= 0 ||
+                    parseQuantityValue(labelCalculatorDraft.quantity, 0) <= 0
+                  }
+                  onClick={() => applyLabelCalculator(index)}
+                  type="button"
+                >
+                  Applica calcolo
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
         {isPhotographyRow ? (
           <div className="field order-line-photo-format">
             <label htmlFor={`photo-format-${index}`}>Taglio foto</label>
             <select
               id={`photo-format-${index}`}
-              onChange={(event) => {
+          onChange={(event) => {
                 const nextOption = photographyFormats.find((entry) => entry.key === event.target.value);
 
                 setItems((current) =>
@@ -1417,6 +1741,8 @@ export function OrderForm({
                         serviceCatalogId: "",
                         unitPrice: "",
                         format: "",
+                        material: "",
+                        finishing: "",
                         priceOverridden: false
                       };
                     }
@@ -1434,6 +1760,8 @@ export function OrderForm({
                       discountValue: "",
                       extraMode: "NONE",
                       extraValue: "",
+                      material: "",
+                      finishing: "",
                       priceOverridden: false
                     };
                   })
@@ -1597,15 +1925,6 @@ export function OrderForm({
             value={item.extraValue}
           />
         </div>
-        <div className="field order-line-final">
-          <label htmlFor={`finalPrice-${index}`}>Prezzo finale</label>
-          <input
-            className="currency-input"
-            disabled
-            id={`finalPrice-${index}`}
-            value={new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(lineFinalWithExtraCents / 100)}
-          />
-        </div>
         <div className="field full order-line-notes">
           <label htmlFor={`notes-${index}`}>Note riga</label>
           <textarea
@@ -1618,6 +1937,15 @@ export function OrderForm({
               )
             }
             value={item.notes}
+          />
+        </div>
+        <div className="field order-line-final">
+          <label htmlFor={`finalPrice-${index}`}>Prezzo finale</label>
+          <input
+            className="currency-input"
+            disabled
+            id={`finalPrice-${index}`}
+            value={new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(lineFinalWithExtraCents / 100)}
           />
         </div>
       </div>

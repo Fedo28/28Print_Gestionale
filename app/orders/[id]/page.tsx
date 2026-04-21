@@ -377,18 +377,21 @@ export default async function OrderDetailPage({ params }: { params: { id: string
             </span>
           </div>
           <div className="mini-list">
-            {order.items.map((item) => (
-              <details className={`mini-item order-item-editor${item.deliveredAt ? " is-delivered" : ""}`} key={item.id}>
-                <summary className="order-item-editor-summary">
-                  <div className="order-item-editor-copy">
-                    <strong>{item.label}</strong>
-                    <span className="subtle">
-                      {formatQuantity(item.quantity)} x {formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}
-                    </span>
-                    {item.deliveredAt ? <span className="order-item-delivered-pill">{`Consegnata il ${formatDateTime(item.deliveredAt)}`}</span> : null}
-                  </div>
-                  <span className="order-item-editor-total">{formatCurrency(item.lineTotalCents)}</span>
-                </summary>
+	            {order.items.map((item) => (
+	              <details className={`mini-item order-item-editor${item.deliveredAt ? " is-delivered" : ""}`} key={item.id}>
+	                <summary className="order-item-editor-summary">
+	                  <div className="order-item-editor-copy">
+	                    <strong>{item.label}</strong>
+	                    <span className="subtle">
+	                      {Boolean(item.serviceCatalog?.quantityTiers?.trim()) ||
+	                      String(item.format || "").trim().toLowerCase().startsWith("calcolatore etichette")
+	                        ? `${formatQuantity(item.quantity)} pz • Scaglione ${formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}`
+	                        : `${formatQuantity(item.quantity)} x ${formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}`}
+	                    </span>
+	                    {item.deliveredAt ? <span className="order-item-delivered-pill">{`Consegnata il ${formatDateTime(item.deliveredAt)}`}</span> : null}
+	                  </div>
+	                  <span className="order-item-editor-total">{formatCurrency(item.lineTotalCents)}</span>
+	                </summary>
                 <div className="order-item-editor-body">
                   <form action={updateOrderItemAction} className="form-grid order-item-editor-form">
                     <input name="orderId" type="hidden" value={order.id} />

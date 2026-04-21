@@ -20,7 +20,12 @@ import {
 import { buildOrdersFilterHref, parseDashboardPreset, parseOrderListView, parsePhaseFilter } from "../lib/order-filters";
 import { getSelectablePhaseTargets } from "../lib/order-phase-transitions";
 import { automaticPriorityValues, computeAutomaticPriority } from "../lib/priorities";
-import { getTieredUnitPrice, normalizeQuantityTiers, parseQuantityTiers } from "../lib/pricing";
+import {
+  computeLineTotalWithAdjustmentsCents,
+  getTieredUnitPrice,
+  normalizeQuantityTiers,
+  parseQuantityTiers
+} from "../lib/pricing";
 
 describe("order domain", () => {
   it("builds order code with date and normalized title", () => {
@@ -385,5 +390,28 @@ describe("order domain", () => {
     expect(getTieredUnitPrice(100, 5, raw)).toBe(50);
     expect(getTieredUnitPrice(100, 20, raw)).toBe(30);
     expect(getTieredUnitPrice(100, 120, raw)).toBe(20);
+  });
+
+  it("treats tier prices as line totals when configured that way", () => {
+    const totals = computeOrderTotals([
+      {
+        label: "Biglietti nobilitati",
+        quantity: 1000,
+        catalogBasePriceCents: 18000,
+        catalogPriceMode: "LINE_TOTAL",
+        discountMode: "NONE",
+        discountValue: 0,
+        extraMode: "NONE",
+        extraValue: 0,
+        unitPriceCents: 18000
+      }
+    ]);
+
+    expect(
+      computeLineTotalWithAdjustmentsCents(18000, 1000, "NONE", 0, "NONE", 0, "LINE_TOTAL")
+    ).toBe(18000);
+    expect(totals.items[0].lineTotalCents).toBe(18000);
+    expect(totals.items[0].unitPriceCents).toBe(18);
+    expect(totals.totalCents).toBe(18000);
   });
 });

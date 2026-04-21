@@ -153,6 +153,7 @@ export function parseItemsPayload(raw: string | null): OrderItemInput[] {
     description: String(entry.description ?? ""),
     quantity: Number(entry.quantity ?? 1),
     catalogBasePriceCents: Math.max(0, Number(entry.catalogBasePriceCents ?? entry.unitPriceCents ?? 0)),
+    catalogPriceMode: String(entry.catalogPriceMode ?? "") === "LINE_TOTAL" ? "LINE_TOTAL" : "UNIT",
     discountMode: (["NONE", "AMOUNT", "PERCENT"].includes(String(entry.discountMode ?? "NONE"))
       ? String(entry.discountMode ?? "NONE")
       : "NONE") as DiscountMode,

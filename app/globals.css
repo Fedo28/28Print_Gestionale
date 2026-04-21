@@ -4086,6 +4086,36 @@ button.danger {
   border-color: rgba(47, 125, 91, 0.24);
 }
 
+.billboard-booking-chip.priority-urgent {
+  border-color: rgba(205, 74, 74, 0.42);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.2)),
+    rgba(205, 74, 74, 0.1);
+  box-shadow:
+    inset 0 0 0 1px rgba(205, 74, 74, 0.14),
+    0 12px 22px rgba(205, 74, 74, 0.08);
+}
+
+.billboard-booking-chip.priority-high {
+  border-color: rgba(224, 139, 44, 0.4);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.2)),
+    rgba(224, 139, 44, 0.1);
+  box-shadow:
+    inset 0 0 0 1px rgba(224, 139, 44, 0.14),
+    0 12px 22px rgba(224, 139, 44, 0.08);
+}
+
+.billboard-booking-chip.priority-low {
+  border-color: rgba(82, 193, 214, 0.4);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.2)),
+    rgba(82, 193, 214, 0.1);
+  box-shadow:
+    inset 0 0 0 1px rgba(82, 193, 214, 0.14),
+    0 12px 22px rgba(82, 193, 214, 0.08);
+}
+
 .billboard-booking-chip-head {
   display: flex;
   align-items: flex-start;
@@ -4863,21 +4893,29 @@ button.danger {
 .order-line-service-tools {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
+  align-items: stretch;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .order-line-tier-badge {
   color: var(--brand-dark);
 }
 
-.order-line-tier-toggle {
-  min-height: 38px;
-  padding: 0 14px;
+.order-line-service-action {
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-weight: 800;
+  text-align: center;
 }
 
-.order-line-tier-toggle:disabled {
+.order-line-tier-toggle {
+  min-height: 42px;
+}
+
+.order-line-service-action:disabled {
   opacity: 0.48;
   cursor: not-allowed;
 }
@@ -4966,25 +5004,31 @@ button.danger {
 }
 
 .order-line-grid .order-line-qty {
-  grid-column: span 2;
+  grid-column: span 3;
 }
 
 .order-line-grid .order-line-photo-format {
   grid-column: span 5;
 }
 
-.order-line-grid .order-line-price,
-.order-line-grid .order-line-final {
-  grid-column: span 3;
+.order-line-grid .order-line-price {
+  grid-column: span 5;
 }
 
-.order-line-grid .order-line-discount-mode,
+.order-line-grid .order-line-discount-mode {
+  grid-column: 1 / span 3;
+}
+
 .order-line-grid .order-line-discount-value {
-  grid-column: span 2;
+  grid-column: span 3;
 }
 
 .order-line-grid .field.order-line-extra-mode {
   grid-column: 1 / span 3;
+}
+
+.order-line-grid .order-line-extra-value {
+  grid-column: span 3;
 }
 
 .order-line-grid .order-line-final input:disabled {
@@ -4995,6 +5039,17 @@ button.danger {
 
 .order-line-grid .order-line-notes {
   grid-column: 1 / -1;
+}
+
+.order-line-grid .order-line-final {
+  grid-column: 1 / -1;
+  justify-self: end;
+  width: min(100%, 340px);
+}
+
+.order-line-grid .order-line-final input {
+  text-align: center;
+  font-size: 1.1rem;
 }
 
 .order-line-card {
@@ -5161,6 +5216,44 @@ button.danger {
 .order-line-inline-catalog-message {
   margin: 0;
   padding: 0 2px;
+}
+
+.order-line-inline-calculator-grid .order-line-inline-calculator-width,
+.order-line-inline-calculator-grid .order-line-inline-calculator-height,
+.order-line-inline-calculator-grid .order-line-inline-calculator-quantity {
+  grid-column: span 4;
+}
+
+.order-line-inline-calculator-grid .order-line-inline-calculator-material {
+  grid-column: 1 / span 8;
+}
+
+.order-line-inline-calculator-grid .order-line-inline-calculator-single-cut {
+  grid-column: 9 / -1;
+  align-content: end;
+}
+
+.order-line-inline-calculator-preview {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(127, 101, 255, 0.14);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0.24)),
+    rgba(127, 101, 255, 0.05);
+}
+
+.order-line-inline-calculator-preview strong {
+  font-size: 1rem;
+  line-height: 1.2;
+  color: var(--brand-dark);
+}
+
+.order-line-inline-calculator-preview span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
 }
 
 .order-line-catalog-feedback {
@@ -7788,14 +7881,26 @@ textarea:focus-visible {
   }
 
   .order-line-grid .order-line-qty,
+  .order-line-grid .order-line-price,
   .order-line-grid .order-line-discount-mode,
-  .order-line-grid .order-line-discount-value {
+  .order-line-grid .order-line-discount-value,
+  .order-line-grid .field.order-line-extra-mode,
+  .order-line-grid .order-line-extra-value {
     grid-column: span 4;
   }
 
-  .order-line-grid .order-line-price,
   .order-line-grid .order-line-final {
-    grid-column: span 6;
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .order-line-inline-calculator-grid .order-line-inline-calculator-width,
+  .order-line-inline-calculator-grid .order-line-inline-calculator-height,
+  .order-line-inline-calculator-grid .order-line-inline-calculator-quantity,
+  .order-line-inline-calculator-grid .order-line-inline-calculator-material,
+  .order-line-inline-calculator-grid .order-line-inline-calculator-single-cut {
+    grid-column: 1 / -1;
   }
 
   .order-line-inline-catalog {
@@ -7839,6 +7944,27 @@ textarea:focus-visible {
     padding-right: 8px;
     padding-bottom: 8px;
     scrollbar-gutter: stable;
+  }
+
+  .billboards-selected-card .billboard-booking-chip-head,
+  .billboards-calendar-card .billboard-booking-chip-head {
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+
+  .billboards-selected-card .billboard-booking-chip-head strong,
+  .billboards-calendar-card .billboard-booking-chip-head strong {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .billboards-selected-card .billboard-booking-chip-head .pill,
+  .billboards-calendar-card .billboard-booking-chip-head .pill {
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 }
 
@@ -9794,6 +9920,8 @@ textarea:focus-visible {
 
   .order-line-grid .order-line-final {
     grid-column: 1 / -1;
+    width: 100%;
+    justify-self: stretch;
   }
 
   .order-line-grid .order-line-final input {

@@ -10,6 +10,7 @@ import { requireAuth } from "@/lib/auth";
 import { bookingIncludesDate, getBillboardSurface } from "@/lib/billboards";
 import { formatCurrency, formatDate, formatDateKey } from "@/lib/format";
 import { getCustomers } from "@/lib/orders";
+import { computeAutomaticPriority, getPriorityToneClass } from "@/lib/priorities";
 
 export const dynamic = "force-dynamic";
 
@@ -251,7 +252,10 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
                     </div>
                     <div className="calendar-month-events">
                       {day.entries.slice(0, 3).map((booking) => (
-                        <div className={`billboard-booking-chip billboard-booking-chip-${booking.status.toLowerCase()}`} key={booking.id}>
+                        <div
+                          className={`billboard-booking-chip billboard-booking-chip-${booking.status.toLowerCase()} ${getBillboardBookingPriorityToneClass(booking.endsAt)}`}
+                          key={booking.id}
+                        >
                           <div className="billboard-booking-chip-head">
                             <strong>{booking.customer.name}</strong>
                             <span className={`pill ${getBillboardStatusPillClass(booking.status)}`}>
@@ -361,7 +365,10 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
                   </div>
                   <div className="calendar-month-events">
                     {day.entries.slice(0, 3).map((booking) => (
-                      <div className={`billboard-booking-chip billboard-booking-chip-${booking.status.toLowerCase()}`} key={booking.id}>
+                      <div
+                        className={`billboard-booking-chip billboard-booking-chip-${booking.status.toLowerCase()} ${getBillboardBookingPriorityToneClass(booking.endsAt)}`}
+                        key={booking.id}
+                      >
                         <div className="billboard-booking-chip-head">
                           <strong>{booking.billboardAsset.name}</strong>
                           <span className={`pill ${getBillboardStatusPillClass(booking.status)}`}>
@@ -604,4 +611,8 @@ function getBillboardStatusPillClass(status: BillboardBookingStatus) {
     default:
       return "status";
   }
+}
+
+function getBillboardBookingPriorityToneClass(deliveryAt: Date | string) {
+  return getPriorityToneClass(computeAutomaticPriority(deliveryAt));
 }

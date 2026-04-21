@@ -95,7 +95,7 @@ export default async function SettingsPage() {
               <div className="field full">
                 <label htmlFor="quantityTiers">Scaglioni quantita</label>
                 <input id="quantityTiers" name="quantityTiers" placeholder="1-9:0,50 | 10-49:0,30 | 50+:0,20" />
-                <p className="hint">Facoltativo. Se la quantita rientra in uno scaglione, il prezzo unitario viene preso da qui invece che dal listino base.</p>
+                <p className="hint">Facoltativo. Se la quantita rientra in uno scaglione, il prezzo indicato qui viene usato come totale della riga invece che come prezzo unitario.</p>
               </div>
               <div className="button-row settings-form-actions">
                 <button className="primary" type="submit">

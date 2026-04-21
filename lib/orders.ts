@@ -16,6 +16,7 @@ import { canTransitionPhase } from "@/lib/order-phase-transitions";
 import { formatCompactDate, formatDateKey, formatQuantity, formatWeekdayLabel } from "@/lib/format";
 import { comparePriorityDesc, computeAutomaticPriority } from "@/lib/priorities";
 import {
+  type CatalogPriceMode,
   clampDiscountValue,
   computeLineTotalWithAdjustmentsCents,
   computeEffectiveUnitPriceCents,
@@ -40,6 +41,7 @@ export type OrderItemInput = {
   description?: string;
   quantity: number;
   catalogBasePriceCents?: number;
+  catalogPriceMode?: CatalogPriceMode;
   discountMode?: DiscountMode;
   discountValue?: number;
   extraMode?: DiscountMode;
@@ -94,6 +96,7 @@ export type UpdateOrderItemInput = {
   label: string;
   quantity: number;
   catalogBasePriceCents: number;
+  catalogPriceMode?: CatalogPriceMode;
   discountMode: DiscountMode;
   discountValue: number;
   extraMode: DiscountMode;
@@ -114,6 +117,22 @@ export type CloneOrderItemInput = {
   orderId: string;
   itemId: string;
 };
+
+function usesLineTotalCatalogPricing(options: {
+  format?: string | null;
+  serviceCatalogQuantityTiers?: string | null;
+  explicitMode?: CatalogPriceMode;
+}) {
+  if (options.explicitMode === "LINE_TOTAL") {
+    return true;
+  }
+
+  if ((options.serviceCatalogQuantityTiers || "").trim()) {
+    return true;
+  }
+
+  return String(options.format || "").trim().toLowerCase().startsWith("calcolatore etichette");
+}
 
 export type UpdateCustomerInput = {
   id: string;
@@ -670,13 +689,20 @@ export function computeOrderTotals(items: OrderItemInput[]) {
       const discountValue = clampDiscountValue(discountMode, Number(item.discountValue ?? 0));
       const extraMode = (item.extraMode || "NONE") as DiscountMode;
       const extraValue = clampDiscountValue(extraMode, Number(item.extraValue ?? 0));
+      const catalogPriceMode = usesLineTotalCatalogPricing({
+        explicitMode: item.catalogPriceMode,
+        format: item.format
+      })
+        ? "LINE_TOTAL"
+        : "UNIT";
       const lineTotalCents = computeLineTotalWithAdjustmentsCents(
         catalogBasePriceCents,
         quantity,
         discountMode,
         discountValue,
         extraMode,
-        extraValue
+        extraValue,
+        catalogPriceMode
       );
       const unitPriceCents = computeEffectiveUnitPriceCents(lineTotalCents, quantity);
 
@@ -689,6 +715,7 @@ export function computeOrderTotals(items: OrderItemInput[]) {
         discountValue,
         extraMode,
         extraValue,
+        catalogPriceMode,
         unitPriceCents,
         lineTotalCents
       };
@@ -1054,6 +1081,11 @@ export async function updateOrderItem(input: UpdateOrderItemInput) {
         include: {
           payments: true
         }
+      },
+      serviceCatalog: {
+        select: {
+          quantityTiers: true
+        }
       }
     }
   });
@@ -1067,6 +1099,13 @@ export async function updateOrderItem(input: UpdateOrderItemInput) {
       label: input.label,
       quantity: input.quantity,
       catalogBasePriceCents: input.catalogBasePriceCents,
+      catalogPriceMode: usesLineTotalCatalogPricing({
+        explicitMode: input.catalogPriceMode,
+        format: input.format,
+        serviceCatalogQuantityTiers: item.serviceCatalog?.quantityTiers
+      })
+        ? "LINE_TOTAL"
+        : "UNIT",
       discountMode: input.discountMode,
       discountValue: input.discountValue,
       extraMode: input.extraMode,
@@ -1185,6 +1224,11 @@ export async function cloneOrderItem(input: CloneOrderItemInput) {
         include: {
           payments: true
         }
+      },
+      serviceCatalog: {
+        select: {
+          quantityTiers: true
+        }
       }
     }
   });
@@ -1199,6 +1243,12 @@ export async function cloneOrderItem(input: CloneOrderItemInput) {
       description: item.description || undefined,
       quantity: item.quantity,
       catalogBasePriceCents: item.catalogBasePriceCents || item.unitPriceCents,
+      catalogPriceMode: usesLineTotalCatalogPricing({
+        format: item.format,
+        serviceCatalogQuantityTiers: item.serviceCatalog?.quantityTiers
+      })
+        ? "LINE_TOTAL"
+        : "UNIT",
       discountMode: item.discountMode,
       discountValue: item.discountValue,
       extraMode: item.extraMode,

@@ -1,4 +1,6 @@
 export type DiscountModeValue = "NONE" | "AMOUNT" | "PERCENT";
+export type CatalogPriceMode = "UNIT" | "LINE_TOTAL";
+
 export type QuantityTier = {
   minQuantity: number;
   maxQuantity: number | null;
@@ -61,8 +63,12 @@ export function computeDiscountedUnitPrice(basePriceCents: number, mode: Discoun
   return safeBase;
 }
 
-export function computeLineBaseTotalCents(baseUnitPriceCents: number, quantity: number) {
+export function computeLineBaseTotalCents(baseUnitPriceCents: number, quantity: number, priceMode: CatalogPriceMode = "UNIT") {
   const safeBase = Number.isFinite(baseUnitPriceCents) ? Math.max(0, Math.round(baseUnitPriceCents)) : 0;
+  if (priceMode === "LINE_TOTAL") {
+    return safeBase;
+  }
+
   const safeQuantity = normalizeQuantityValue(quantity);
   return Math.max(0, Math.round(safeBase * safeQuantity));
 }
@@ -71,9 +77,10 @@ export function computeDiscountedLineTotalCents(
   baseUnitPriceCents: number,
   quantity: number,
   mode: DiscountModeValue,
-  value: number
+  value: number,
+  priceMode: CatalogPriceMode = "UNIT"
 ) {
-  const safeBaseLine = computeLineBaseTotalCents(baseUnitPriceCents, quantity);
+  const safeBaseLine = computeLineBaseTotalCents(baseUnitPriceCents, quantity, priceMode);
   const safeValue = clampDiscountValue(mode, value);
 
   if (mode === "AMOUNT") {
@@ -108,9 +115,10 @@ export function computeLineTotalWithAdjustmentsCents(
   discountMode: DiscountModeValue,
   discountValue: number,
   extraMode: DiscountModeValue,
-  extraValue: number
+  extraValue: number,
+  priceMode: CatalogPriceMode = "UNIT"
 ) {
-  const discounted = computeDiscountedLineTotalCents(baseUnitPriceCents, quantity, discountMode, discountValue);
+  const discounted = computeDiscountedLineTotalCents(baseUnitPriceCents, quantity, discountMode, discountValue, priceMode);
   return computeExtraLineTotalCents(discounted, extraMode, extraValue);
 }
 
