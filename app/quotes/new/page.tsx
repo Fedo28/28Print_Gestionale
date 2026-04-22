@@ -1,4 +1,5 @@
 import { createQuoteAction } from "@/app/actions";
+import { OrderDraftHeaderAction } from "@/components/order-draft-header-action";
 import { OrderForm } from "@/components/order-form";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
@@ -12,7 +13,7 @@ export default async function NewQuotePage() {
 
   return (
     <div className="stack">
-      <PageHeader title="Nuovo preventivo" />
+      <PageHeader action={<OrderDraftHeaderAction kind="quote" />} title="Nuovo preventivo" />
       <OrderForm action={createQuoteAction} customers={customers} kind="quote" services={services} />
     </div>
   );

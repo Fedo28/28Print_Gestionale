@@ -6803,13 +6803,39 @@ button.danger {
 }
 
 .order-detail-main-grid,
-.order-detail-support-grid {
+.order-detail-support-grid,
+.order-detail-secondary-grid {
   align-items: start;
 }
 
 .order-detail-summary-card .list-header {
   align-items: flex-start;
   gap: 18px;
+}
+
+.order-detail-summary-stack {
+  gap: 16px;
+}
+
+.order-detail-summary-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.order-detail-summary-meta-item {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid var(--sheet-chip-border);
+  background: var(--sheet-chip-bg);
+  box-shadow: var(--chip-shadow);
+}
+
+.order-detail-summary-meta-item strong {
+  font-size: 0.95rem;
+  line-height: 1.35;
 }
 
 .order-detail-note-preview {
@@ -6933,6 +6959,31 @@ button.danger {
 .order-detail-note-panel.is-empty {
   color: var(--muted);
   align-content: center;
+}
+
+.order-detail-accounting-card {
+  display: grid;
+  gap: 14px;
+}
+
+.order-detail-accounting-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.order-detail-accounting-stat {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid var(--sheet-chip-border);
+  background: var(--sheet-chip-bg);
+}
+
+.order-detail-accounting-stat strong {
+  font-size: 1rem;
+  line-height: 1.2;
 }
 
 .payment-summary-mobile {
@@ -7160,6 +7211,17 @@ button.action-icon-button {
   display: grid;
   gap: 4px;
   min-width: 0;
+}
+
+.order-item-editor-note-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .order-item-delivered-pill {
@@ -8870,7 +8932,8 @@ textarea:focus-visible {
 
   .order-detail-hero-strip,
   .order-detail-main-grid,
-  .order-detail-support-grid {
+  .order-detail-support-grid,
+  .order-detail-secondary-grid {
     gap: 12px;
   }
 
@@ -8881,6 +8944,7 @@ textarea:focus-visible {
   .order-detail-lines-card,
   .order-detail-notes-card,
   .order-detail-payments-card,
+  .order-detail-accounting-card,
   .order-detail-attachments-card,
   .order-detail-history-card {
     gap: 14px;
@@ -8898,12 +8962,16 @@ textarea:focus-visible {
   }
 
   .order-detail-summary-card .stack {
-    gap: 0;
+    gap: 12px;
   }
 
   .order-detail-summary-card .list-header > div:first-child {
     display: grid;
     gap: 4px;
+  }
+
+  .order-detail-summary-meta {
+    grid-template-columns: 1fr;
   }
 
   .order-detail-note-preview {
@@ -9049,7 +9117,8 @@ textarea:focus-visible {
   }
 
   .order-detail-main-grid,
-  .order-detail-support-grid {
+  .order-detail-support-grid,
+  .order-detail-secondary-grid {
     grid-template-columns: 1fr;
   }
 
@@ -9150,6 +9219,10 @@ textarea:focus-visible {
   .order-item-editor-total {
     width: 100%;
     justify-content: center;
+  }
+
+  .order-detail-accounting-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .calendar-day-shell {

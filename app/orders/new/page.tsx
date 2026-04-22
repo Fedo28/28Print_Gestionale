@@ -1,4 +1,5 @@
 import { createOrderAction } from "@/app/actions";
+import { OrderDraftHeaderAction } from "@/components/order-draft-header-action";
 import { OrderForm } from "@/components/order-form";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
@@ -12,7 +13,7 @@ export default async function NewOrderPage() {
 
   return (
     <div className="stack order-entry-page-shell">
-      <PageHeader title="Nuovo ordine" />
+      <PageHeader action={<OrderDraftHeaderAction kind="order" />} title="Nuovo ordine" />
       <OrderForm action={createOrderAction} customers={customers} kind="order" services={services} />
     </div>
   );

@@ -11,6 +11,7 @@ import {
   buildOrderDraftSubmittedKey,
   createEmptyOrderDraftFields,
   hasMeaningfulOrderDraft,
+  ORDER_DRAFT_STORAGE_EVENT,
   ORDER_DRAFT_FIELD_NAMES,
   parseOrderDraftSnapshot,
   type OrderDraftFieldValues,
@@ -433,6 +434,7 @@ export function OrderForm({
   kind?: OrderFormMode;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const inlineCatalogNameInputRef = useRef<HTMLInputElement>(null);
   const autosaveTimerRef = useRef<number | null>(null);
   const mobileMetaFrameRef = useRef<number | null>(null);
   const [catalogServices, setCatalogServices] = useState<ServiceCatalog[]>(services);
@@ -569,6 +571,7 @@ export function OrderForm({
 
     window.localStorage.removeItem(draftStorageKey);
     window.sessionStorage.removeItem(submittedDraftKey);
+    window.dispatchEvent(new Event(ORDER_DRAFT_STORAGE_EVENT));
     setHasSavedDraft(false);
     setLastDraftSavedAt(null);
     setDraftRestoredAt(null);
@@ -611,12 +614,14 @@ export function OrderForm({
 
     if (!hasMeaningfulOrderDraft(snapshot)) {
       window.localStorage.removeItem(draftStorageKey);
+      window.dispatchEvent(new Event(ORDER_DRAFT_STORAGE_EVENT));
       setHasSavedDraft(false);
       setLastDraftSavedAt(null);
       return;
     }
 
     window.localStorage.setItem(draftStorageKey, JSON.stringify(snapshot));
+    window.dispatchEvent(new Event(ORDER_DRAFT_STORAGE_EVENT));
     setHasSavedDraft(true);
     setLastDraftSavedAt(snapshot.savedAt);
   }
@@ -716,6 +721,7 @@ export function OrderForm({
     if (window.sessionStorage.getItem(submittedDraftKey) === "1") {
       window.localStorage.removeItem(draftStorageKey);
       window.sessionStorage.removeItem(submittedDraftKey);
+      window.dispatchEvent(new Event(ORDER_DRAFT_STORAGE_EVENT));
       setDraftHydrated(true);
       setHasSavedDraft(false);
       setLastDraftSavedAt(null);
@@ -778,6 +784,19 @@ export function OrderForm({
 
     scheduleMobileMetaSync();
   }, [draftHydrated, selectedCustomerId, customerQuery, items]);
+
+  useEffect(() => {
+    if (catalogDraftRowIndex === null || typeof window === "undefined") {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      inlineCatalogNameInputRef.current?.focus();
+      inlineCatalogNameInputRef.current?.select();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [catalogDraftRowIndex]);
 
   useEffect(() => {
     if (!items.length) {
@@ -1509,7 +1528,6 @@ export function OrderForm({
                   <div className="order-line-inline-catalog-copy">
                     <strong>Nuovo servizio catalogo</strong>
                   </div>
-                  <span className="pill">Codice automatico se vuoto</span>
                 </div>
               </div>
               <div className="order-line-inline-catalog-sections">
@@ -1523,16 +1541,8 @@ export function OrderForm({
                       <input
                         id={`inline-service-name-${index}`}
                         onChange={(event) => setCatalogDraft((current) => ({ ...current, name: event.target.value }))}
+                        ref={inlineCatalogNameInputRef}
                         value={catalogDraft.name}
-                      />
-                    </div>
-                    <div className="field full order-line-inline-catalog-code">
-                      <label htmlFor={`inline-service-code-${index}`}>Codice</label>
-                      <input
-                        id={`inline-service-code-${index}`}
-                        onChange={(event) => setCatalogDraft((current) => ({ ...current, code: event.target.value }))}
-                        placeholder="Facoltativo"
-                        value={catalogDraft.code}
                       />
                     </div>
                     <div className="field full order-line-inline-catalog-price">
@@ -2012,80 +2022,6 @@ export function OrderForm({
         </nav>
       </section>
 
-      <section className="card card-pad order-sheet-hero order-desktop-only">
-        <div className="order-sheet-hero-layout">
-          <div className="order-sheet-head">
-            <div className="stack compact-stack">
-              <span className="compact-kicker">{isQuoteMode ? "Scheda preventivo" : "Scheda ordine"}</span>
-              <div className="order-sheet-head-title-row">
-                <h3>{isQuoteMode ? "Preventivo rapido da banco" : "Copia commissione digitale"}</h3>
-                <div className="order-draft-banner order-draft-banner-inline">
-                  <div className="compact-stack">
-                    <strong>{hasSavedDraft ? "Bozza attiva" : "Autosalvataggio pronto"}</strong>
-                    <span className="subtle">
-                      {draftRestoredAt
-                        ? `Recuperata da ${formatDateTime(draftRestoredAt)}`
-                        : lastDraftSavedAt
-                          ? `Ultimo salvataggio ${formatDateTime(lastDraftSavedAt)}`
-                          : "Salvataggio automatico attivo"}
-                    </span>
-                  </div>
-                  {hasSavedDraft ? (
-                    <button
-                      className="ghost"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        resetDraftAndForm();
-                      }}
-                      type="button"
-                    >
-                      Svuota bozza
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-            <div className="order-sheet-summary">
-              <div className="order-sheet-chip">
-                <span className="subtle">Cliente</span>
-                <strong>{selectedCustomer ? selectedCustomer.name : "Nuovo cliente"}</strong>
-              </div>
-              <div className="order-sheet-chip">
-                <span className="subtle">Tipo cliente</span>
-                <strong>{selectedCustomer ? customerTypeLabels[selectedCustomer.type] : customerTypeLabels[defaultCustomerType]}</strong>
-              </div>
-              <div className="order-sheet-chip">
-                <span className="subtle">Righe</span>
-                <strong>{filledRows}</strong>
-              </div>
-              <div className="order-sheet-chip">
-                <span className="subtle">Totale</span>
-                <strong>{new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(previewTotalCents / 100)}</strong>
-              </div>
-            </div>
-          </div>
-          <div className="order-sheet-hero-flow" aria-label="Percorso nuovo ordine desktop">
-            {MOBILE_ORDER_STEPS.map((step, index) => (
-              <div className="order-sheet-flow-step" key={step.id}>
-                <span className="order-sheet-flow-index">{index + 1}</span>
-                <div className="order-sheet-flow-copy">
-                  <strong>{step.label}</strong>
-                  <span>
-                    {step.id === "customer"
-                      ? "Selezione o creazione cliente"
-                      : step.id === "details"
-                        ? "Titolo, scadenza e note"
-                        : step.id === "items"
-                          ? "Righe e prezzi"
-                          : "Controllo finale e invio"}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       <div className="grid grid-2 order-sheet-grid">
         <section className="card card-pad order-sheet-panel order-mobile-panel order-mobile-panel-customer">
           <div className="stack">
@@ -2110,7 +2046,7 @@ export function OrderForm({
                   setSelectedCustomerId(customer.id);
                   setCustomerQuery(customer.name);
                 }}
-                placeholder="Es. Rossi, +39 333..., info@azienda.it, pec@azienda.it, IT123..."
+                placeholder=""
                 query={customerQuery}
                 selectedCustomerId={selectedCustomerId}
               />
@@ -2207,7 +2143,7 @@ export function OrderForm({
             <div className="form-grid">
               <div className="field full">
                 <label htmlFor="title">Titolo / lavoro</label>
-                <input id="title" name="title" placeholder="Biglietti visita Rossi" required />
+                <input id="title" name="title" required />
               </div>
               <div className="field wide">
                 <label htmlFor="deliveryAt">Consegna prevista</label>

@@ -47,6 +47,8 @@ export type OrderDraftSnapshot = {
   items: OrderDraftItemSnapshot[];
 };
 
+export const ORDER_DRAFT_STORAGE_EVENT = "gestionale:order-draft-changed";
+
 export const ORDER_DRAFT_FIELD_NAMES = [
   "customerName",
   "customerType",

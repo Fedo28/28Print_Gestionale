@@ -65,6 +65,10 @@ export default async function OrderDetailPage({ params }: { params: { id: string
       : `Consegna ${formatDateTime(order.deliveryAt)}`;
   const mobilePaymentSummary =
     order.balanceDueCents > 0 ? `Residuo ${formatCurrency(order.balanceDueCents)}` : "Pagato";
+  const accountingSummary =
+    activePayments.length === 0
+      ? `Nessun movimento registrato • Residuo ${formatCurrency(order.balanceDueCents)}`
+      : `${activePayments.length} movimenti • Pagato ${formatCurrency(order.paidCents)} • Residuo ${formatCurrency(order.balanceDueCents)}`;
 
   return (
     <div className="stack order-detail-page-shell">
@@ -113,7 +117,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
 
       <section className="hero-strip order-detail-hero-strip">
         <article className="card card-pad hero-card order-hero-card order-detail-summary-card">
-          <div className="stack">
+          <div className="stack order-detail-summary-stack">
             <div className="list-header">
               <div>
                 <h3>{order.customer.name}</h3>
@@ -128,31 +132,25 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               />
             </div>
 
-            <div className="grid grid-4 order-metric-grid order-detail-metric-grid order-detail-metric-grid-desktop">
-              <div className="metric">
-                <span className="subtle">Totale</span>
-                <strong>{formatCurrency(order.totalCents)}</strong>
-              </div>
-              <div className="metric">
-                <span className="subtle">Acconto</span>
-                <strong>{formatCurrency(order.depositCents)}</strong>
-              </div>
-              <div className="metric">
-                <span className="subtle">Pagato</span>
-                <strong>{formatCurrency(order.paidCents)}</strong>
-              </div>
-              <div className="metric">
-                <span className="subtle">Residuo</span>
-                <strong>{formatCurrency(order.balanceDueCents)}</strong>
-              </div>
-            </div>
-
-            <div className="order-detail-mobile-payment-hero" aria-label="Riepilogo pagamenti mobile">
-              <span className="subtle">Pagamenti</span>
-              <strong>{mobilePaymentSummary}</strong>
-              <span className="hint">
-                {order.balanceDueCents > 0 ? `Pagato ${formatCurrency(order.paidCents)}` : `${activePayments.length} movimenti registrati`}
+            <div className="order-detail-summary-meta">
+              <span className="order-detail-summary-meta-item">
+                <span className="subtle">Lavoro</span>
+                <strong>{order.title}</strong>
               </span>
+              <span className="order-detail-summary-meta-item">
+                <span className="subtle">Consegna</span>
+                <strong>{formatDateTime(order.deliveryAt)}</strong>
+              </span>
+              <span className="order-detail-summary-meta-item">
+                <span className="subtle">Lavorazioni</span>
+                <strong>{order.items.length}</strong>
+              </span>
+              {order.appointmentAt ? (
+                <span className="order-detail-summary-meta-item">
+                  <span className="subtle">Appuntamento</span>
+                  <strong>{formatDateTime(order.appointmentAt)}</strong>
+                </span>
+              ) : null}
             </div>
 
             <div className="toolbar status-cluster">
@@ -365,178 +363,179 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         </details>
       </div>
 
-      <div className="grid grid-3 order-detail-support-grid">
-        <section className="card card-pad order-detail-lines-card">
-          <div className="order-detail-section-head">
-            <div>
-              <h3>Righe ordine</h3>
-              <span className="subtle">{order.items.length} lavorazioni</span>
-            </div>
-            <span className="action-icon-button" aria-hidden="true">
-              <SectionGlyph kind="items" />
-            </span>
+      <section className="card card-pad order-detail-lines-card">
+        <div className="order-detail-section-head">
+          <div>
+            <h3>Righe ordine</h3>
+            <span className="subtle">{order.items.length} lavorazioni</span>
           </div>
-          <div className="mini-list">
-	            {order.items.map((item) => (
-	              <details className={`mini-item order-item-editor${item.deliveredAt ? " is-delivered" : ""}`} key={item.id}>
-	                <summary className="order-item-editor-summary">
-	                  <div className="order-item-editor-copy">
-	                    <strong>{item.label}</strong>
-	                    <span className="subtle">
-	                      {Boolean(item.serviceCatalog?.quantityTiers?.trim()) ||
-	                      String(item.format || "").trim().toLowerCase().startsWith("calcolatore etichette")
-	                        ? `${formatQuantity(item.quantity)} pz • Scaglione ${formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}`
-	                        : `${formatQuantity(item.quantity)} x ${formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}`}
-	                    </span>
-	                    {item.deliveredAt ? <span className="order-item-delivered-pill">{`Consegnata il ${formatDateTime(item.deliveredAt)}`}</span> : null}
-	                  </div>
-	                  <span className="order-item-editor-total">{formatCurrency(item.lineTotalCents)}</span>
-	                </summary>
-                <div className="order-item-editor-body">
-                  <form action={updateOrderItemAction} className="form-grid order-item-editor-form">
+          <span className="action-icon-button" aria-hidden="true">
+            <SectionGlyph kind="items" />
+          </span>
+        </div>
+        <div className="mini-list">
+          {order.items.map((item) => (
+            <details className={`mini-item order-item-editor${item.deliveredAt ? " is-delivered" : ""}`} key={item.id}>
+              <summary className="order-item-editor-summary">
+                <div className="order-item-editor-copy">
+                  <strong>{item.label}</strong>
+                  <span className="subtle">
+                    {Boolean(item.serviceCatalog?.quantityTiers?.trim()) ||
+                    String(item.format || "").trim().toLowerCase().startsWith("calcolatore etichette")
+                      ? `${formatQuantity(item.quantity)} pz • Scaglione ${formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}`
+                      : `${formatQuantity(item.quantity)} x ${formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}`}
+                  </span>
+                  {item.notes?.trim() ? <span className="order-item-editor-note-preview">{item.notes}</span> : null}
+                  {item.deliveredAt ? <span className="order-item-delivered-pill">{`Consegnata il ${formatDateTime(item.deliveredAt)}`}</span> : null}
+                </div>
+                <span className="order-item-editor-total">{formatCurrency(item.lineTotalCents)}</span>
+              </summary>
+              <div className="order-item-editor-body">
+                <form action={updateOrderItemAction} className="form-grid order-item-editor-form">
+                  <input name="orderId" type="hidden" value={order.id} />
+                  <input name="itemId" type="hidden" value={item.id} />
+                  <div className="field wide">
+                    <label htmlFor={`item-label-${item.id}`}>Titolo riga</label>
+                    <input defaultValue={item.label} id={`item-label-${item.id}`} name="label" required />
+                  </div>
+                  <div className="field">
+                    <label htmlFor={`item-qty-${item.id}`}>Qta</label>
+                    <input
+                      className="numeric-input"
+                      defaultValue={String(item.quantity).replace(".", ",")}
+                      id={`item-qty-${item.id}`}
+                      inputMode="decimal"
+                      name="quantity"
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor={`item-base-${item.id}`}>Prezzo listino</label>
+                    <input
+                      className="currency-input"
+                      defaultValue={((item.catalogBasePriceCents || item.unitPriceCents) / 100).toFixed(2).replace(".", ",")}
+                      id={`item-base-${item.id}`}
+                      inputMode="decimal"
+                      name="catalogBasePrice"
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor={`item-discount-mode-${item.id}`}>Sconto</label>
+                    <select defaultValue={item.discountMode} id={`item-discount-mode-${item.id}`} name="discountMode">
+                      {discountModeOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label htmlFor={`item-discount-value-${item.id}`}>Valore sconto</label>
+                    <input
+                      className="numeric-input"
+                      defaultValue={
+                        item.discountMode === "PERCENT"
+                          ? String(item.discountValue)
+                          : (item.discountValue / 100).toFixed(2).replace(".", ",")
+                      }
+                      id={`item-discount-value-${item.id}`}
+                      inputMode="decimal"
+                      name="discountValue"
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor={`item-extra-mode-${item.id}`}>Extra</label>
+                    <select defaultValue={item.extraMode} id={`item-extra-mode-${item.id}`} name="extraMode">
+                      {discountModeOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label htmlFor={`item-extra-value-${item.id}`}>Valore extra</label>
+                    <input
+                      className="numeric-input"
+                      defaultValue={
+                        item.extraMode === "PERCENT"
+                          ? String(item.extraValue)
+                          : (item.extraValue / 100).toFixed(2).replace(".", ",")
+                      }
+                      id={`item-extra-value-${item.id}`}
+                      inputMode="decimal"
+                      name="extraValue"
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor={`item-format-${item.id}`}>Formato</label>
+                    <input defaultValue={item.format || ""} id={`item-format-${item.id}`} name="format" />
+                  </div>
+                  <div className="field">
+                    <label htmlFor={`item-material-${item.id}`}>Materiale</label>
+                    <input defaultValue={item.material || ""} id={`item-material-${item.id}`} name="material" />
+                  </div>
+                  <div className="field">
+                    <label htmlFor={`item-finishing-${item.id}`}>Finitura</label>
+                    <input defaultValue={item.finishing || ""} id={`item-finishing-${item.id}`} name="finishing" />
+                  </div>
+                  <div className="field full">
+                    <label htmlFor={`item-notes-${item.id}`}>Note riga</label>
+                    <textarea defaultValue={item.notes || ""} id={`item-notes-${item.id}`} name="notes" />
+                  </div>
+                  <div className="button-row order-detail-submit-row">
+                    <button className="secondary" type="submit">
+                      Salva riga
+                    </button>
+                  </div>
+                </form>
+                <div className="button-row order-item-editor-actions">
+                  <form action={cloneOrderItemAction}>
                     <input name="orderId" type="hidden" value={order.id} />
                     <input name="itemId" type="hidden" value={item.id} />
-                    <div className="field wide">
-                      <label htmlFor={`item-label-${item.id}`}>Titolo riga</label>
-                      <input defaultValue={item.label} id={`item-label-${item.id}`} name="label" required />
-                    </div>
-                    <div className="field">
-                      <label htmlFor={`item-qty-${item.id}`}>Qta</label>
-                      <input
-                        className="numeric-input"
-                        defaultValue={String(item.quantity).replace(".", ",")}
-                        id={`item-qty-${item.id}`}
-                        inputMode="decimal"
-                        name="quantity"
-                      />
-                    </div>
-                    <div className="field">
-                      <label htmlFor={`item-base-${item.id}`}>Prezzo listino</label>
-                      <input
-                        className="currency-input"
-                        defaultValue={((item.catalogBasePriceCents || item.unitPriceCents) / 100).toFixed(2).replace(".", ",")}
-                        id={`item-base-${item.id}`}
-                        inputMode="decimal"
-                        name="catalogBasePrice"
-                      />
-                    </div>
-                    <div className="field">
-                      <label htmlFor={`item-discount-mode-${item.id}`}>Sconto</label>
-                      <select defaultValue={item.discountMode} id={`item-discount-mode-${item.id}`} name="discountMode">
-                        {discountModeOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="field">
-                      <label htmlFor={`item-discount-value-${item.id}`}>Valore sconto</label>
-                      <input
-                        className="numeric-input"
-                        defaultValue={
-                          item.discountMode === "PERCENT"
-                            ? String(item.discountValue)
-                            : (item.discountValue / 100).toFixed(2).replace(".", ",")
-                        }
-                        id={`item-discount-value-${item.id}`}
-                        inputMode="decimal"
-                        name="discountValue"
-                      />
-                    </div>
-                    <div className="field">
-                      <label htmlFor={`item-extra-mode-${item.id}`}>Extra</label>
-                      <select defaultValue={item.extraMode} id={`item-extra-mode-${item.id}`} name="extraMode">
-                        {discountModeOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="field">
-                      <label htmlFor={`item-extra-value-${item.id}`}>Valore extra</label>
-                      <input
-                        className="numeric-input"
-                        defaultValue={
-                          item.extraMode === "PERCENT"
-                            ? String(item.extraValue)
-                            : (item.extraValue / 100).toFixed(2).replace(".", ",")
-                        }
-                        id={`item-extra-value-${item.id}`}
-                        inputMode="decimal"
-                        name="extraValue"
-                      />
-                    </div>
-                    <div className="field">
-                      <label htmlFor={`item-format-${item.id}`}>Formato</label>
-                      <input defaultValue={item.format || ""} id={`item-format-${item.id}`} name="format" />
-                    </div>
-                    <div className="field">
-                      <label htmlFor={`item-material-${item.id}`}>Materiale</label>
-                      <input defaultValue={item.material || ""} id={`item-material-${item.id}`} name="material" />
-                    </div>
-                    <div className="field">
-                      <label htmlFor={`item-finishing-${item.id}`}>Finitura</label>
-                      <input defaultValue={item.finishing || ""} id={`item-finishing-${item.id}`} name="finishing" />
-                    </div>
-                    <div className="field full">
-                      <label htmlFor={`item-notes-${item.id}`}>Note riga</label>
-                      <textarea defaultValue={item.notes || ""} id={`item-notes-${item.id}`} name="notes" />
-                    </div>
-                    <div className="button-row order-detail-submit-row">
-                      <button className="secondary" type="submit">
-                        Salva riga
-                      </button>
-                    </div>
+                    <button className="ghost" type="submit">
+                      Clona riga
+                    </button>
                   </form>
-                  <div className="button-row order-item-editor-actions">
-                    <form action={cloneOrderItemAction}>
-                      <input name="orderId" type="hidden" value={order.id} />
-                      <input name="itemId" type="hidden" value={item.id} />
-                      <button className="ghost" type="submit">
-                        Clona riga
-                      </button>
-                    </form>
-                  </div>
-                  {item.deliveredAt ? (
-                    <div className="order-item-delivered-overlay">
-                      <div className="order-item-delivered-overlay-card">
-                        <strong>{`Gia consegnata il ${formatDateTime(item.deliveredAt)}`}</strong>
-                        <span>La riga resta in sola lettura finche non la riapri.</span>
-                        <form action={cloneOrderItemAction}>
-                          <input name="orderId" type="hidden" value={order.id} />
-                          <input name="itemId" type="hidden" value={item.id} />
-                          <button className="ghost" type="submit">
-                            Clona riga
-                          </button>
-                        </form>
-                        <form action={toggleOrderItemDeliveryAction}>
-                          <input name="orderId" type="hidden" value={order.id} />
-                          <input name="itemId" type="hidden" value={item.id} />
-                          <input name="delivered" type="hidden" value="false" />
-                          <button className="secondary" type="submit">
-                            Riapri riga
-                          </button>
-                        </form>
-                      </div>
-                    </div>
-                  ) : (
-                    <form action={toggleOrderItemDeliveryAction} className="order-item-delivery-action">
-                      <input name="orderId" type="hidden" value={order.id} />
-                      <input name="itemId" type="hidden" value={item.id} />
-                      <input name="delivered" type="hidden" value="true" />
-                      <button className="ghost" type="submit">
-                        Segna come consegnata
-                      </button>
-                    </form>
-                  )}
                 </div>
-              </details>
-            ))}
-          </div>
-        </section>
+                {item.deliveredAt ? (
+                  <div className="order-item-delivered-overlay">
+                    <div className="order-item-delivered-overlay-card">
+                      <strong>{`Gia consegnata il ${formatDateTime(item.deliveredAt)}`}</strong>
+                      <span>La riga resta in sola lettura finche non la riapri.</span>
+                      <form action={cloneOrderItemAction}>
+                        <input name="orderId" type="hidden" value={order.id} />
+                        <input name="itemId" type="hidden" value={item.id} />
+                        <button className="ghost" type="submit">
+                          Clona riga
+                        </button>
+                      </form>
+                      <form action={toggleOrderItemDeliveryAction}>
+                        <input name="orderId" type="hidden" value={order.id} />
+                        <input name="itemId" type="hidden" value={item.id} />
+                        <input name="delivered" type="hidden" value="false" />
+                        <button className="secondary" type="submit">
+                          Riapri riga
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                ) : (
+                  <form action={toggleOrderItemDeliveryAction} className="order-item-delivery-action">
+                    <input name="orderId" type="hidden" value={order.id} />
+                    <input name="itemId" type="hidden" value={item.id} />
+                    <input name="delivered" type="hidden" value="true" />
+                    <button className="ghost" type="submit">
+                      Segna come consegnata
+                    </button>
+                  </form>
+                )}
+              </div>
+            </details>
+          ))}
+        </div>
+      </section>
 
+      <div className="grid grid-2 order-detail-secondary-grid">
         <section className="card card-pad order-detail-notes-card">
           <div className="order-detail-section-head">
             <div>
@@ -554,7 +553,35 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           </div>
         </section>
 
-        <details className="card card-pad order-detail-disclosure order-detail-payments-card">
+        <details className="card card-pad order-detail-disclosure order-detail-attachments-card">
+          <summary className="order-detail-disclosure-summary">
+            <div className="order-detail-disclosure-copy">
+              <h3>Allegati</h3>
+              <span className="subtle">{order.attachments.length === 0 ? "Nessun file" : `${order.attachments.length} file`}</span>
+            </div>
+            <span className="action-icon-button" aria-hidden="true">
+              <SectionGlyph kind="attachments" />
+            </span>
+          </summary>
+          <AttachmentUploadForm orderId={order.id} useDirectUpload={useDirectUpload} />
+          <div className="mini-list">
+            {order.attachments.length === 0 ? (
+              <div className="empty">Nessun file caricato.</div>
+            ) : (
+              order.attachments.map((attachment) => (
+                <a className="mini-item" href={attachment.filePath} key={attachment.id} rel="noreferrer" target="_blank">
+                  <strong>{attachment.fileName}</strong>
+                  <span className="subtle">
+                    {formatAttachmentSize(attachment.sizeBytes)} • {formatDateTime(attachment.createdAt)}
+                  </span>
+                </a>
+              ))
+            )}
+          </div>
+        </details>
+      </div>
+
+      <details className="card card-pad order-detail-disclosure order-detail-payments-card">
           <summary className="order-detail-disclosure-summary">
             <div className="order-detail-disclosure-copy">
               <h3>Pagamenti</h3>
@@ -569,20 +596,6 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               <SectionGlyph kind="payments" />
             </span>
           </summary>
-          <div className="payment-overview-grid">
-            <span className="payment-overview-stat">
-              <strong>{formatCurrency(order.paidCents)}</strong>
-              <span>Pagato</span>
-            </span>
-            <span className="payment-overview-stat">
-              <strong>{formatCurrency(order.balanceDueCents)}</strong>
-              <span>Residuo</span>
-            </span>
-            <span className="payment-overview-stat">
-              <strong>{activePayments.length}</strong>
-              <span>Movimenti</span>
-            </span>
-          </div>
           <form action={recordPaymentAction} className="form-grid payment-entry-form">
             <input name="orderId" type="hidden" value={order.id} />
             <div className="field">
@@ -666,35 +679,37 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               ))
             )}
           </div>
-        </details>
+      </details>
 
-        <details className="card card-pad order-detail-disclosure order-detail-attachments-card">
-          <summary className="order-detail-disclosure-summary">
-            <div className="order-detail-disclosure-copy">
-              <h3>Allegati</h3>
-              <span className="subtle">{order.attachments.length === 0 ? "Nessun file" : `${order.attachments.length} file`}</span>
-            </div>
-            <span className="action-icon-button" aria-hidden="true">
-              <SectionGlyph kind="attachments" />
-            </span>
-          </summary>
-          <AttachmentUploadForm orderId={order.id} useDirectUpload={useDirectUpload} />
-          <div className="mini-list">
-            {order.attachments.length === 0 ? (
-              <div className="empty">Nessun file caricato.</div>
-            ) : (
-              order.attachments.map((attachment) => (
-                <a className="mini-item" href={attachment.filePath} key={attachment.id} rel="noreferrer" target="_blank">
-                  <strong>{attachment.fileName}</strong>
-                  <span className="subtle">
-                    {formatAttachmentSize(attachment.sizeBytes)} • {formatDateTime(attachment.createdAt)}
-                  </span>
-                </a>
-              ))
-            )}
+      <section className="card card-pad order-detail-accounting-card">
+        <div className="order-detail-section-head">
+          <div>
+            <h3>Contabile</h3>
+            <span className="subtle">{accountingSummary}</span>
           </div>
-        </details>
-      </div>
+          <span className="action-icon-button" aria-hidden="true">
+            <SectionGlyph kind="payments" />
+          </span>
+        </div>
+        <div className="order-detail-accounting-grid">
+          <span className="order-detail-accounting-stat">
+            <span className="subtle">Totale</span>
+            <strong>{formatCurrency(order.totalCents)}</strong>
+          </span>
+          <span className="order-detail-accounting-stat">
+            <span className="subtle">Acconto</span>
+            <strong>{formatCurrency(order.depositCents)}</strong>
+          </span>
+          <span className="order-detail-accounting-stat">
+            <span className="subtle">Pagato</span>
+            <strong>{formatCurrency(order.paidCents)}</strong>
+          </span>
+          <span className="order-detail-accounting-stat">
+            <span className="subtle">Residuo</span>
+            <strong>{formatCurrency(order.balanceDueCents)}</strong>
+          </span>
+        </div>
+      </section>
 
       <details className="card card-pad order-detail-disclosure order-detail-history-card">
         <summary className="order-detail-disclosure-summary">
