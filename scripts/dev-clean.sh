@@ -13,8 +13,8 @@ if [[ -n "${PIDS}" ]]; then
   sleep 1
 fi
 
-echo "Cleaning .next cache"
-rm -rf .next
+echo "Cleaning .next-dev cache"
+rm -rf .next-dev
 
 echo "Starting Next.js on ${BIND_HOST}:${PORT}"
 exec npx next dev --hostname "${BIND_HOST}" --port "${PORT}"

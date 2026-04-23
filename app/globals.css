@@ -1268,9 +1268,24 @@ button.theme-toggle.toolbar-theme-toggle.is-active .theme-switch-thumb {
   min-height: 62px;
   padding: 0 14px 0 46px;
   border-radius: 22px;
-  border: 1px solid var(--sheet-chip-border);
-  background: var(--sheet-chip-bg);
-  box-shadow: var(--shadow-md);
+  border: 1px solid var(--field-border);
+  background: var(--field-bg);
+  box-shadow: var(--field-shadow), var(--shadow-md);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.global-search-field-shell:focus-within {
+  border-color: var(--card-hover-border);
+  background: var(--quick-trigger-bg);
+  box-shadow:
+    0 0 0 4px var(--brand-soft),
+    var(--field-shadow),
+    var(--shadow-lg);
+  transform: translateY(-1px);
 }
 
 .global-search-field-shell input {
@@ -1280,12 +1295,15 @@ button.theme-toggle.toolbar-theme-toggle.is-active .theme-switch-thumb {
   background: transparent;
   box-shadow: none;
   padding: 0;
+  color: var(--text);
+  font-weight: 700;
 }
 
 .global-search-icon {
   position: absolute;
   left: 16px;
-  color: var(--muted);
+  color: var(--text);
+  opacity: 0.72;
 }
 
 .global-search-clear {
@@ -1297,9 +1315,15 @@ button.theme-toggle.toolbar-theme-toggle.is-active .theme-switch-thumb {
   align-items: center;
   justify-content: center;
   border-radius: 14px;
-  border: 1px solid var(--sheet-chip-border);
-  background: var(--chip-bg);
+  border: 1px solid var(--field-border);
+  background: var(--secondary-button-bg);
   color: var(--text);
+}
+
+.global-search-clear:hover,
+.global-search-clear:focus-visible {
+  border-color: var(--card-hover-border);
+  background: var(--ghost-button-bg);
 }
 
 .global-search-clear span {
@@ -1335,8 +1359,8 @@ button.theme-toggle.toolbar-theme-toggle.is-active .theme-switch-thumb {
   overflow: auto;
   padding: 16px;
   border-radius: 28px;
-  border: 1px solid var(--sheet-chip-border);
-  background: var(--shell-bg);
+  border: 1px solid var(--quick-panel-border);
+  background: var(--quick-panel-bg);
   box-shadow: var(--shadow-xl);
   z-index: 30;
 }
@@ -5565,6 +5589,11 @@ button.danger {
   padding-top: 4px;
 }
 
+.customer-draft-banner,
+.settings-service-draft-banner {
+  grid-column: 1 / -1;
+}
+
 .customer-form-actions {
   grid-column: 1 / -1;
 }
@@ -7321,76 +7350,83 @@ button.action-icon-button {
 }
 
 .print-order-page-shell {
-  gap: 22px;
+  gap: 18px;
+}
+
+.print-route-layout {
+  min-height: 100vh;
+  padding: clamp(18px, 4vw, 34px);
+  background: #ffffff;
 }
 
 .print-sheet {
   display: grid;
-  gap: 18px;
-  width: min(210mm, 100%);
-  min-height: 297mm;
+  gap: 12px;
+  width: min(194mm, 100%);
   margin: 0 auto;
-  padding: 16mm 14mm;
-  border-radius: 32px;
-  border: 1px solid rgba(116, 126, 162, 0.16);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.88)),
-    radial-gradient(circle at top right, rgba(162, 201, 255, 0.12), transparent 26%);
-  box-shadow: 0 28px 64px rgba(72, 79, 117, 0.14);
+  padding: 11mm 10mm;
+  border-radius: 0;
+  border: none;
+  background: #ffffff;
+  box-shadow: none;
 }
 
 .print-sheet-header,
 .print-sheet-top-grid,
 .print-sheet-bottom-grid {
   display: grid;
-  gap: 16px;
+  gap: 10px;
 }
 
 .print-sheet-header,
 .print-sheet-top-grid,
 .print-sheet-bottom-grid {
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
+  grid-template-columns: minmax(0, 1.15fr) minmax(235px, 0.85fr);
 }
 
 .print-sheet-brand {
   display: grid;
-  gap: 8px;
+  gap: 5px;
 }
 
 .print-sheet-brand h1 {
-  font-size: clamp(1.8rem, 3vw, 2.4rem);
+  font-size: clamp(1.45rem, 2.3vw, 1.95rem);
   line-height: 1;
+  margin: 0;
 }
 
 .print-sheet-brand p,
 .print-sheet-summary span,
 .print-sheet-card > span,
 .print-sheet-payment-meta span,
-.print-sheet-item-specs span {
+.print-sheet-item-specs,
+.print-sheet-status-grid span {
   color: var(--muted);
 }
 
 .print-sheet-summary,
-.print-sheet-totals {
+.print-sheet-totals,
+.print-sheet-status-grid {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 
 .print-sheet-summary div,
-.print-sheet-totals div {
+.print-sheet-totals div,
+.print-sheet-status-grid div {
   display: grid;
-  gap: 4px;
-  padding: 12px 14px;
-  border-radius: 18px;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 12px;
   border: 1px solid var(--sheet-chip-border);
   background: var(--sheet-chip-bg);
 }
 
 .print-sheet-card {
   display: grid;
-  gap: 10px;
-  padding: 18px 20px;
-  border-radius: 24px;
+  gap: 7px;
+  padding: 12px 14px;
+  border-radius: 16px;
   border: 1px solid rgba(116, 126, 162, 0.14);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.7)),
@@ -7398,11 +7434,11 @@ button.action-icon-button {
 }
 
 .print-sheet-lines-card {
-  gap: 14px;
+  gap: 10px;
 }
 
 .print-sheet-label {
-  font-size: 0.72rem;
+  font-size: 0.64rem;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -7412,24 +7448,31 @@ button.action-icon-button {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+}
+
+.print-sheet-section-head h2 {
+  margin: 0;
+  font-size: 1rem;
 }
 
 .print-sheet-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .print-sheet-table th,
 .print-sheet-table td {
-  padding: 12px 10px;
+  padding: 7px 6px;
   border-bottom: 1px solid rgba(116, 126, 162, 0.16);
   text-align: left;
   vertical-align: top;
+  font-size: 0.84rem;
 }
 
 .print-sheet-table th {
-  font-size: 0.78rem;
+  font-size: 0.68rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--muted);
@@ -7443,31 +7486,183 @@ button.action-icon-button {
 }
 
 .print-sheet-item-specs {
-  display: grid;
-  gap: 3px;
-  padding-top: 6px;
-  font-size: 0.84rem;
-  line-height: 1.45;
+  padding-top: 3px;
+  font-size: 0.72rem;
+  line-height: 1.3;
 }
 
 .print-sheet-note {
   margin: 0;
-  line-height: 1.7;
+  font-size: 0.8rem;
+  line-height: 1.35;
   white-space: pre-wrap;
-}
-
-.print-sheet-pills .status-pills {
-  justify-content: flex-start;
 }
 
 .print-sheet-payment-meta {
   display: grid;
-  gap: 6px;
+  gap: 4px;
+  font-size: 0.72rem;
+}
+
+.print-sheet-minimal {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 277mm;
+  padding: 9mm 10mm 7mm;
+}
+
+.print-sheet-section {
+  display: grid;
+  gap: 4px;
+}
+
+.print-preview-page {
+  display: grid;
+  gap: 18px;
+}
+
+.print-sheet-minimal-header {
+  display: grid;
+  gap: 24px;
+  padding-bottom: 16px;
+}
+
+.print-sheet-logo {
+  justify-items: center;
+  padding-bottom: 0;
+}
+
+.print-sheet-logo-image {
+  width: 4cm;
+  height: auto;
+}
+
+.print-sheet-doc-type,
+.print-sheet-total-block,
+.print-sheet-delivery-block {
+  justify-items: end;
+  text-align: right;
+}
+
+.print-sheet-doc-type strong {
+  font-size: 1.12rem;
+  font-weight: 800;
+  text-transform: lowercase;
+}
+
+.print-sheet-customer-block {
+  gap: 2px;
+  padding-bottom: 26px;
+}
+
+.print-sheet-customer-name {
+  font-size: 1.08rem;
+}
+
+.print-sheet-customer-block span,
+.print-sheet-total-block span,
+.print-sheet-delivery-block span {
+  color: #5d6470;
+  font-size: 0.78rem;
+}
+
+.print-sheet-lines-block {
+  gap: 0;
+  padding-bottom: 18px;
+}
+
+.print-sheet-lines-table th,
+.print-sheet-lines-table td {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(22, 28, 45, 0.12);
+}
+
+.print-sheet-lines-table thead th {
+  color: #6f7683;
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+}
+
+.print-sheet-lines-table tfoot th {
+  padding-top: 11px;
+  border-bottom: none;
+  border-top: 1.5px solid rgba(22, 28, 45, 0.18);
+  color: #1f2430;
+  font-size: 0.78rem;
+}
+
+.print-sheet-total-block {
+  gap: 2px;
+  padding-top: 4px;
+  padding-bottom: 24px;
+}
+
+.print-sheet-total-block strong {
+  font-size: 1.18rem;
+}
+
+.print-sheet-delivery-block {
+  gap: 2px;
+  margin-top: auto;
+  padding-top: 0;
+  padding-bottom: 28px;
+}
+
+.print-sheet-footer {
+  display: grid;
+  gap: 14px;
+  padding-top: 16px;
+}
+
+.print-sheet-footer-meta,
+.print-sheet-footer-services {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  text-align: center;
+  color: #525865;
+}
+
+.print-sheet-footer-meta {
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.print-sheet-footer-services {
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.print-sheet-footer-rule {
+  position: relative;
+  height: 12px;
+}
+
+.print-sheet-footer-rule::before,
+.print-sheet-footer-rule::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  border-radius: 999px;
+}
+
+.print-sheet-footer-rule::before {
+  top: 0;
+  height: 6px;
+  background: #1290d6;
+}
+
+.print-sheet-footer-rule::after {
+  bottom: 0;
+  height: 6px;
+  background: #b7112a;
 }
 
 @page {
   size: A4;
-  margin: 12mm;
+  margin: 8mm;
 }
 
 .center-stage {
@@ -10633,8 +10828,11 @@ textarea:focus-visible {
 }
 
 @media print {
+  html,
   body {
     background: #ffffff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   .sidebar,
@@ -10662,29 +10860,123 @@ textarea:focus-visible {
     gap: 0 !important;
   }
 
+  .print-route-layout {
+    min-height: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
   .print-sheet,
   .print-sheet-card,
   .print-sheet-summary div,
-  .print-sheet-totals div {
+  .print-sheet-totals div,
+  .print-sheet-status-grid div {
     box-shadow: none !important;
     background: #ffffff !important;
   }
 
   .print-sheet {
-    width: auto !important;
-    min-height: 0 !important;
+    width: 194mm !important;
     margin: 0 !important;
-    padding: 0 !important;
-    border: 0 !important;
+    padding: 8mm 8mm 6mm !important;
+    border: none !important;
     border-radius: 0 !important;
+    gap: 0 !important;
+    box-sizing: border-box !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
   .print-sheet-card {
     border-color: rgba(0, 0, 0, 0.12) !important;
+    padding: 9px 10px !important;
   }
 
   .print-sheet-table th,
   .print-sheet-table td {
     border-bottom-color: rgba(0, 0, 0, 0.12) !important;
+    padding: 5px 4px !important;
+    font-size: 10.5px !important;
+  }
+
+  .print-sheet-header,
+  .print-sheet-top-grid,
+  .print-sheet-bottom-grid {
+    gap: 8px !important;
+  }
+
+  .print-sheet-brand h1 {
+    font-size: 20px !important;
+  }
+
+  .print-sheet-item-specs,
+  .print-sheet-note,
+  .print-sheet-payment-meta {
+    font-size: 10px !important;
+    line-height: 1.25 !important;
+  }
+
+  .print-sheet-minimal {
+    min-height: 277mm !important;
+    padding: 8mm 8mm 6mm !important;
+    gap: 0 !important;
+  }
+
+  .print-sheet-logo-image {
+    width: 4cm !important;
+  }
+
+  .print-sheet-minimal-header {
+    gap: 20px !important;
+    padding-bottom: 14px !important;
+  }
+
+  .print-sheet-doc-type strong {
+    font-size: 16px !important;
+  }
+
+  .print-sheet-customer-block {
+    padding-bottom: 22px !important;
+  }
+
+  .print-sheet-customer-name,
+  .print-sheet-total-block strong,
+  .print-sheet-delivery-block strong {
+    font-size: 13px !important;
+  }
+
+  .print-sheet-customer-block span,
+  .print-sheet-total-block span,
+  .print-sheet-delivery-block span {
+    font-size: 10px !important;
+  }
+
+  .print-sheet-lines-block {
+    padding-bottom: 16px !important;
+  }
+
+  .print-sheet-lines-table tfoot th {
+    font-size: 10.5px !important;
+  }
+
+  .print-sheet-total-block {
+    padding-bottom: 20px !important;
+  }
+
+  .print-sheet-delivery-block {
+    padding-bottom: 22px !important;
+  }
+
+  .print-sheet-footer {
+    gap: 10px !important;
+    padding-top: 12px !important;
+  }
+
+  .print-sheet-footer-meta {
+    font-size: 9px !important;
+  }
+
+  .print-sheet-footer-services {
+    font-size: 8.5px !important;
   }
 }

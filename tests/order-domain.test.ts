@@ -24,7 +24,8 @@ import {
   computeLineTotalWithAdjustmentsCents,
   getTieredUnitPrice,
   normalizeQuantityTiers,
-  parseQuantityTiers
+  parseQuantityTiers,
+  usesLineTotalQuantityTiers
 } from "../lib/pricing";
 
 describe("order domain", () => {
@@ -98,11 +99,11 @@ describe("order domain", () => {
     expect(() => assertPhaseTransition("ACCETTATO", "SVILUPPO_COMPLETATO", 0)).toThrow(/procedi in sequenza/i);
   });
 
-  it("blocks delivery with open balance without note", () => {
-    expect(() => assertPhaseTransition("SVILUPPO_COMPLETATO", "CONSEGNATO", 1200)).toThrow(/nota di override/i);
+  it("allows delivery with open balance without note", () => {
+    expect(() => assertPhaseTransition("SVILUPPO_COMPLETATO", "CONSEGNATO", 1200)).not.toThrow();
   });
 
-  it("allows delivery with override note", () => {
+  it("allows delivery with optional override note", () => {
     expect(() => assertPhaseTransition("SVILUPPO_COMPLETATO", "CONSEGNATO", 1200, "Cliente paga domani")).not.toThrow();
   });
 
@@ -390,6 +391,12 @@ describe("order domain", () => {
     expect(getTieredUnitPrice(100, 5, raw)).toBe(50);
     expect(getTieredUnitPrice(100, 20, raw)).toBe(30);
     expect(getTieredUnitPrice(100, 120, raw)).toBe(20);
+  });
+
+  it("uses line-total tiers only for business cards", () => {
+    expect(usesLineTotalQuantityTiers({ code: "BIGLIETTI_VISITA", name: "Biglietti da visita" })).toBe(true);
+    expect(usesLineTotalQuantityTiers({ code: "COPIE_COLORI", name: "Copie a colori" })).toBe(false);
+    expect(computeLineTotalWithAdjustmentsCents(30, 20, "NONE", 0, "NONE", 0, "UNIT")).toBe(600);
   });
 
   it("treats tier prices as line totals when configured that way", () => {

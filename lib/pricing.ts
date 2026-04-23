@@ -155,6 +155,22 @@ export function formatExtraSummary(mode: DiscountModeValue, value: number) {
   return "Nessun extra";
 }
 
+function normalizePricingServiceIdentifier(value: string | null | undefined) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+export function usesLineTotalQuantityTiers(service?: { name?: string | null; code?: string | null } | null) {
+  const normalizedName = normalizePricingServiceIdentifier(service?.name);
+  const normalizedCode = normalizePricingServiceIdentifier(service?.code);
+
+  return normalizedName.includes("biglietti da visita") || normalizedCode.includes("biglietti visita");
+}
+
 function parseTierPriceToCents(value: string) {
   const normalized = value.trim().replace(/\./g, "").replace(",", ".");
   if (!normalized) {

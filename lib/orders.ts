@@ -21,7 +21,8 @@ import {
   computeLineTotalWithAdjustmentsCents,
   computeEffectiveUnitPriceCents,
   normalizeQuantityTiers,
-  normalizeQuantityValue
+  normalizeQuantityValue,
+  usesLineTotalQuantityTiers
 } from "@/lib/pricing";
 import type {
   OrderListView,
@@ -94,6 +95,7 @@ export type UpdateOrderItemInput = {
   orderId: string;
   itemId: string;
   label: string;
+  serviceCatalogId?: string;
   quantity: number;
   catalogBasePriceCents: number;
   catalogPriceMode?: CatalogPriceMode;
@@ -120,14 +122,15 @@ export type CloneOrderItemInput = {
 
 function usesLineTotalCatalogPricing(options: {
   format?: string | null;
-  serviceCatalogQuantityTiers?: string | null;
+  serviceCatalogCode?: string | null;
+  serviceCatalogName?: string | null;
   explicitMode?: CatalogPriceMode;
 }) {
   if (options.explicitMode === "LINE_TOTAL") {
     return true;
   }
 
-  if ((options.serviceCatalogQuantityTiers || "").trim()) {
+  if (usesLineTotalQuantityTiers({ name: options.serviceCatalogName, code: options.serviceCatalogCode })) {
     return true;
   }
 
@@ -746,9 +749,6 @@ export function assertPhaseTransition(
     throw new Error("Procedi in sequenza: Da avviare, In lavorazione, Pronto, Consegnato.");
   }
 
-  if (nextPhase === "CONSEGNATO" && balanceDueCents > 0 && !overrideWithNote?.trim()) {
-    throw new Error("Per consegnare un ordine con saldo aperto serve una nota di override.");
-  }
 }
 
 function getHistoryDescription(type: HistoryType, value: string) {
@@ -1084,7 +1084,8 @@ export async function updateOrderItem(input: UpdateOrderItemInput) {
       },
       serviceCatalog: {
         select: {
-          quantityTiers: true
+          code: true,
+          name: true
         }
       }
     }
@@ -1092,6 +1093,22 @@ export async function updateOrderItem(input: UpdateOrderItemInput) {
 
   if (!item || item.orderId !== input.orderId) {
     throw new Error("Riga ordine non trovata.");
+  }
+
+  const nextServiceCatalogId = input.serviceCatalogId?.trim() || undefined;
+  const selectedServiceCatalog = nextServiceCatalogId
+    ? await prisma.serviceCatalog.findUnique({
+        where: { id: nextServiceCatalogId },
+        select: {
+          id: true,
+          code: true,
+          name: true
+        }
+      })
+    : null;
+
+  if (nextServiceCatalogId && !selectedServiceCatalog) {
+    throw new Error("Servizio catalogo non trovato.");
   }
 
   const normalized = computeOrderTotals([
@@ -1102,7 +1119,8 @@ export async function updateOrderItem(input: UpdateOrderItemInput) {
       catalogPriceMode: usesLineTotalCatalogPricing({
         explicitMode: input.catalogPriceMode,
         format: input.format,
-        serviceCatalogQuantityTiers: item.serviceCatalog?.quantityTiers
+        serviceCatalogCode: selectedServiceCatalog?.code,
+        serviceCatalogName: selectedServiceCatalog?.name
       })
         ? "LINE_TOTAL"
         : "UNIT",
@@ -1115,7 +1133,7 @@ export async function updateOrderItem(input: UpdateOrderItemInput) {
       material: input.material,
       finishing: input.finishing,
       notes: input.notes,
-      serviceCatalogId: item.serviceCatalogId || undefined
+      serviceCatalogId: nextServiceCatalogId
     }
   ]).items[0];
 
@@ -1128,6 +1146,7 @@ export async function updateOrderItem(input: UpdateOrderItemInput) {
       where: { id: input.itemId },
       data: {
         label: normalized.label,
+        serviceCatalogId: nextServiceCatalogId || null,
         quantity: normalized.quantity,
         catalogBasePriceCents: normalized.catalogBasePriceCents,
         discountMode: normalized.discountMode,
@@ -1227,7 +1246,8 @@ export async function cloneOrderItem(input: CloneOrderItemInput) {
       },
       serviceCatalog: {
         select: {
-          quantityTiers: true
+          code: true,
+          name: true
         }
       }
     }
@@ -1245,7 +1265,8 @@ export async function cloneOrderItem(input: CloneOrderItemInput) {
       catalogBasePriceCents: item.catalogBasePriceCents || item.unitPriceCents,
       catalogPriceMode: usesLineTotalCatalogPricing({
         format: item.format,
-        serviceCatalogQuantityTiers: item.serviceCatalog?.quantityTiers
+        serviceCatalogCode: item.serviceCatalog?.code,
+        serviceCatalogName: item.serviceCatalog?.name
       })
         ? "LINE_TOTAL"
         : "UNIT",

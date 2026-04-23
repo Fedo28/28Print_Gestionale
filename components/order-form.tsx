@@ -3,6 +3,7 @@
 import { Customer, CustomerType, ServiceCatalog } from "@prisma/client";
 import { useEffect, useRef, useState } from "react";
 import { CustomerAutocomplete } from "@/components/customer-autocomplete";
+import { isLabelCalculatorMaterialService } from "@/lib/label-calculator";
 import { customerTypeLabels, getAppointmentNoteOptions, invoiceStatusLabels, priorityLabels } from "@/lib/constants";
 import { formatCurrency, formatDateTime, formatQuantity } from "@/lib/format";
 import { computeAutomaticPriority } from "@/lib/priorities";
@@ -27,7 +28,8 @@ import {
   parseQuantityValue,
   parseQuantityTiers,
   type QuantityTier,
-  type DiscountModeValue
+  type DiscountModeValue,
+  usesLineTotalQuantityTiers
 } from "@/lib/pricing";
 
 type CustomerWithOrders = Customer & { orders: { id: string }[] };
@@ -60,16 +62,6 @@ type LabelCalculatorDraft = {
 };
 
 const LABEL_CALCULATOR_FORMAT_PREFIX = "Calcolatore etichette";
-const LABEL_CALCULATOR_MATERIAL_NAMES = [
-  "Etichette - Polimerico laminato stampa e taglio",
-  "Etichette - Polimerico stampa e taglio",
-  "Etichette - Monomerico laminato stampa e taglio",
-  "Etichette - Monomerico stampa e taglio"
-] as const;
-
-const normalizedLabelCalculatorMaterials = new Set(
-  LABEL_CALCULATOR_MATERIAL_NAMES.map((entry) => entry.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim())
-);
 
 const emptyItem = (): ItemState => ({
   serviceQuery: "",
@@ -131,16 +123,7 @@ function normalizeEditorItems(items: ItemState[]) {
 }
 
 function getCatalogPriceModeForService(service: ServiceCatalog | undefined): CatalogPriceMode {
-  return service?.quantityTiers?.trim() ? "LINE_TOTAL" : "UNIT";
-}
-
-function isLabelCalculatorMaterialService(service: ServiceCatalog | undefined) {
-  if (!service) {
-    return false;
-  }
-
-  const normalizedName = service.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-  return normalizedLabelCalculatorMaterials.has(normalizedName);
+  return usesLineTotalQuantityTiers(service) ? "LINE_TOTAL" : "UNIT";
 }
 
 function isLabelCalculatorFormat(format: string | null | undefined) {
@@ -435,7 +418,6 @@ export function OrderForm({
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const inlineCatalogNameInputRef = useRef<HTMLInputElement>(null);
-  const autosaveTimerRef = useRef<number | null>(null);
   const mobileMetaFrameRef = useRef<number | null>(null);
   const [catalogServices, setCatalogServices] = useState<ServiceCatalog[]>(services);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
@@ -463,9 +445,7 @@ export function OrderForm({
   const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId);
   const photographyFormats = getPhotographyFormatOptions(catalogServices);
   const photographyServices = catalogServices.filter(isPhotographyService);
-  const labelCalculatorMaterials = LABEL_CALCULATOR_MATERIAL_NAMES.map((name) =>
-    catalogServices.find((service) => service.name === name)
-  ).filter((service): service is ServiceCatalog => Boolean(service));
+  const labelCalculatorMaterials = catalogServices.filter(isLabelCalculatorMaterialService);
   const isCatalogEmpty = catalogServices.length === 0;
   const defaultCustomerType: CustomerType = "PUBBLICO";
   const isQuoteMode = kind === "quote";
@@ -624,20 +604,7 @@ export function OrderForm({
     window.dispatchEvent(new Event(ORDER_DRAFT_STORAGE_EVENT));
     setHasSavedDraft(true);
     setLastDraftSavedAt(snapshot.savedAt);
-  }
-
-  function scheduleDraftSave() {
-    if (!draftHydrated || typeof window === "undefined") {
-      return;
-    }
-
-    if (autosaveTimerRef.current) {
-      window.clearTimeout(autosaveTimerRef.current);
-    }
-
-    autosaveTimerRef.current = window.setTimeout(() => {
-      persistDraft();
-    }, 500);
+    setDraftRestoredAt(snapshot.savedAt);
   }
 
   function syncMobileMetaFromForm() {
@@ -759,18 +726,7 @@ export function OrderForm({
   }, [customers, draftStorageKey, kind, submittedDraftKey]);
 
   useEffect(() => {
-    if (!draftHydrated) {
-      return;
-    }
-
-    scheduleDraftSave();
-  }, [draftHydrated, selectedCustomerId, customerQuery, items]);
-
-  useEffect(() => {
     return () => {
-      if (typeof window !== "undefined" && autosaveTimerRef.current) {
-        window.clearTimeout(autosaveTimerRef.current);
-      }
       if (typeof window !== "undefined" && mobileMetaFrameRef.current) {
         window.cancelAnimationFrame(mobileMetaFrameRef.current);
       }
@@ -1238,7 +1194,7 @@ export function OrderForm({
     ? `Bozza recuperata da ${formatDateTime(draftRestoredAt)}`
     : lastDraftSavedAt
       ? `Ultimo salvataggio ${formatDateTime(lastDraftSavedAt)}`
-      : "Autosalvataggio attivo";
+      : "Nessuna bozza salvata";
   const canContinueMobileStep =
     mobileStep === "customer"
       ? Boolean(selectedCustomerId || mobileMeta.customerName.trim())
@@ -1967,18 +1923,30 @@ export function OrderForm({
       <div className="order-mobile-panel-head">
         <div className="order-mobile-panel-tools">
           <span className="subtle">{mobileDraftStatusMessage}</span>
-          {hasSavedDraft ? (
+          <div className="button-row">
             <button
-              className="ghost"
+              className="secondary"
               onClick={(event) => {
                 event.preventDefault();
-                resetDraftAndForm();
+                persistDraft();
               }}
               type="button"
             >
-              Svuota bozza
+              Salva bozza
             </button>
-          ) : null}
+            {hasSavedDraft ? (
+              <button
+                className="ghost"
+                onClick={(event) => {
+                  event.preventDefault();
+                  resetDraftAndForm();
+                }}
+                type="button"
+              >
+                Svuota bozza
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
     );
@@ -1989,14 +1957,8 @@ export function OrderForm({
       action={action}
       className="stack order-form-shell"
       data-mobile-order-step={mobileStep}
-      onChangeCapture={() => {
-        scheduleDraftSave();
-        scheduleMobileMetaSync();
-      }}
-      onInputCapture={() => {
-        scheduleDraftSave();
-        scheduleMobileMetaSync();
-      }}
+      onChangeCapture={scheduleMobileMetaSync}
+      onInputCapture={scheduleMobileMetaSync}
       onSubmit={() => {
         if (typeof window !== "undefined") {
           window.sessionStorage.setItem(submittedDraftKey, "1");
@@ -2020,6 +1982,37 @@ export function OrderForm({
             </button>
           ))}
         </nav>
+      </section>
+
+      <section className="order-draft-banner">
+        <div className="stack">
+          <strong>Bozza {isQuoteMode ? "preventivo" : "ordine"} opzionale</strong>
+          <span className="subtle">{mobileDraftStatusMessage}</span>
+        </div>
+        <div className="button-row">
+          <button
+            className="secondary"
+            onClick={(event) => {
+              event.preventDefault();
+              persistDraft();
+            }}
+            type="button"
+          >
+            Salva bozza
+          </button>
+          {hasSavedDraft ? (
+            <button
+              className="ghost"
+              onClick={(event) => {
+                event.preventDefault();
+                resetDraftAndForm();
+              }}
+              type="button"
+            >
+              Svuota bozza
+            </button>
+          ) : null}
+        </div>
       </section>
 
       <div className="grid grid-2 order-sheet-grid">
@@ -2451,6 +2444,28 @@ export function OrderForm({
       ) : null}
 
       <div className="button-row order-desktop-submit-row">
+        <button
+          className="secondary"
+          onClick={(event) => {
+            event.preventDefault();
+            persistDraft();
+          }}
+          type="button"
+        >
+          Salva bozza
+        </button>
+        {hasSavedDraft ? (
+          <button
+            className="ghost"
+            onClick={(event) => {
+              event.preventDefault();
+              resetDraftAndForm();
+            }}
+            type="button"
+          >
+            Svuota bozza
+          </button>
+        ) : null}
         <button className="primary" type="submit">
           {isQuoteMode ? "Crea preventivo" : "Crea ordine"}
         </button>

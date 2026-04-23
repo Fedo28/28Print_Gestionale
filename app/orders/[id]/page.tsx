@@ -28,8 +28,8 @@ import {
 } from "@/lib/constants";
 import { formatCurrency, formatDateTime, formatQuantity, toDateTimeLocalInput } from "@/lib/format";
 import { buildOrdersFilterHref } from "@/lib/order-filters";
-import { getOrderById } from "@/lib/orders";
-import { formatDiscountSummary, formatExtraSummary } from "@/lib/pricing";
+import { getOrderById, getServiceCatalogAdmin } from "@/lib/orders";
+import { formatDiscountSummary, formatExtraSummary, usesLineTotalQuantityTiers } from "@/lib/pricing";
 import { resolveAttachmentStorageMode } from "@/lib/storage";
 
 const discountModeOptions = [
@@ -46,7 +46,7 @@ function getCustomerPrimaryContact(customer: { phone?: string | null; whatsapp?:
 
 export default async function OrderDetailPage({ params }: { params: { id: string } }) {
   await requireAuth();
-  const order = await getOrderById(params.id);
+  const [order, services] = await Promise.all([getOrderById(params.id), getServiceCatalogAdmin()]);
 
   if (!order) {
     notFound();
@@ -104,7 +104,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                   </button>
                 </form>
               ) : null}
-              <Link className="button ghost" href={`/orders/${order.id}/print`} prefetch={false} rel="noreferrer" target="_blank">
+              <Link className="button ghost" href={`/orders/${order.id}/print?autoprint=1`} prefetch={false} rel="noreferrer" target="_blank">
                 Stampa
               </Link>
               <Link className="button ghost" href={order.isQuote ? "/quotes" : order.mainPhase === "CONSEGNATO" ? "/orders?view=DELIVERED" : "/orders"}>
@@ -209,7 +209,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                     <input
                       aria-label="Nota override consegna"
                       name="note"
-                      placeholder="Nota obbligatoria con saldo aperto"
+                      placeholder="Nota facoltativa sulla consegna"
                     />
                   ) : null}
                   <button className="primary" type="submit">
@@ -380,7 +380,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                 <div className="order-item-editor-copy">
                   <strong>{item.label}</strong>
                   <span className="subtle">
-                    {Boolean(item.serviceCatalog?.quantityTiers?.trim()) ||
+                    {usesLineTotalQuantityTiers(item.serviceCatalog) ||
                     String(item.format || "").trim().toLowerCase().startsWith("calcolatore etichette")
                       ? `${formatQuantity(item.quantity)} pz • Scaglione ${formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}`
                       : `${formatQuantity(item.quantity)} x ${formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}`}
@@ -394,6 +394,17 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                 <form action={updateOrderItemAction} className="form-grid order-item-editor-form">
                   <input name="orderId" type="hidden" value={order.id} />
                   <input name="itemId" type="hidden" value={item.id} />
+                  <div className="field wide">
+                    <label htmlFor={`item-service-${item.id}`}>Servizio di catalogo</label>
+                    <select defaultValue={item.serviceCatalogId || ""} id={`item-service-${item.id}`} name="serviceCatalogId">
+                      <option value="">Voce libera</option>
+                      {services.map((service) => (
+                        <option key={service.id} value={service.id}>
+                          {service.code ? `${service.name} • ${service.code}` : service.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="field wide">
                     <label htmlFor={`item-label-${item.id}`}>Titolo riga</label>
                     <input defaultValue={item.label} id={`item-label-${item.id}`} name="label" required />
@@ -497,38 +508,17 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                     </button>
                   </form>
                 </div>
-                {item.deliveredAt ? (
-                  <div className="order-item-delivered-overlay">
-                    <div className="order-item-delivered-overlay-card">
-                      <strong>{`Gia consegnata il ${formatDateTime(item.deliveredAt)}`}</strong>
-                      <span>La riga resta in sola lettura finche non la riapri.</span>
-                      <form action={cloneOrderItemAction}>
-                        <input name="orderId" type="hidden" value={order.id} />
-                        <input name="itemId" type="hidden" value={item.id} />
-                        <button className="ghost" type="submit">
-                          Clona riga
-                        </button>
-                      </form>
-                      <form action={toggleOrderItemDeliveryAction}>
-                        <input name="orderId" type="hidden" value={order.id} />
-                        <input name="itemId" type="hidden" value={item.id} />
-                        <input name="delivered" type="hidden" value="false" />
-                        <button className="secondary" type="submit">
-                          Riapri riga
-                        </button>
-                      </form>
-                    </div>
-                  </div>
-                ) : (
+                <div className="button-row order-item-editor-actions">
+                  {item.deliveredAt ? <span className="subtle">{`Riga consegnata il ${formatDateTime(item.deliveredAt)}`}</span> : null}
                   <form action={toggleOrderItemDeliveryAction} className="order-item-delivery-action">
                     <input name="orderId" type="hidden" value={order.id} />
                     <input name="itemId" type="hidden" value={item.id} />
-                    <input name="delivered" type="hidden" value="true" />
+                    <input name="delivered" type="hidden" value={item.deliveredAt ? "false" : "true"} />
                     <button className="ghost" type="submit">
-                      Segna come consegnata
+                      {item.deliveredAt ? "Riapri riga" : "Segna come consegnata"}
                     </button>
                   </form>
-                )}
+                </div>
               </div>
             </details>
           ))}

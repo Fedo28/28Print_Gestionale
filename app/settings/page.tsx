@@ -4,6 +4,7 @@ import { AccessProfileForm } from "@/components/access-profile-form";
 import { CatalogImportForm } from "@/components/catalog-import-form";
 import { CatalogServiceSearch } from "@/components/catalog-service-search";
 import { PageHeader } from "@/components/page-header";
+import { ServiceCreateForm } from "@/components/service-create-form";
 import { requireAuth } from "@/lib/auth";
 import { getServiceCatalogAdmin } from "@/lib/orders";
 import { getStaffUserProfile } from "@/lib/staff-users";
@@ -75,34 +76,7 @@ export default async function SettingsPage() {
                 bootstrap oppure importa manualmente il file Excel da qui.
               </div>
             ) : null}
-            <form action={createServiceAction} className="form-grid settings-service-form">
-              <div className="field">
-                <label htmlFor="code">Codice</label>
-                <input id="code" name="code" placeholder="Facoltativo, lo genero io se vuoto" />
-              </div>
-              <div className="field wide">
-                <label htmlFor="name">Nome servizio</label>
-                <input id="name" name="name" required />
-              </div>
-              <div className="field">
-                <label htmlFor="basePrice">Prezzo base</label>
-                <input className="currency-input" id="basePrice" inputMode="decimal" name="basePrice" placeholder="0,00" />
-              </div>
-              <div className="field full">
-                <label htmlFor="description">Descrizione</label>
-                <textarea id="description" name="description" />
-              </div>
-              <div className="field full">
-                <label htmlFor="quantityTiers">Scaglioni quantita</label>
-                <input id="quantityTiers" name="quantityTiers" placeholder="1-9:0,50 | 10-49:0,30 | 50+:0,20" />
-                <p className="hint">Facoltativo. Se la quantita rientra in uno scaglione, il prezzo indicato qui viene usato come totale della riga invece che come prezzo unitario.</p>
-              </div>
-              <div className="button-row settings-form-actions">
-                <button className="primary" type="submit">
-                  Salva servizio
-                </button>
-              </div>
-            </form>
+            <ServiceCreateForm action={createServiceAction} />
 
             <CatalogImportForm />
 

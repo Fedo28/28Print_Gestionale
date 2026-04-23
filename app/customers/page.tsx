@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createCustomerAction } from "@/app/actions";
+import { CustomerCreateForm } from "@/components/customer-create-form";
 import { CustomersDirectory } from "@/components/customers-directory";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
@@ -43,59 +44,10 @@ export default async function CustomersPage({ searchParams }: Props) {
               <h3>Nuovo cliente</h3>
             </div>
           </div>
-          <form action={createCustomerAction} className="form-grid">
-            <div className="field wide">
-              <label htmlFor="name">Nome / Ragione sociale</label>
-              <input id="name" name="name" required />
-            </div>
-            <div className="field">
-              <label htmlFor="type">Tipo cliente</label>
-              <select defaultValue="PUBBLICO" id="type" name="type">
-                {Object.entries(customerTypeLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="phone">Telefono</label>
-              <input id="phone" name="phone" placeholder="Facoltativo" />
-            </div>
-            <div className="field">
-              <label htmlFor="whatsapp">WhatsApp</label>
-              <input id="whatsapp" name="whatsapp" />
-            </div>
-            <div className="field wide">
-              <label htmlFor="email">Email</label>
-              <input id="email" name="email" type="email" />
-            </div>
-            <div className="field wide">
-              <label htmlFor="pec">PEC</label>
-              <input id="pec" name="pec" type="email" />
-            </div>
-            <div className="field">
-              <label htmlFor="vatNumber">P. IVA</label>
-              <input id="vatNumber" name="vatNumber" />
-            </div>
-            <div className="field">
-              <label htmlFor="taxCode">Codice fiscale</label>
-              <input id="taxCode" name="taxCode" />
-            </div>
-            <div className="field">
-              <label htmlFor="uniqueCode">Codice univoco (CU)</label>
-              <input id="uniqueCode" name="uniqueCode" />
-            </div>
-            <div className="field full">
-              <label htmlFor="notes">Note</label>
-              <textarea id="notes" name="notes" />
-            </div>
-            <div className="button-row customers-entry-actions">
-              <button className="primary" type="submit">
-                Salva cliente
-              </button>
-            </div>
-          </form>
+          <CustomerCreateForm
+            action={createCustomerAction}
+            typeOptions={Object.entries(customerTypeLabels).map(([value, label]) => ({ value, label }))}
+          />
         </section>
 
         <section className="card card-pad customers-directory-card">

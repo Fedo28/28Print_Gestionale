@@ -53,6 +53,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isLoginRoute = pathname === "/login";
+  const isPrintRoute = pathname.endsWith("/print");
   const isDashboardRoute = pathname === "/";
   const [isCompactViewport, setIsCompactViewport] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
@@ -208,6 +209,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   if (isLoginRoute) {
     return <main className="auth-layout">{children}</main>;
+  }
+
+  if (isPrintRoute) {
+    return <main className="print-route-layout">{children}</main>;
   }
 
   function handleCloseMobileNav() {

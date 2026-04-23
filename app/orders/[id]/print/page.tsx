@@ -1,27 +1,26 @@
+import Image from "next/image";
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/components/page-header";
-import { PrintOrderActions } from "@/components/print-order-actions";
-import { StatusPills } from "@/components/status-pills";
+import logoImage from "@/logo.png";
+import { AutoPrintOnLoad } from "@/components/auto-print-on-load";
 import { requireAuth } from "@/lib/auth";
-import { invoiceStatusLabels, priorityLabels } from "@/lib/constants";
-import { formatCurrency, formatDateTime, formatQuantity } from "@/lib/format";
+import { formatCurrency, formatDate, formatQuantity } from "@/lib/format";
 import { getOrderById } from "@/lib/orders";
 
-function buildItemSpecs(item: {
-  format?: string | null;
-  material?: string | null;
-  finishing?: string | null;
-  notes?: string | null;
-}) {
-  return [
-    item.format?.trim() ? `Formato: ${item.format.trim()}` : null,
-    item.material?.trim() ? `Materiale: ${item.material.trim()}` : null,
-    item.finishing?.trim() ? `Finitura: ${item.finishing.trim()}` : null,
-    item.notes?.trim() ? `Note riga: ${item.notes.trim()}` : null
-  ].filter((value): value is string => Boolean(value));
+function getCustomerPrimaryContact(order: Awaited<ReturnType<typeof getOrderById>>) {
+  if (!order) {
+    return null;
+  }
+
+  return order.customer.phone?.trim() || order.customer.whatsapp?.trim() || null;
 }
 
-export default async function OrderPrintPage({ params }: { params: { id: string } }) {
+export default async function OrderPrintPage({
+  params,
+  searchParams
+}: {
+  params: { id: string };
+  searchParams?: { autoprint?: string };
+}) {
   await requireAuth();
   const order = await getOrderById(params.id);
 
@@ -29,69 +28,35 @@ export default async function OrderPrintPage({ params }: { params: { id: string 
     notFound();
   }
 
-  const activePayments = order.payments.filter((payment) => payment.status === "ATTIVO");
+  const customerPrimaryContact = getCustomerPrimaryContact(order);
 
   return (
-    <div className="stack print-order-page-shell">
-      <PageHeader
-        title={`Stampa ${order.orderCode}`}
-        description="Anteprima impaginata per foglio A4 dell'ordine."
-        action={<PrintOrderActions backHref={`/orders/${order.id}`} />}
-      />
+    <div className="print-preview-page">
+      {searchParams?.autoprint === "1" ? <AutoPrintOnLoad /> : null}
+      <article className="print-sheet print-sheet-minimal">
+        <header className="print-sheet-minimal-header">
+          <div className="print-sheet-logo">
+            <Image
+              className="print-sheet-logo-image"
+              src={logoImage}
+              alt="28 Print"
+              priority
+            />
+          </div>
 
-      <article className="print-sheet">
-        <header className="print-sheet-header">
-          <div className="print-sheet-brand">
-            <span className="compact-kicker">28 Print</span>
-            <h1>{order.orderCode}</h1>
-            <p>{order.title}</p>
-          </div>
-          <div className="print-sheet-summary">
-            <div>
-              <span>Creato</span>
-              <strong>{formatDateTime(order.createdAt)}</strong>
-            </div>
-            <div>
-              <span>Consegna</span>
-              <strong>{formatDateTime(order.deliveryAt)}</strong>
-            </div>
-            <div>
-              <span>Tipo</span>
-              <strong>{order.isQuote ? "Preventivo" : "Ordine"}</strong>
-            </div>
-          </div>
+          <section className="print-sheet-section print-sheet-doc-type">
+            <strong>{order.isQuote ? "preventivo" : "ordine"}</strong>
+          </section>
         </header>
 
-        <section className="print-sheet-top-grid">
-          <section className="print-sheet-card">
-            <span className="print-sheet-label">Cliente</span>
-            <strong>{order.customer.name}</strong>
-            <span>{order.customer.phone?.trim() || order.customer.whatsapp?.trim() || "Telefono non inserito"}</span>
-            {order.customer.email?.trim() ? <span>{order.customer.email.trim()}</span> : null}
-          </section>
-
-          <section className="print-sheet-card">
-            <span className="print-sheet-label">Riepilogo stato</span>
-            <div className="print-sheet-pills">
-              <StatusPills
-                linked={false}
-                isQuote={order.isQuote}
-                payment={order.paymentStatus}
-                phase={order.mainPhase}
-                status={order.operationalStatus}
-              />
-            </div>
-            <span>{priorityLabels[order.priority]}</span>
-            <span>{invoiceStatusLabels[order.invoiceStatus]}</span>
-          </section>
+        <section className="print-sheet-section print-sheet-customer-block">
+          <strong className="print-sheet-customer-name">{order.customer.name}</strong>
+          {customerPrimaryContact ? <span>{customerPrimaryContact}</span> : null}
+          {order.customer.email?.trim() ? <span>{order.customer.email.trim()}</span> : null}
         </section>
 
-        <section className="print-sheet-card print-sheet-lines-card">
-          <div className="print-sheet-section-head">
-            <h2>Righe ordine</h2>
-            <span>{`${order.items.length} lavorazioni`}</span>
-          </div>
-          <table className="print-sheet-table">
+        <section className="print-sheet-section print-sheet-lines-block">
+          <table className="print-sheet-table print-sheet-lines-table">
             <thead>
               <tr>
                 <th>Descrizione</th>
@@ -101,64 +66,45 @@ export default async function OrderPrintPage({ params }: { params: { id: string 
               </tr>
             </thead>
             <tbody>
-              {order.items.map((item) => {
-                const specs = buildItemSpecs(item);
-
-                return (
-                  <tr key={item.id}>
-                    <td>
-                      <strong>{item.label}</strong>
-                      {specs.length > 0 ? (
-                        <div className="print-sheet-item-specs">
-                          {specs.map((spec) => (
-                            <span key={spec}>{spec}</span>
-                          ))}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td>{formatQuantity(item.quantity)}</td>
-                    <td>{formatCurrency(item.unitPriceCents)}</td>
-                    <td>{formatCurrency(item.lineTotalCents)}</td>
-                  </tr>
-                );
-              })}
+              {order.items.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.label}</td>
+                  <td>{formatQuantity(item.quantity)}</td>
+                  <td>{formatCurrency(item.unitPriceCents)}</td>
+                  <td>{formatCurrency(item.lineTotalCents)}</td>
+                </tr>
+              ))}
             </tbody>
+            <tfoot>
+              <tr>
+                <th colSpan={3}>Totale ordine</th>
+                <th>{formatCurrency(order.totalCents)}</th>
+              </tr>
+            </tfoot>
           </table>
         </section>
 
-        <section className="print-sheet-bottom-grid">
-          <section className="print-sheet-card">
-            <div className="print-sheet-section-head">
-              <h2>Note ordine</h2>
-            </div>
-            <p className="print-sheet-note">{order.notes?.trim() || "Nessuna nota interna."}</p>
-          </section>
-
-          <section className="print-sheet-card print-sheet-totals-card">
-            <div className="print-sheet-totals">
-              <div>
-                <span>Totale</span>
-                <strong>{formatCurrency(order.totalCents)}</strong>
-              </div>
-              <div>
-                <span>Acconto</span>
-                <strong>{formatCurrency(order.depositCents)}</strong>
-              </div>
-              <div>
-                <span>Pagato</span>
-                <strong>{formatCurrency(order.paidCents)}</strong>
-              </div>
-              <div>
-                <span>Residuo</span>
-                <strong>{formatCurrency(order.balanceDueCents)}</strong>
-              </div>
-            </div>
-            <div className="print-sheet-payment-meta">
-              <span>{activePayments.length === 0 ? "Nessun pagamento registrato" : `${activePayments.length} movimenti registrati`}</span>
-              {order.appointmentAt ? <span>{`Appuntamento: ${formatDateTime(order.appointmentAt)}`}</span> : null}
-            </div>
-          </section>
+        <section className="print-sheet-section print-sheet-total-block">
+          <span>Totale</span>
+          <strong>{formatCurrency(order.totalCents)}</strong>
         </section>
+
+        <section className="print-sheet-section print-sheet-delivery-block">
+          <span>Consegna prevista</span>
+          <strong>{formatDate(order.deliveryAt)}</strong>
+        </section>
+
+        <footer className="print-sheet-footer">
+          <div className="print-sheet-footer-meta">
+            <span>28 Print di Edoardo Polichetti - Via Nomentana 114 Mentana (RM) - P. IVA 15829801008</span>
+            <span>28print.it - info@28print.it - 06.86296919</span>
+          </div>
+          <div className="print-sheet-footer-rule" aria-hidden="true" />
+          <div className="print-sheet-footer-services">
+            <span>Realizzazioni Grafiche - Campagne Pubblicitarie - Cartellonistica</span>
+            <span>Stampe Digitali - Siti Web - Abbigliamento Personalizzato - Stampe e Ricami</span>
+          </div>
+        </footer>
       </article>
     </div>
   );

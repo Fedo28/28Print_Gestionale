@@ -243,6 +243,7 @@ export async function updateOrderItemAction(formData: FormData) {
     orderId,
     itemId,
     label: String(formData.get("label") || ""),
+    serviceCatalogId: String(formData.get("serviceCatalogId") || "").trim() || undefined,
     quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
     catalogBasePriceCents: parseCurrencyToCents(formData.get("catalogBasePrice")?.toString() || null),
     discountMode,
