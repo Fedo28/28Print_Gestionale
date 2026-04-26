@@ -23,12 +23,14 @@ import type { DiscountMode } from "@prisma/client";
 import {
   cloneOrderItem,
   correctPayment,
+  createOrderItem,
   createOrder,
   createService,
   deleteCustomer,
   deleteOrder,
   updateServiceCatalogEntry,
   markOrderReady,
+  updateOrderInvoiceStatus,
   recordPayment,
   toggleOrderItemDelivery,
   transitionOrderPhase,
@@ -50,6 +52,7 @@ import {
   sendStaffInviteEmail,
   updateOwnStaffNickname
 } from "@/lib/staff-users";
+import { parseServiceUnit } from "@/lib/service-units";
 
 function revalidateOperationalSurfaces(orderId?: string) {
   revalidatePath("/");
@@ -264,6 +267,40 @@ export async function updateOrderItemAction(formData: FormData) {
   redirect(`/orders/${orderId}`);
 }
 
+export async function createOrderItemAction(formData: FormData) {
+  await requireAuth();
+  const orderId = String(formData.get("orderId") || "");
+  const discountModeRaw = String(formData.get("discountMode") || "NONE");
+  const extraModeRaw = String(formData.get("extraMode") || "NONE");
+  const discountMode = (["NONE", "AMOUNT", "PERCENT"].includes(discountModeRaw) ? discountModeRaw : "NONE") as DiscountMode;
+  const extraMode = (["NONE", "AMOUNT", "PERCENT"].includes(extraModeRaw) ? extraModeRaw : "NONE") as DiscountMode;
+  const quantityRaw = String(formData.get("quantity") || "").trim().replace(",", ".");
+  const quantity = Number.parseFloat(quantityRaw || "1");
+
+  await createOrderItem({
+    orderId,
+    label: String(formData.get("label") || ""),
+    serviceCatalogId: String(formData.get("serviceCatalogId") || "").trim() || undefined,
+    quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+    catalogBasePriceCents: parseCurrencyToCents(formData.get("catalogBasePrice")?.toString() || null),
+    discountMode,
+    discountValue: parseCurrencyToCents(
+      discountMode === "PERCENT" ? null : formData.get("discountValue")?.toString() || null
+    ) || Math.max(0, Number.parseInt(String(formData.get("discountValue") || "0"), 10) || 0),
+    extraMode,
+    extraValue: parseCurrencyToCents(
+      extraMode === "PERCENT" ? null : formData.get("extraValue")?.toString() || null
+    ) || Math.max(0, Number.parseInt(String(formData.get("extraValue") || "0"), 10) || 0),
+    format: String(formData.get("format") || ""),
+    material: String(formData.get("material") || ""),
+    finishing: String(formData.get("finishing") || ""),
+    notes: String(formData.get("notes") || "")
+  });
+
+  revalidateOperationalSurfaces(orderId);
+  redirect(`/orders/${orderId}`);
+}
+
 export async function toggleOrderItemDeliveryAction(formData: FormData) {
   await requireAuth();
   const orderId = String(formData.get("orderId") || "");
@@ -339,6 +376,14 @@ export async function quickUpdateQuoteFlagAction(formData: FormData) {
   const orderId = String(formData.get("orderId") || "");
   const isQuote = String(formData.get("isQuote") || "") === "true";
   await updateOrderQuoteFlag(orderId, isQuote);
+  revalidateOperationalSurfaces(orderId);
+}
+
+export async function markOrderInvoicedAction(formData: FormData) {
+  await requireAuth();
+  const orderId = String(formData.get("orderId") || "");
+  const nextInvoiceStatus = parseInvoiceStatus(formData.get("nextInvoiceStatus")?.toString() || null);
+  await updateOrderInvoiceStatus(orderId, nextInvoiceStatus);
   revalidateOperationalSurfaces(orderId);
 }
 
@@ -444,6 +489,7 @@ export async function createServiceAction(formData: FormData) {
     String(formData.get("name") || ""),
     String(formData.get("description") || "") || undefined,
     parseCurrencyToCents(formData.get("basePrice")?.toString() || null),
+    parseServiceUnit(formData.get("unit")),
     String(formData.get("quantityTiers") || "")
   );
 
@@ -460,6 +506,7 @@ export async function updateServiceAction(formData: FormData) {
     name: String(formData.get("name") || ""),
     description: String(formData.get("description") || "") || undefined,
     basePriceCents: parseCurrencyToCents(formData.get("basePrice")?.toString() || null),
+    unit: parseServiceUnit(formData.get("unit")),
     quantityTiers: String(formData.get("quantityTiers") || ""),
     active: parseBooleanFlag(formData.get("active"))
   });

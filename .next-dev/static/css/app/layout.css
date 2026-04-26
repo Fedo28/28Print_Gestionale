@@ -2421,6 +2421,38 @@ th {
   letter-spacing: 0.12em;
 }
 
+.orders-table-sort-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+  transition: color 140ms ease, transform 140ms ease;
+}
+
+.orders-table-sort-link:hover,
+.orders-table-sort-link:focus-visible,
+.orders-table-sort-link.active {
+  color: var(--text);
+}
+
+.orders-table-sort-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.orders-table-sort-icon.active {
+  background: var(--sheet-chip-bg);
+  color: var(--text);
+}
+
 tbody td {
   background: var(--table-row-bg);
   border-top: 1px solid var(--table-row-top-border);
@@ -4671,8 +4703,12 @@ button.danger {
   font-weight: 800;
 }
 
-.order-mobile-card-whatsapp {
+.order-mobile-card-actions {
   display: grid;
+  grid-auto-flow: column;
+  justify-content: end;
+  grid-gap: 8px;
+  gap: 8px;
   align-items: stretch;
 }
 
@@ -5164,6 +5200,7 @@ button.danger {
 
 .order-line-suggestions {
   display: grid;
+  max-width: 100%;
   grid-gap: 8px;
   gap: 8px;
   margin-top: 10px;
@@ -5171,8 +5208,10 @@ button.danger {
 
 .order-line-suggestion {
   display: grid;
-  grid-gap: 4px;
-  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  grid-gap: 8px 12px;
+  gap: 8px 12px;
   padding: 12px 14px;
   border: 1px solid var(--suggestion-border);
   border-radius: 18px;
@@ -5189,13 +5228,58 @@ button.danger {
   transform: translateY(-1px);
 }
 
-.order-line-suggestion span {
+.order-line-suggestion-main {
+  display: grid;
+  min-width: 0;
+  grid-gap: 4px;
+  gap: 4px;
+}
+
+.order-line-suggestion-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.order-line-suggestion-meta {
   color: var(--muted);
   font-size: 0.84rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.order-line-suggestion-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--brand-strong) 10%, white);
+  color: var(--brand-strong);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .order-line-empty-state {
   cursor: default;
+}
+
+@media (max-width: 768px) {
+  .order-line-suggestions {
+    gap: 6px;
+  }
+
+  .order-line-suggestion {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 11px 12px;
+  }
+
+  .order-line-suggestion-badge {
+    justify-self: start;
+  }
 }
 
 .order-line-tier-panel {
@@ -5787,6 +5871,23 @@ button.danger {
   gap: 10px;
 }
 
+.customer-create-preview {
+  border: 1px dashed var(--sheet-chip-border);
+  background: color-mix(in srgb, var(--surface) 84%, var(--sheet-chip-bg));
+}
+
+.customer-create-preview.is-active {
+  border-style: solid;
+  border-color: var(--suggestion-hover-border);
+  background: color-mix(in srgb, var(--suggestion-hover-bg) 72%, white);
+}
+
+.customer-create-preview-copy {
+  display: grid;
+  grid-gap: 4px;
+  gap: 4px;
+}
+
 .customer-directory-shell {
   gap: 14px;
 }
@@ -6149,6 +6250,27 @@ button.danger {
   justify-items: center;
 }
 
+.invoice-status-control.compact {
+  justify-items: center;
+}
+
+.invoice-status-button {
+  min-width: 50px;
+  width: 50px;
+  padding: 0;
+}
+
+.invoice-status-button.done {
+  border-color: rgba(182, 130, 35, 0.34);
+  background: rgba(182, 130, 35, 0.12);
+  color: #9f6d10;
+}
+
+.invoice-status-button .glyph {
+  width: 18px;
+  height: 18px;
+}
+
 .ready-whatsapp-button {
   min-width: 50px;
   width: 50px;
@@ -6166,13 +6288,21 @@ button.danger {
   height: 18px;
 }
 
-.orders-table-whatsapp-cell {
-  width: 88px;
+.orders-table-actions-cell {
+  width: 128px;
   text-align: center;
   vertical-align: middle;
 }
 
-.orders-table-whatsapp-cell .ready-whatsapp-button {
+.orders-table-action-buttons {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.orders-table-actions-cell .ready-whatsapp-button,
+.orders-table-actions-cell .invoice-status-button {
   min-width: 44px;
   width: 44px;
   min-height: 44px;
@@ -6222,35 +6352,49 @@ button.danger {
 
 .calendar-shell {
   display: grid;
-  grid-gap: 22px;
-  gap: 22px;
+  grid-gap: 18px;
+  gap: 18px;
 }
 
 .calendar-summary-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .calendar-metric-card {
-  gap: 14px;
+  min-height: 0;
+  gap: 0;
   align-content: start;
-  justify-items: center;
-  text-align: center;
+  text-align: left;
+}
+
+.calendar-metric-card-primary {
+  grid-column: span 2;
+}
+
+.calendar-metric-card-secondary {
+  grid-column: span 1;
 }
 
 .calendar-metric-head {
   display: grid;
-  width: 100%;
-  min-height: 96px;
-  align-content: start;
-  justify-items: center;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
   grid-gap: 12px;
   gap: 12px;
 }
 
+.calendar-metric-copy {
+  display: grid;
+  grid-gap: 3px;
+  gap: 3px;
+  min-width: 0;
+}
+
 .calendar-metric-card .compact-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 18px;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.14)),
     rgba(255, 255, 255, 0.44);
@@ -6260,20 +6404,30 @@ button.danger {
 }
 
 .calendar-metric-card .glyph {
-  width: 30px;
-  height: 30px;
+  width: 22px;
+  height: 22px;
 }
 
 .calendar-metric-card .compact-metric-label {
   width: 100%;
-  text-align: center;
+  text-align: left;
   line-height: 1.2;
   overflow-wrap: anywhere;
 }
 
-.calendar-metric-card strong,
+.calendar-metric-card strong {
+  font-size: clamp(1.65rem, 2vw, 2.1rem);
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .calendar-metric-card .hint {
-  text-align: center;
+  font-size: 0.76rem;
+  line-height: 1.25;
+}
+
+.calendar-metric-card-secondary .hint {
+  display: none;
 }
 
 .calendar-metric-card-link {
@@ -6323,6 +6477,39 @@ button.danger {
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
   grid-gap: 16px;
   gap: 16px;
+}
+
+.calendar-day-shell .compact-lane-card {
+  gap: 14px;
+  padding: 16px;
+  border-radius: 22px;
+}
+
+.calendar-day-shell .compact-order-list {
+  gap: 8px;
+}
+
+.calendar-lane-head {
+  align-items: center;
+}
+
+.calendar-lane-head > div {
+  display: grid;
+  grid-gap: 2px;
+  gap: 2px;
+}
+
+.calendar-count-badge {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  box-shadow: var(--chip-shadow);
+}
+
+.calendar-count-badge::before {
+  display: none;
 }
 
 .calendar-day-wide {
@@ -6430,10 +6617,10 @@ button.danger {
 
 .calendar-week-focus {
   display: grid;
-  grid-gap: 14px;
-  gap: 14px;
-  padding: 18px;
-  border-radius: 28px;
+  grid-gap: 12px;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 24px;
   border: 1px solid var(--card-border);
   background: var(--card-bg);
   box-shadow: var(--shadow-lg);
@@ -6473,11 +6660,11 @@ button.danger {
   overflow: hidden;
   display: grid;
   align-content: start;
-  grid-gap: 12px;
-  gap: 12px;
-  min-height: 280px;
-  padding: 16px;
-  border-radius: 24px;
+  grid-gap: 10px;
+  gap: 10px;
+  min-height: 248px;
+  padding: 14px;
+  border-radius: 20px;
   border: 1px solid var(--sheet-chip-border);
   background: var(--sheet-chip-bg);
 }
@@ -6536,8 +6723,8 @@ button.danger {
 .calendar-column-body,
 .calendar-month-events {
   display: grid;
-  grid-gap: 10px;
-  gap: 10px;
+  grid-gap: 8px;
+  gap: 8px;
 }
 
 .calendar-column-head {
@@ -6555,18 +6742,18 @@ button.danger {
 .calendar-column-stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-gap: 8px;
-  gap: 8px;
+  grid-gap: 6px;
+  gap: 6px;
 }
 
 .calendar-day-stat {
   display: inline-flex;
-  min-height: 32px;
+  min-height: 28px;
   align-items: center;
   justify-content: center;
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-radius: 999px;
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-weight: 800;
   line-height: 1.15;
   text-align: center;
@@ -6591,24 +6778,24 @@ button.danger {
 .calendar-column-section,
 .calendar-mini-stack {
   display: grid;
-  grid-gap: 10px;
-  gap: 10px;
+  grid-gap: 8px;
+  gap: 8px;
 }
 
 .calendar-section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
 .calendar-section-head strong {
-  font-size: 0.94rem;
+  font-size: 0.88rem;
 }
 
 .calendar-section-head span {
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.76rem;
   font-weight: 700;
 }
 
@@ -6637,17 +6824,17 @@ button.danger {
 
 .calendar-entry-link-day,
 .calendar-entry-link-compact {
-  border-radius: 18px;
+  border-radius: 16px;
 }
 
 .calendar-entry-link-day {
-  min-height: 56px;
-  padding: 12px 14px;
+  min-height: 48px;
+  padding: 10px 12px;
 }
 
 .calendar-entry-link-compact {
-  min-height: 42px;
-  padding: 8px 10px;
+  min-height: 36px;
+  padding: 7px 9px;
 }
 
 .calendar-entry-link-accent,
@@ -6691,33 +6878,33 @@ button.danger {
   min-width: 0;
   overflow: hidden;
   color: var(--text);
-  font-size: 0.88rem;
+  font-size: 0.84rem;
   font-weight: 500;
-  line-height: 1.35;
+  line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .calendar-entry-link-day .calendar-entry-title {
-  font-size: 0.94rem;
+  font-size: 0.9rem;
 }
 
 .calendar-entry-link-compact .calendar-entry-title {
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   color: var(--text-soft);
 }
 
 .calendar-slot-empty,
 .calendar-more {
   display: inline-flex;
-  min-height: 40px;
+  min-height: 34px;
   align-items: center;
   justify-content: center;
-  border-radius: 16px;
+  border-radius: 14px;
   color: var(--muted);
   background: var(--empty-bg);
   border: 1px dashed var(--empty-border);
-  font-size: 0.82rem;
+  font-size: 0.76rem;
 }
 
 .calendar-callout {
@@ -6759,11 +6946,11 @@ button.danger {
 .calendar-month-cell {
   display: grid;
   align-content: start;
-  grid-gap: 12px;
-  gap: 12px;
-  min-height: 170px;
-  padding: 14px;
-  border-radius: 24px;
+  grid-gap: 10px;
+  gap: 10px;
+  min-height: 148px;
+  padding: 12px;
+  border-radius: 20px;
   border: 1px solid var(--sheet-chip-border);
   background: var(--sheet-chip-bg);
 }
@@ -6786,14 +6973,14 @@ button.danger {
 
 .calendar-month-head span {
   display: inline-flex;
-  min-width: 28px;
-  min-height: 28px;
+  min-width: 24px;
+  min-height: 24px;
   align-items: center;
   justify-content: center;
   border-radius: 999px;
   background: var(--badge-bg);
   color: var(--badge-text);
-  font-size: 0.76rem;
+  font-size: 0.7rem;
   font-weight: 800;
 }
 
@@ -7026,6 +7213,13 @@ button.danger {
   align-items: stretch;
 }
 
+.order-detail-inline-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .action-form {
   display: flex;
   flex-wrap: wrap;
@@ -7083,6 +7277,89 @@ button.danger {
 .order-detail-header-inline-form button,
 .order-detail-header-button-row > .button {
   min-height: 46px;
+}
+
+.print-brand-menu {
+  position: relative;
+  z-index: 2;
+}
+
+.print-brand-trigger {
+  min-height: 46px;
+}
+
+.print-brand-menu.open {
+  z-index: 30;
+}
+
+.print-brand-trigger.active {
+  border-color: rgba(18, 92, 164, 0.2);
+  background: rgba(18, 92, 164, 0.08);
+}
+
+.print-brand-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  grid-gap: 8px;
+  gap: 8px;
+  width: min(280px, calc(100vw - 32px));
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(128, 140, 168, 0.2);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 250, 255, 0.96)),
+    rgba(255, 255, 255, 0.96);
+  box-shadow:
+    0 18px 34px rgba(58, 71, 98, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.print-brand-panel-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.print-brand-option {
+  display: grid;
+  grid-gap: 3px;
+  gap: 3px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(128, 140, 168, 0.16);
+  background: rgba(255, 255, 255, 0.88);
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.print-brand-option strong {
+  font-size: 0.94rem;
+  line-height: 1.2;
+}
+
+.print-brand-option span {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--text-soft);
+}
+
+.print-brand-option:hover,
+.print-brand-option:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(18, 92, 164, 0.28);
+  background: rgba(18, 92, 164, 0.05);
+  box-shadow: 0 10px 20px rgba(58, 71, 98, 0.08);
 }
 
 .order-detail-main-grid,
@@ -7482,6 +7759,14 @@ button.action-icon-button {
   gap: 14px;
 }
 
+.order-item-editor-new {
+  border-style: dashed;
+  border-color: rgba(113, 84, 255, 0.24);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.74), rgba(247, 244, 255, 0.68)),
+    radial-gradient(circle at top right, rgba(113, 84, 255, 0.12), transparent 36%);
+}
+
 .order-item-editor.is-delivered {
   position: relative;
   overflow: hidden;
@@ -7551,9 +7836,31 @@ button.action-icon-button {
   white-space: nowrap;
 }
 
+.order-item-editor-new .order-item-editor-total {
+  background: rgba(113, 84, 255, 0.14);
+}
+
 .order-item-editor-form {
   padding-top: 14px;
   border-top: 1px solid var(--surface-border);
+}
+
+.order-item-service-search-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.order-item-service-search-meta .subtle {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.order-item-service-clear {
+  flex: 0 0 auto;
 }
 
 .order-item-editor-form > .order-detail-submit-row {
@@ -9392,32 +9699,35 @@ textarea:focus-visible {
   }
 
   .calendar-summary-grid > .compact-metric {
-    min-height: 142px;
+    min-height: 0;
     scroll-snap-align: start;
   }
 
   .calendar-summary-grid .calendar-metric-head {
-    min-height: 104px;
     gap: 10px;
   }
 
   .calendar-summary-grid .compact-icon {
-    width: 58px;
-    height: 58px;
-    border-radius: 18px;
+    width: 40px;
+    height: 40px;
+    border-radius: 14px;
   }
 
   .calendar-summary-grid .glyph {
-    width: 32px;
-    height: 32px;
+    width: 22px;
+    height: 22px;
   }
 
   .calendar-summary-grid .compact-metric-label {
     font-size: 0.84rem;
   }
 
-  .calendar-summary-grid .hint {
+  .calendar-summary-grid .calendar-metric-card-secondary .hint {
     display: none;
+  }
+
+  .calendar-summary-grid .calendar-metric-card strong {
+    font-size: 1.5rem;
   }
 
   .order-detail-hero-strip,
@@ -9598,8 +9908,15 @@ textarea:focus-visible {
 
   .order-detail-action-card .action-form-wide input,
   .order-detail-action-card .ready-whatsapp-control,
-  .order-detail-action-card .ready-whatsapp-button {
+  .order-detail-action-card .ready-whatsapp-button,
+  .order-detail-action-card .invoice-status-control,
+  .order-detail-action-card .invoice-status-button {
     width: 100%;
+  }
+
+  .order-detail-inline-actions {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .order-detail-info-card .button-row,
@@ -9723,11 +10040,13 @@ textarea:focus-visible {
   }
 
   .calendar-day-shell .compact-lane-card {
-    border-radius: 24px;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 20px;
   }
 
   .calendar-day-shell .compact-section-head {
-    gap: 10px;
+    gap: 8px;
   }
 
   .calendar-day-shell .compact-section-head .card-muted {
@@ -9735,7 +10054,7 @@ textarea:focus-visible {
   }
 
   .calendar-day-shell .compact-order-list {
-    gap: 10px;
+    gap: 8px;
   }
 
   .calendar-week-mobile {
@@ -10975,11 +11294,13 @@ textarea:focus-visible {
     border-radius: 16px;
   }
 
-  .orders-table .order-mobile-card-whatsapp .ready-whatsapp-control.compact {
+  .orders-table .order-mobile-card-actions .ready-whatsapp-control.compact,
+  .orders-table .order-mobile-card-actions .invoice-status-control.compact {
     justify-items: stretch;
   }
 
-  .orders-table .order-mobile-card-whatsapp .ready-whatsapp-button {
+  .orders-table .order-mobile-card-actions .ready-whatsapp-button,
+  .orders-table .order-mobile-card-actions .invoice-status-button {
     width: 46px;
     min-width: 46px;
     min-height: 46px;
@@ -10999,15 +11320,16 @@ textarea:focus-visible {
     box-shadow: none;
   }
 
-  .orders-table td.orders-table-whatsapp-cell {
+  .orders-table td.orders-table-actions-cell {
     text-align: left;
   }
 
-  .orders-table td.orders-table-whatsapp-cell .ready-whatsapp-control.compact {
-    justify-items: start;
+  .orders-table td.orders-table-actions-cell .orders-table-action-buttons {
+    justify-content: flex-start;
   }
 
-  .orders-table td.orders-table-whatsapp-cell .ready-whatsapp-button {
+  .orders-table td.orders-table-actions-cell .ready-whatsapp-button,
+  .orders-table td.orders-table-actions-cell .invoice-status-button {
     width: 48px;
     min-width: 48px;
   }
@@ -11083,8 +11405,8 @@ textarea:focus-visible {
   }
 
   .calendar-page-shell .calendar-month-cell {
-    min-height: 150px;
-    gap: 10px;
+    min-height: 136px;
+    gap: 8px;
     padding: 12px;
     border-radius: 22px;
   }
@@ -11126,15 +11448,17 @@ textarea:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .orders-table .order-mobile-card-whatsapp {
+  .orders-table .order-mobile-card-actions {
     grid-column: 1 / -1;
   }
 
-  .orders-table .order-mobile-card-whatsapp .ready-whatsapp-control.compact {
+  .orders-table .order-mobile-card-actions .ready-whatsapp-control.compact,
+  .orders-table .order-mobile-card-actions .invoice-status-control.compact {
     justify-items: stretch;
   }
 
-  .orders-table .order-mobile-card-whatsapp .ready-whatsapp-button {
+  .orders-table .order-mobile-card-actions .ready-whatsapp-button,
+  .orders-table .order-mobile-card-actions .invoice-status-button {
     width: 100%;
     min-width: 0;
   }

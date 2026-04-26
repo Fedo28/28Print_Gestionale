@@ -1,9 +1,11 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import logoImage from "@/logo.png";
+import prAdvLogoImage from "@/pr-adv-logo.png";
 import { AutoPrintOnLoad } from "@/components/auto-print-on-load";
 import { requireAuth } from "@/lib/auth";
-import { formatCurrency, formatDate, formatQuantity } from "@/lib/format";
+import { formatCurrency, formatDate } from "@/lib/format";
+import { formatOrderItemQuantity } from "@/lib/order-item-units";
 import { getOrderById } from "@/lib/orders";
 
 function getCustomerPrimaryContact(order: Awaited<ReturnType<typeof getOrderById>>) {
@@ -19,7 +21,7 @@ export default async function OrderPrintPage({
   searchParams
 }: {
   params: { id: string };
-  searchParams?: { autoprint?: string };
+  searchParams?: { autoprint?: string; brand?: string };
 }) {
   await requireAuth();
   const order = await getOrderById(params.id);
@@ -29,6 +31,17 @@ export default async function OrderPrintPage({
   }
 
   const customerPrimaryContact = getCustomerPrimaryContact(order);
+  const selectedBrand = searchParams?.brand === "pr-adv" ? "pr-adv" : "28-print";
+  const headerBrand =
+    selectedBrand === "pr-adv"
+      ? {
+          alt: "PR adv",
+          image: prAdvLogoImage
+        }
+      : {
+          alt: "28 Print",
+          image: logoImage
+        };
 
   return (
     <div className="print-preview-page">
@@ -38,8 +51,8 @@ export default async function OrderPrintPage({
           <div className="print-sheet-logo">
             <Image
               className="print-sheet-logo-image"
-              src={logoImage}
-              alt="28 Print"
+              src={headerBrand.image}
+              alt={headerBrand.alt}
               priority
             />
           </div>
@@ -69,7 +82,7 @@ export default async function OrderPrintPage({
               {order.items.map((item) => (
                 <tr key={item.id}>
                   <td>{item.label}</td>
-                  <td>{formatQuantity(item.quantity)}</td>
+                  <td>{formatOrderItemQuantity(item.quantity, item)}</td>
                   <td>{formatCurrency(item.unitPriceCents)}</td>
                   <td>{formatCurrency(item.lineTotalCents)}</td>
                 </tr>

@@ -1,14 +1,15 @@
 "use client";
 
-import type { MainPhase, OperationalStatus, PaymentStatus, Priority } from "@prisma/client";
+import type { InvoiceStatus, MainPhase, OperationalStatus, PaymentStatus, Priority } from "@prisma/client";
 import Link from "next/link";
 import { Fragment, useState } from "react";
+import { MarkOrderInvoicedButton } from "@/components/mark-order-invoiced-button";
 import { QuickOrderControlForms, QuickOrderTriggerButton } from "@/components/quick-order-controls";
 import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
 import { StatusPills } from "@/components/status-pills";
 import { priorityLabels } from "@/lib/constants";
 import { formatCurrency, formatDateTime } from "@/lib/format";
-import type { OrderListView } from "@/lib/order-filters";
+import { buildOrdersFilterHref, type OrderListFilters, type OrderListView, type OrderSortDirection, type OrderSortField } from "@/lib/order-filters";
 import { getPriorityToneClass } from "@/lib/priorities";
 
 type OrderRow = {
@@ -24,6 +25,7 @@ type OrderRow = {
   mainPhase: MainPhase;
   operationalStatus: OperationalStatus;
   paymentStatus: PaymentStatus;
+  invoiceStatus: InvoiceStatus;
   totalCents: number;
   balanceDueCents: number;
   customer: {
@@ -51,21 +53,69 @@ function getPartialDeliveryMeta(items: Array<{ deliveredAt?: Date | string | nul
   };
 }
 
-export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; view?: OrderListView }) {
+function SortGlyph({ active, direction }: { active: boolean; direction: OrderSortDirection }) {
+  return (
+    <span className={`orders-table-sort-icon${active ? " active" : ""}`} aria-hidden="true">
+      {active ? (direction === "asc" ? "↑" : "↓") : "↕"}
+    </span>
+  );
+}
+
+export function OrdersTable({
+  orders,
+  view = "ACTIVE",
+  filters,
+  sortField,
+  sortDirection
+}: {
+  orders: OrderRow[];
+  view?: OrderListView;
+  filters: OrderListFilters;
+  sortField: OrderSortField;
+  sortDirection: OrderSortDirection;
+}) {
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
   const deliveryColumnLabel = view === "DELIVERED" ? "Consegnato" : "Consegna";
+  const sortableHeaders: Array<{ field: OrderSortField; label: string }> = [
+    { field: "order", label: "Ordine" },
+    { field: "customer", label: "Cliente" },
+    { field: "delivery", label: deliveryColumnLabel },
+    { field: "priority", label: "Priorita" },
+    { field: "status", label: "Stato" },
+    { field: "amount", label: "Importi" }
+  ];
+
+  function buildSortHref(field: OrderSortField) {
+    const nextDirection = sortField === field && sortDirection === "asc" ? "desc" : "asc";
+    return buildOrdersFilterHref({
+      ...filters,
+      sort: field,
+      dir: nextDirection
+    });
+  }
 
   return (
     <table className="orders-table">
       <thead>
         <tr>
-          <th>Ordine</th>
-          <th>Cliente</th>
-          <th>{deliveryColumnLabel}</th>
-          <th>Priorita</th>
-          <th>Stato</th>
-          <th>Importi</th>
-          <th>WhatsApp</th>
+          {sortableHeaders.map((header) => {
+            const isActive = sortField === header.field;
+
+            return (
+              <th key={header.field}>
+                <Link
+                  className={`orders-table-sort-link${isActive ? " active" : ""}`}
+                  href={buildSortHref(header.field)}
+                  prefetch={false}
+                  scroll={false}
+                >
+                  <span>{header.label}</span>
+                  <SortGlyph active={isActive} direction={sortDirection} />
+                </Link>
+              </th>
+            );
+          })}
+          <th>Azioni</th>
         </tr>
       </thead>
       <tbody>
@@ -138,7 +188,8 @@ export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; v
                           <span>Priorita</span>
                           <strong>{priorityLabels[order.priority]}</strong>
                         </div>
-                        <div className="order-mobile-card-whatsapp">
+                        <div className="order-mobile-card-actions">
+                          <MarkOrderInvoicedButton compact invoiceStatus={order.invoiceStatus} orderId={order.id} />
                           <ReadyWhatsAppButton
                             compact
                             disabled={order.mainPhase !== "SVILUPPO_COMPLETATO"}
@@ -212,14 +263,17 @@ export function OrdersTable({ orders, view = "ACTIVE" }: { orders: OrderRow[]; v
                     <div className="strong">{formatCurrency(order.totalCents)}</div>
                     <div className="subtle">Residuo {formatCurrency(order.balanceDueCents)}</div>
                   </td>
-                  <td className="orders-table-whatsapp-cell" data-label="WhatsApp">
-                    <ReadyWhatsAppButton
-                      compact
-                      disabled={order.mainPhase !== "SVILUPPO_COMPLETATO"}
-                      hasPhone={order.hasWhatsapp}
-                      notifiedAt={order.readyWhatsappSentAt}
-                      orderId={order.id}
-                    />
+                  <td className="orders-table-actions-cell" data-label="Azioni">
+                    <div className="orders-table-action-buttons">
+                      <MarkOrderInvoicedButton compact invoiceStatus={order.invoiceStatus} orderId={order.id} />
+                      <ReadyWhatsAppButton
+                        compact
+                        disabled={order.mainPhase !== "SVILUPPO_COMPLETATO"}
+                        hasPhone={order.hasWhatsapp}
+                        notifiedAt={order.readyWhatsappSentAt}
+                        orderId={order.id}
+                      />
+                    </div>
                   </td>
                 </tr>
                 {isOpen ? (

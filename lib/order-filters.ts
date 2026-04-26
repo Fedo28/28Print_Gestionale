@@ -9,6 +9,8 @@ export type StatusFilter = OperationalStatus | "ALL";
 export type PaymentFilter = PaymentStatus | "ALL";
 export type InvoiceFilter = InvoiceStatus | "ALL";
 export type PriorityFilter = Priority | "ALL";
+export type OrderSortField = "order" | "customer" | "delivery" | "priority" | "status" | "amount";
+export type OrderSortDirection = "asc" | "desc";
 export type DashboardPreset =
   | "ALL"
   | "TODAY"
@@ -43,6 +45,8 @@ export type OrderListFilters = {
   priority?: PriorityFilter;
   quote?: QuoteFilter;
   preset?: DashboardPreset;
+  sort?: OrderSortField;
+  dir?: OrderSortDirection;
 };
 
 const mainPhases = visibleMainPhases as PhaseFilter[];
@@ -50,6 +54,7 @@ const operationalStatuses: OperationalStatus[] = ["ATTIVO", "IN_ATTESA_FILE", "I
 const paymentStatuses: PaymentStatus[] = ["NON_PAGATO", "ACCONTO", "PARZIALE", "PAGATO"];
 const invoiceStatuses: InvoiceStatus[] = ["DA_FATTURARE", "FATTURATO", "NON_RICHIESTO"];
 const priorities: Priority[] = ["BASSA", "MEDIA", "ALTA", "URGENTE"];
+const orderSortFields: OrderSortField[] = ["order", "customer", "delivery", "priority", "status", "amount"];
 
 export function parseOrderListView(raw: string | null): OrderListView {
   return raw === "DELIVERED" ? "DELIVERED" : "ACTIVE";
@@ -78,6 +83,14 @@ export function parseInvoiceFilter(raw: string | null): InvoiceFilter {
 
 export function parsePriorityFilter(raw: string | null): PriorityFilter {
   return raw && priorities.includes(raw as Priority) ? (raw as Priority) : "ALL";
+}
+
+export function parseOrderSortField(raw: string | null): OrderSortField | undefined {
+  return raw && orderSortFields.includes(raw as OrderSortField) ? (raw as OrderSortField) : undefined;
+}
+
+export function parseOrderSortDirection(raw: string | null): OrderSortDirection | undefined {
+  return raw === "desc" || raw === "asc" ? raw : undefined;
 }
 
 export function parseQuoteFilter(raw: string | null): QuoteFilter {
@@ -147,6 +160,14 @@ export function buildOrdersFilterHref(filters: OrderListFilters) {
 
   if (filters.preset && filters.preset !== "ALL") {
     params.set("preset", filters.preset);
+  }
+
+  if (filters.sort) {
+    params.set("sort", filters.sort);
+  }
+
+  if (filters.dir) {
+    params.set("dir", filters.dir);
   }
 
   const query = params.toString();

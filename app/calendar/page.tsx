@@ -144,12 +144,12 @@ function DayCalendar({ snapshot }: { snapshot: CalendarDaySnapshot }) {
 
       <div className="calendar-day-shell">
         <section className="card card-pad compact-lane-card" id="calendar-day-deliveries">
-          <div className="list-header compact-section-head">
+          <div className="list-header compact-section-head calendar-lane-head">
             <div>
               <h3>Lavori del giorno</h3>
               <p className="card-muted">Ordini in scadenza nella giornata selezionata.</p>
             </div>
-            <span className="pill">{snapshot.dueOrders.length}</span>
+            <span className="pill calendar-count-badge">{snapshot.dueOrders.length}</span>
           </div>
           <div className="compact-order-list">
             {snapshot.dueOrders.length === 0 ? (
@@ -163,12 +163,12 @@ function DayCalendar({ snapshot }: { snapshot: CalendarDaySnapshot }) {
         </section>
 
         <section className="card card-pad compact-lane-card" id="calendar-day-appointments">
-          <div className="list-header compact-section-head">
+          <div className="list-header compact-section-head calendar-lane-head">
             <div>
               <h3>Appuntamenti del giorno</h3>
               <p className="card-muted">Installazioni, incontri cliente e lavorazioni prenotate.</p>
             </div>
-            <span className="pill">{snapshot.appointmentOrders.length}</span>
+            <span className="pill calendar-count-badge">{snapshot.appointmentOrders.length}</span>
           </div>
           <div className="compact-order-list">
             {snapshot.appointmentOrders.length === 0 ? (
@@ -183,14 +183,14 @@ function DayCalendar({ snapshot }: { snapshot: CalendarDaySnapshot }) {
 
         {snapshot.overdueOrders.length > 0 ? (
           <section className="card card-pad compact-lane-card calendar-day-wide" id="calendar-day-overdue">
-            <div className="list-header compact-section-head">
+            <div className="list-header compact-section-head calendar-lane-head">
               <div>
                 <h3>Arretrati aperti</h3>
                 <p className="card-muted">
                   Ordini ancora in carico con consegna precedente alla data selezionata.
                 </p>
               </div>
-              <span className="pill danger">{snapshot.overdueOrders.length}</span>
+              <span className="pill danger calendar-count-badge">{snapshot.overdueOrders.length}</span>
             </div>
             <div className="compact-order-list">
               {snapshot.overdueOrders.map((order) => (
@@ -429,6 +429,7 @@ function CalendarSummaryGrid({
         hint={labelPrefix === "oggi" ? "Consegne previste" : "Consegne nei 7 giorni"}
         icon={<CalendarGlyph kind="work" />}
         label="Carico"
+        priority="primary"
         tone="neutral"
         value={summary.workload}
       />
@@ -437,6 +438,7 @@ function CalendarSummaryGrid({
         hint="Installazioni e incontri"
         icon={<CalendarGlyph kind="schedule" />}
         label="Appuntamenti"
+        priority="primary"
         tone="brand"
         value={summary.appointments}
       />
@@ -445,6 +447,7 @@ function CalendarSummaryGrid({
         hint="Ordini da far partire"
         icon={<CalendarGlyph kind="play" />}
         label="Da avviare"
+        priority="secondary"
         tone="neutral"
         value={summary.toStart}
       />
@@ -453,6 +456,7 @@ function CalendarSummaryGrid({
         hint="Produzione attiva"
         icon={<CalendarGlyph kind="gear" />}
         label="In lavorazione"
+        priority="secondary"
         tone="warning"
         value={summary.working}
       />
@@ -461,6 +465,7 @@ function CalendarSummaryGrid({
         hint="File o approvazioni in attesa"
         icon={<CalendarGlyph kind="pause" />}
         label="Sospesi"
+        priority="secondary"
         tone="danger"
         value={summary.blocked}
       />
@@ -469,6 +474,7 @@ function CalendarSummaryGrid({
         hint={overdueLabel}
         icon={<CalendarGlyph kind="alert" />}
         label="Arretrati"
+        priority="primary"
         tone={summary.overdue > 0 ? "danger" : "neutral"}
         value={summary.overdue}
       />
@@ -477,6 +483,7 @@ function CalendarSummaryGrid({
         hint="Ordini già pronti"
         icon={<CalendarGlyph kind="spark" />}
         label="Pronti"
+        priority="secondary"
         tone="success"
         value={summary.ready}
       />
@@ -490,7 +497,8 @@ function CalendarMetricCard({
   value,
   hint,
   tone,
-  href
+  href,
+  priority
 }: {
   icon: ReactNode;
   label: string;
@@ -498,16 +506,19 @@ function CalendarMetricCard({
   hint: string;
   tone: "neutral" | "danger" | "warning" | "success" | "brand";
   href: string;
+  priority: "primary" | "secondary";
 }) {
-  const className = `card card-pad compact-metric calendar-metric-card calendar-metric-card-link compact-metric-${tone}`;
+  const className = `card card-pad compact-metric calendar-metric-card calendar-metric-card-link compact-metric-${tone} calendar-metric-card-${priority}`;
   const content = (
     <>
-      <div className="compact-metric-top calendar-metric-head">
+      <div className="calendar-metric-head">
         <span className="compact-icon">{icon}</span>
-        <span className="compact-metric-label">{label}</span>
+        <div className="calendar-metric-copy">
+          <span className="compact-metric-label">{label}</span>
+          <span className="hint">{hint}</span>
+        </div>
+        <strong>{value}</strong>
       </div>
-      <strong>{value}</strong>
-      <span className="hint">{hint}</span>
     </>
   );
 

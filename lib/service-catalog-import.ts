@@ -2,12 +2,14 @@ import { readFile } from "fs/promises";
 import * as XLSX from "xlsx";
 import { normalizeServiceCode, syncServiceCatalogEntries } from "@/lib/orders";
 import { normalizeQuantityTiers } from "@/lib/pricing";
+import { inferServiceUnitFromCatalogText, parseServiceUnit, type ServiceUnitValue } from "@/lib/service-units";
 
 export type ServiceCatalogImportRow = {
   code: string;
   name: string;
   description?: string;
   basePriceCents: number;
+  unit: ServiceUnitValue;
   quantityTiers?: string;
   active: boolean;
 };
@@ -109,6 +111,16 @@ function parseActiveValue(value: unknown) {
   return ["true", "1", "si", "sì", "yes", "y", "attivo"].includes(normalized);
 }
 
+function parseRowUnit(row: Record<string, unknown>, name: string, description?: string) {
+  const explicitUnitValue = row.unit || row.unita || row.unita_misura || row.unita_di_misura;
+
+  if (String(explicitUnitValue || "").trim()) {
+    return parseServiceUnit(explicitUnitValue);
+  }
+
+  return inferServiceUnitFromCatalogText(String(row.code || ""), name, description);
+}
+
 export function parseServiceCatalogWorkbook(buffer: Buffer): ServiceCatalogImportParseResult {
   const workbook = XLSX.read(buffer, { type: "buffer" });
   const sheetName = resolveCatalogSheetName(workbook);
@@ -153,6 +165,7 @@ export function parseServiceCatalogWorkbook(buffer: Buffer): ServiceCatalogImpor
         name,
         description: String(row.description || "").trim() || undefined,
         basePriceCents: parseBasePriceToCents(row.base_price || row.prezzo_base),
+        unit: parseRowUnit(row, name, String(row.description || "").trim() || undefined),
         quantityTiers: normalizeQuantityTiers(
           String(row.quantity_tiers || row.scaglioni_quantita || row.scaglioni || "").trim()
         ),

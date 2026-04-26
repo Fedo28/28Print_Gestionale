@@ -3,10 +3,18 @@
 import { Customer, CustomerType, ServiceCatalog } from "@prisma/client";
 import { useEffect, useRef, useState } from "react";
 import { CustomerAutocomplete } from "@/components/customer-autocomplete";
+import { normalizeCustomerSearchValue } from "@/lib/customer-search";
 import { isLabelCalculatorMaterialService } from "@/lib/label-calculator";
 import { customerTypeLabels, getAppointmentNoteOptions, invoiceStatusLabels, priorityLabels } from "@/lib/constants";
 import { formatCurrency, formatDateTime, formatQuantity } from "@/lib/format";
 import { computeAutomaticPriority } from "@/lib/priorities";
+import {
+  formatServiceUnitPriceLabel,
+  formatServiceUnitShortLabel,
+  inferServiceUnitFromCatalogText,
+  serviceUnitOptions,
+  type ServiceUnitValue
+} from "@/lib/service-units";
 import {
   buildOrderDraftStorageKey,
   buildOrderDraftSubmittedKey,
@@ -347,6 +355,7 @@ type InlineCatalogDraft = {
   name: string;
   code: string;
   basePrice: string;
+  unit: ServiceUnitValue;
   description: string;
   quantityTiers: string;
 };
@@ -386,6 +395,7 @@ function createEmptyInlineCatalogDraft(): InlineCatalogDraft {
     name: "",
     code: "",
     basePrice: "",
+    unit: "PZ",
     description: "",
     quantityTiers: ""
   };
@@ -443,6 +453,7 @@ export function OrderForm({
   const [hasSavedDraft, setHasSavedDraft] = useState(false);
   const [appointmentNoteValue, setAppointmentNoteValue] = useState("");
   const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId);
+  const trimmedCustomerQuery = customerQuery.trim();
   const photographyFormats = getPhotographyFormatOptions(catalogServices);
   const photographyServices = catalogServices.filter(isPhotographyService);
   const labelCalculatorMaterials = catalogServices.filter(isLabelCalculatorMaterialService);
@@ -510,6 +521,32 @@ export function OrderForm({
 
       return current > index ? current - 1 : current;
     });
+  }
+
+  function findExactCustomerMatch(query: string) {
+    const normalizedQuery = normalizeCustomerSearchValue(query);
+    if (!normalizedQuery) {
+      return undefined;
+    }
+
+    return customers.find((customer) => {
+      const normalizedName = normalizeCustomerSearchValue(customer.name);
+      const normalizedPhone = normalizeCustomerSearchValue(customer.phone || "");
+      const normalizedWhatsapp = normalizeCustomerSearchValue(customer.whatsapp || "");
+      const normalizedEmail = normalizeCustomerSearchValue(customer.email || "");
+
+      return (
+        normalizedName === normalizedQuery ||
+        normalizedPhone === normalizedQuery ||
+        normalizedWhatsapp === normalizedQuery ||
+        normalizedEmail === normalizedQuery
+      );
+    });
+  }
+
+  function clearSelectedCustomer() {
+    setSelectedCustomerId("");
+    setCustomerQuery("");
   }
 
   function readDraftFieldsFromForm(): OrderDraftFieldValues {
@@ -820,7 +857,7 @@ export function OrderForm({
         type: "service" as const,
         key: service.id,
         label: service.name,
-        meta: formatCurrency(service.basePriceCents),
+        meta: `${service.code || "Senza codice"} • ${formatCurrency(service.basePriceCents)} • ${formatServiceUnitPriceLabel(service.unit)}`,
         service,
         score: getServiceSearchScore(service, normalizedQuery)
       }))
@@ -850,6 +887,19 @@ export function OrderForm({
     return serviceSuggestions.slice(0, 6);
   }
 
+  function findExactServiceMatch(query: string) {
+    const normalizedQuery = normalizeCatalogSearch(query);
+    if (!normalizedQuery) {
+      return undefined;
+    }
+
+    return catalogServices.find(
+      (service) =>
+        !isPhotographyService(service) &&
+        (normalizeCatalogSearch(service.name) === normalizedQuery || normalizeCatalogSearch(service.code || "") === normalizedQuery)
+    );
+  }
+
   function openInlineCatalogDraft(index: number) {
     const row = items[index];
     if (!row) {
@@ -862,6 +912,7 @@ export function OrderForm({
       name: row.serviceQuery.trim() || row.label.trim(),
       code: "",
       basePrice: row.unitPrice,
+      unit: inferServiceUnitFromCatalogText(row.serviceQuery, row.label, row.material, row.format, row.notes),
       description: "",
       quantityTiers: ""
     });
@@ -1308,6 +1359,9 @@ export function OrderForm({
               const normalizedNextValue = normalizeCatalogSearch(nextValue);
               const matchesSelectedService =
                 selectedService && normalizedNextValue === normalizeCatalogSearch(selectedService.name);
+              const exactMatchedService = findExactServiceMatch(nextValue);
+              const preserveMatchedSelection =
+                matchesSelectedService || (Boolean(exactMatchedService) && selectedService?.id === exactMatchedService?.id);
 
               setItems((current) =>
                 current.map((entry, itemIndex) =>
@@ -1315,15 +1369,25 @@ export function OrderForm({
                       ? {
                           ...entry,
                           serviceQuery: nextValue,
-                          photoMode: matchesSelectedService ? entry.photoMode : false,
-                          photoFormat: matchesSelectedService ? entry.photoFormat : "",
-                          label: nextValue,
-                          serviceCatalogId: matchesSelectedService ? entry.serviceCatalogId : "",
-                          unitPrice: matchesSelectedService ? entry.unitPrice : entry.priceOverridden ? entry.unitPrice : "",
-                          priceOverridden: matchesSelectedService ? entry.priceOverridden : entry.priceOverridden,
-                          format: matchesSelectedService ? entry.format : "",
-                          material: matchesSelectedService ? entry.material : "",
-                          finishing: matchesSelectedService ? entry.finishing : ""
+                          photoMode: preserveMatchedSelection ? entry.photoMode : false,
+                          photoFormat: preserveMatchedSelection ? entry.photoFormat : "",
+                          label: exactMatchedService ? exactMatchedService.name : nextValue,
+                          serviceCatalogId: preserveMatchedSelection
+                            ? entry.serviceCatalogId
+                            : exactMatchedService
+                              ? exactMatchedService.id
+                              : "",
+                          unitPrice: preserveMatchedSelection
+                            ? entry.unitPrice
+                            : exactMatchedService
+                              ? getCatalogPriceDisplay(exactMatchedService, parseQuantityValue(entry.quantity))
+                              : entry.priceOverridden
+                                ? entry.unitPrice
+                                : "",
+                          priceOverridden: exactMatchedService ? false : entry.priceOverridden,
+                          format: preserveMatchedSelection ? entry.format : "",
+                          material: preserveMatchedSelection ? entry.material : "",
+                          finishing: preserveMatchedSelection ? entry.finishing : ""
                         }
                       : entry
                   )
@@ -1423,8 +1487,13 @@ export function OrderForm({
                     onMouseDown={(event) => event.preventDefault()}
                     type="button"
                   >
-                    <strong>{suggestion.label}</strong>
-                    <span>{suggestion.meta}</span>
+                    <span className="order-line-suggestion-main">
+                      <strong className="order-line-suggestion-title">{suggestion.label}</strong>
+                      <span className="order-line-suggestion-meta">{suggestion.meta}</span>
+                    </span>
+                    {suggestion.type === "service" ? (
+                      <span className="order-line-suggestion-badge">{formatServiceUnitShortLabel(suggestion.service.unit)}</span>
+                    ) : null}
                   </button>
                 ))
               ) : (
@@ -1511,6 +1580,22 @@ export function OrderForm({
                         placeholder="0,00"
                         value={catalogDraft.basePrice}
                       />
+                    </div>
+                    <div className="field full order-line-inline-catalog-price">
+                      <label htmlFor={`inline-service-unit-${index}`}>Unita</label>
+                      <select
+                        id={`inline-service-unit-${index}`}
+                        onChange={(event) =>
+                          setCatalogDraft((current) => ({ ...current, unit: event.target.value as ServiceUnitValue }))
+                        }
+                        value={catalogDraft.unit}
+                      >
+                        {serviceUnitOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                 </section>
@@ -2028,8 +2113,16 @@ export function OrderForm({
                   ...customer,
                   orderCount: customer.orders.length
                 }))}
-                label="Cerca cliente esistente"
+                helperText="Scrivi una sola volta qui: se il cliente esiste te lo suggerisco, se non esiste uso questo nome per crearlo come nuovo."
+                label="Cliente: cerca o crea"
                 onQueryChange={(value) => {
+                  const exactMatch = findExactCustomerMatch(value);
+                  if (exactMatch) {
+                    setSelectedCustomerId(exactMatch.id);
+                    setCustomerQuery(exactMatch.name);
+                    return;
+                  }
+
                   setCustomerQuery(value);
                   if (selectedCustomerId) {
                     setSelectedCustomerId("");
@@ -2039,7 +2132,7 @@ export function OrderForm({
                   setSelectedCustomerId(customer.id);
                   setCustomerQuery(customer.name);
                 }}
-                placeholder=""
+                placeholder="Scrivi nome, ragione sociale, telefono o email"
                 query={customerQuery}
                 selectedCustomerId={selectedCustomerId}
               />
@@ -2055,12 +2148,11 @@ export function OrderForm({
                       className="ghost"
                       onClick={(event) => {
                         event.preventDefault();
-                        setSelectedCustomerId("");
-                        setCustomerQuery("");
+                        clearSelectedCustomer();
                       }}
                       type="button"
                     >
-                      Nuovo cliente
+                      Crea nuovo
                     </button>
                   </div>
                   <div className="subtle">{getPreferredCustomerPrimaryContact(selectedCustomer)}</div>
@@ -2070,9 +2162,16 @@ export function OrderForm({
 
               {selectedCustomerId ? null : (
                 <>
-                  <div className="field wide">
-                    <label htmlFor="customerName">Nome / Ragione sociale</label>
-                    <input id="customerName" name="customerName" required={!selectedCustomerId} />
+                  <input name="customerName" type="hidden" value={trimmedCustomerQuery} />
+                  <div className={`mini-item field full customer-create-preview${trimmedCustomerQuery ? " is-active" : ""}`}>
+                    <div className="customer-create-preview-copy">
+                      <strong>{trimmedCustomerQuery ? "Nuovo cliente da creare" : "Nuovo cliente"}</strong>
+                      <span className="subtle">
+                        {trimmedCustomerQuery
+                          ? `Se confermi l'ordine, creo il cliente come "${trimmedCustomerQuery}".`
+                          : "Inizia scrivendo il nome nel campo sopra. Se non esiste, lo creo come nuovo cliente."}
+                      </span>
+                    </div>
                   </div>
                   <div className="field">
                     <label htmlFor="customerType">Tipo cliente</label>

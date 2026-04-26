@@ -8,15 +8,17 @@ import {
   recordPaymentAction,
   toggleOrderItemDeliveryAction,
   transitionPhaseAction,
-  updateOrderItemAction,
   updateOrderAction,
   updateOrderStatusDetailAction
 } from "@/app/actions";
 import { PageHeader } from "@/components/page-header";
+import { MarkOrderInvoicedButton } from "@/components/mark-order-invoiced-button";
 import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
 import { StatusPills } from "@/components/status-pills";
 import { AttachmentUploadForm } from "@/components/attachment-upload-form";
 import { DeleteOrderForm } from "@/components/delete-order-form";
+import { OrderPrintBrandMenu } from "@/components/order-print-brand-menu";
+import { OrderItemEditorForm } from "@/components/order-item-editor-form";
 import { formatAttachmentSize } from "@/lib/attachment-utils";
 import { requireAuth } from "@/lib/auth";
 import {
@@ -29,14 +31,8 @@ import {
 import { formatCurrency, formatDateTime, formatQuantity, toDateTimeLocalInput } from "@/lib/format";
 import { buildOrdersFilterHref } from "@/lib/order-filters";
 import { getOrderById, getServiceCatalogAdmin } from "@/lib/orders";
-import { formatDiscountSummary, formatExtraSummary, usesLineTotalQuantityTiers } from "@/lib/pricing";
+import { usesLineTotalQuantityTiers } from "@/lib/pricing";
 import { resolveAttachmentStorageMode } from "@/lib/storage";
-
-const discountModeOptions = [
-  { value: "NONE", label: "Nessuno" },
-  { value: "AMOUNT", label: "Euro" },
-  { value: "PERCENT", label: "%" }
-] as const;
 
 export const dynamic = "force-dynamic";
 
@@ -104,9 +100,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                   </button>
                 </form>
               ) : null}
-              <Link className="button ghost" href={`/orders/${order.id}/print?autoprint=1`} prefetch={false} rel="noreferrer" target="_blank">
-                Stampa
-              </Link>
+              <OrderPrintBrandMenu orderId={order.id} />
               <Link className="button ghost" href={order.isQuote ? "/quotes" : order.mainPhase === "CONSEGNATO" ? "/orders?view=DELIVERED" : "/orders"}>
                 {order.isQuote ? "Torna ai preventivi" : "Torna agli ordini"}
               </Link>
@@ -216,7 +210,10 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                     Segna consegnato
                   </button>
                 </form>
-                <ReadyWhatsAppButton hasPhone={hasWhatsapp} notifiedAt={order.readyWhatsappSentAt} orderId={order.id} />
+                <div className="order-detail-inline-actions">
+                  <MarkOrderInvoicedButton compact invoiceStatus={order.invoiceStatus} orderId={order.id} />
+                  <ReadyWhatsAppButton hasPhone={hasWhatsapp} notifiedAt={order.readyWhatsappSentAt} orderId={order.id} />
+                </div>
               </div>
             ) : order.mainPhase === "CONSEGNATO" ? (
               <div className="empty">
@@ -225,6 +222,16 @@ export default async function OrderDetailPage({ params }: { params: { id: string
             ) : (
               <p className="hint order-detail-action-inline-hint">L'azione principale e disponibile in alto accanto al pulsante stampa.</p>
             )}
+            {!order.isQuote && guidedAction?.kind !== "deliver" ? (
+              <div className="button-row action-row order-detail-secondary-actions">
+                <div className="order-detail-inline-actions">
+                  <MarkOrderInvoicedButton compact invoiceStatus={order.invoiceStatus} orderId={order.id} />
+                  {order.mainPhase === "SVILUPPO_COMPLETATO" ? (
+                    <ReadyWhatsAppButton hasPhone={hasWhatsapp} notifiedAt={order.readyWhatsappSentAt} orderId={order.id} />
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
           </div>
         </article>
       </section>
@@ -374,6 +381,18 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           </span>
         </div>
         <div className="mini-list">
+          <details className="mini-item order-item-editor order-item-editor-new">
+            <summary className="order-item-editor-summary">
+              <div className="order-item-editor-copy">
+                <strong>Nuova riga</strong>
+                <span className="subtle">Aggiungi una lavorazione manuale o collegata al catalogo.</span>
+              </div>
+              <span className="order-item-editor-total">Aggiungi</span>
+            </summary>
+            <div className="order-item-editor-body">
+              <OrderItemEditorForm fieldPrefix="new-item" mode="create" orderId={order.id} services={services} submitLabel="Crea riga" />
+            </div>
+          </details>
           {order.items.map((item) => (
             <details className={`mini-item order-item-editor${item.deliveredAt ? " is-delivered" : ""}`} key={item.id}>
               <summary className="order-item-editor-summary">
@@ -391,114 +410,29 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                 <span className="order-item-editor-total">{formatCurrency(item.lineTotalCents)}</span>
               </summary>
               <div className="order-item-editor-body">
-                <form action={updateOrderItemAction} className="form-grid order-item-editor-form">
-                  <input name="orderId" type="hidden" value={order.id} />
-                  <input name="itemId" type="hidden" value={item.id} />
-                  <div className="field wide">
-                    <label htmlFor={`item-service-${item.id}`}>Servizio di catalogo</label>
-                    <select defaultValue={item.serviceCatalogId || ""} id={`item-service-${item.id}`} name="serviceCatalogId">
-                      <option value="">Voce libera</option>
-                      {services.map((service) => (
-                        <option key={service.id} value={service.id}>
-                          {service.code ? `${service.name} • ${service.code}` : service.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="field wide">
-                    <label htmlFor={`item-label-${item.id}`}>Titolo riga</label>
-                    <input defaultValue={item.label} id={`item-label-${item.id}`} name="label" required />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`item-qty-${item.id}`}>Qta</label>
-                    <input
-                      className="numeric-input"
-                      defaultValue={String(item.quantity).replace(".", ",")}
-                      id={`item-qty-${item.id}`}
-                      inputMode="decimal"
-                      name="quantity"
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`item-base-${item.id}`}>Prezzo listino</label>
-                    <input
-                      className="currency-input"
-                      defaultValue={((item.catalogBasePriceCents || item.unitPriceCents) / 100).toFixed(2).replace(".", ",")}
-                      id={`item-base-${item.id}`}
-                      inputMode="decimal"
-                      name="catalogBasePrice"
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`item-discount-mode-${item.id}`}>Sconto</label>
-                    <select defaultValue={item.discountMode} id={`item-discount-mode-${item.id}`} name="discountMode">
-                      {discountModeOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`item-discount-value-${item.id}`}>Valore sconto</label>
-                    <input
-                      className="numeric-input"
-                      defaultValue={
-                        item.discountMode === "PERCENT"
-                          ? String(item.discountValue)
-                          : (item.discountValue / 100).toFixed(2).replace(".", ",")
-                      }
-                      id={`item-discount-value-${item.id}`}
-                      inputMode="decimal"
-                      name="discountValue"
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`item-extra-mode-${item.id}`}>Extra</label>
-                    <select defaultValue={item.extraMode} id={`item-extra-mode-${item.id}`} name="extraMode">
-                      {discountModeOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`item-extra-value-${item.id}`}>Valore extra</label>
-                    <input
-                      className="numeric-input"
-                      defaultValue={
-                        item.extraMode === "PERCENT"
-                          ? String(item.extraValue)
-                          : (item.extraValue / 100).toFixed(2).replace(".", ",")
-                      }
-                      id={`item-extra-value-${item.id}`}
-                      inputMode="decimal"
-                      name="extraValue"
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`item-format-${item.id}`}>Formato</label>
-                    <input defaultValue={item.format || ""} id={`item-format-${item.id}`} name="format" />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`item-material-${item.id}`}>Materiale</label>
-                    <input defaultValue={item.material || ""} id={`item-material-${item.id}`} name="material" />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`item-finishing-${item.id}`}>Finitura</label>
-                    <input defaultValue={item.finishing || ""} id={`item-finishing-${item.id}`} name="finishing" />
-                  </div>
-                  <div className="field full">
-                    <label htmlFor={`item-notes-${item.id}`}>Note riga</label>
-                    <textarea defaultValue={item.notes || ""} id={`item-notes-${item.id}`} name="notes" />
-                  </div>
-                  <div className="button-row order-detail-submit-row">
-                    <button className="secondary" type="submit">
-                      Salva riga
-                    </button>
-                  </div>
-                </form>
+                <OrderItemEditorForm
+                  fieldPrefix={`item-${item.id}`}
+                  mode="update"
+                  orderId={order.id}
+                  services={services}
+                  submitLabel="Salva riga"
+                  values={{
+                    id: item.id,
+                    label: item.label,
+                    serviceCatalogId: item.serviceCatalogId,
+                    quantity: item.quantity,
+                    catalogBasePriceCents: item.catalogBasePriceCents,
+                    unitPriceCents: item.unitPriceCents,
+                    discountMode: item.discountMode,
+                    discountValue: item.discountValue,
+                    extraMode: item.extraMode,
+                    extraValue: item.extraValue,
+                    format: item.format,
+                    material: item.material,
+                    finishing: item.finishing,
+                    notes: item.notes
+                  }}
+                />
                 <div className="button-row order-item-editor-actions">
                   <form action={cloneOrderItemAction}>
                     <input name="orderId" type="hidden" value={order.id} />

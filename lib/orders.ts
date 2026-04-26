@@ -11,10 +11,19 @@ import {
   Prisma,
   Priority
 } from "@prisma/client";
-import { APP_TIMEZONE, mainPhaseLabels, normalizeMainPhaseForWorkflow, operationalStatusLabels, phaseOrder } from "@/lib/constants";
+import {
+  APP_TIMEZONE,
+  invoiceStatusLabels,
+  mainPhaseLabels,
+  normalizeMainPhaseForWorkflow,
+  operationalStatusLabels,
+  paymentStatusLabels,
+  phaseOrder
+} from "@/lib/constants";
 import { canTransitionPhase } from "@/lib/order-phase-transitions";
 import { formatCompactDate, formatDateKey, formatQuantity, formatWeekdayLabel } from "@/lib/format";
 import { comparePriorityDesc, computeAutomaticPriority } from "@/lib/priorities";
+import { type ServiceUnitValue, parseServiceUnit } from "@/lib/service-units";
 import {
   type CatalogPriceMode,
   clampDiscountValue,
@@ -28,6 +37,8 @@ import type {
   OrderListView,
   DashboardPreset,
   InvoiceFilter,
+  OrderSortDirection,
+  OrderSortField,
   PaymentFilter,
   PhaseFilter,
   PriorityFilter,
@@ -94,6 +105,23 @@ export type UpdateOrderInput = {
 export type UpdateOrderItemInput = {
   orderId: string;
   itemId: string;
+  label: string;
+  serviceCatalogId?: string;
+  quantity: number;
+  catalogBasePriceCents: number;
+  catalogPriceMode?: CatalogPriceMode;
+  discountMode: DiscountMode;
+  discountValue: number;
+  extraMode: DiscountMode;
+  extraValue: number;
+  format?: string;
+  material?: string;
+  finishing?: string;
+  notes?: string;
+};
+
+export type CreateOrderItemInput = {
+  orderId: string;
   label: string;
   serviceCatalogId?: string;
   quantity: number;
@@ -255,6 +283,7 @@ type ServiceCatalogImportRow = {
   name: string;
   description?: string;
   basePriceCents: number;
+  unit: ServiceUnitValue;
   quantityTiers?: string;
   active: boolean;
 };
@@ -333,6 +362,80 @@ function sortByPriorityThenDelivery<T extends { deliveryAt: Date | string; prior
     }
 
     return new Date(left.deliveryAt).getTime() - new Date(right.deliveryAt).getTime();
+  });
+}
+
+function compareText(left: string, right: string) {
+  return left.localeCompare(right, "it", { sensitivity: "base" });
+}
+
+function compareNumber(left: number, right: number) {
+  return left - right;
+}
+
+function compareDateValue(left: Date | string | null | undefined, right: Date | string | null | undefined) {
+  return new Date(left || 0).getTime() - new Date(right || 0).getTime();
+}
+
+function applySortDirection(value: number, direction: OrderSortDirection) {
+  return direction === "desc" ? value * -1 : value;
+}
+
+function getWorkflowPhaseIndex(phase: MainPhase) {
+  return phaseOrder.indexOf(normalizeMainPhaseForWorkflow(phase));
+}
+
+function sortOrdersList<
+  T extends {
+    orderCode: string;
+    title: string;
+    deliveryAt: Date | string;
+    deliveredAt?: Date | string | null;
+    priority: Priority;
+    mainPhase: MainPhase;
+    operationalStatus: OperationalStatus;
+    paymentStatus: PaymentStatus;
+    totalCents: number;
+    balanceDueCents: number;
+    customer: { name: string };
+  }
+>(orders: T[], options: { field: OrderSortField; direction: OrderSortDirection; view: OrderListView }) {
+  return [...orders].sort((left, right) => {
+    let result = 0;
+
+    switch (options.field) {
+      case "order":
+        result = compareText(left.orderCode, right.orderCode) || compareText(left.title, right.title);
+        break;
+      case "customer":
+        result = compareText(left.customer.name, right.customer.name) || compareText(left.orderCode, right.orderCode);
+        break;
+      case "delivery":
+        result =
+          compareDateValue(
+            options.view === "DELIVERED" ? left.deliveredAt || left.deliveryAt : left.deliveryAt,
+            options.view === "DELIVERED" ? right.deliveredAt || right.deliveryAt : right.deliveryAt
+          ) || comparePriorityDesc(left.priority, right.priority);
+        break;
+      case "priority":
+        result = comparePriorityDesc(left.priority, right.priority) || compareDateValue(left.deliveryAt, right.deliveryAt);
+        return options.direction === "asc" ? result * -1 : result;
+      case "status":
+        result =
+          compareNumber(getWorkflowPhaseIndex(left.mainPhase), getWorkflowPhaseIndex(right.mainPhase)) ||
+          compareText(operationalStatusLabels[left.operationalStatus], operationalStatusLabels[right.operationalStatus]) ||
+          compareText(paymentStatusLabels[left.paymentStatus], paymentStatusLabels[right.paymentStatus]) ||
+          compareDateValue(left.deliveryAt, right.deliveryAt);
+        break;
+      case "amount":
+        result =
+          compareNumber(left.totalCents, right.totalCents) ||
+          compareNumber(left.balanceDueCents, right.balanceDueCents) ||
+          compareDateValue(left.deliveryAt, right.deliveryAt);
+        break;
+    }
+
+    return applySortDirection(result, options.direction);
   });
 }
 
@@ -993,6 +1096,58 @@ export async function updateOrder(input: UpdateOrderInput) {
   });
 }
 
+export async function markOrderInvoiced(orderId: string) {
+  return updateOrderInvoiceStatus(orderId, "FATTURATO");
+}
+
+export async function updateOrderInvoiceStatus(orderId: string, nextInvoiceStatus: InvoiceStatus) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      id: true,
+      isQuote: true,
+      invoiceStatus: true
+    }
+  });
+
+  if (!order) {
+    throw new Error("Ordine non trovato.");
+  }
+
+  if (order.isQuote) {
+    throw new Error("I preventivi non possono essere segnati come fatturati.");
+  }
+
+  if (order.invoiceStatus === nextInvoiceStatus) {
+    return order;
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.order.update({
+      where: { id: orderId },
+      data: {
+        invoiceStatus: nextInvoiceStatus
+      },
+      select: {
+        id: true,
+        isQuote: true,
+        invoiceStatus: true
+      }
+    });
+
+    await tx.orderHistory.create({
+      data: {
+        orderId,
+        type: "UPDATED",
+        description: "Stato fatturazione aggiornato",
+        details: `${invoiceStatusLabels[order.invoiceStatus]} -> ${invoiceStatusLabels[nextInvoiceStatus]}`
+      }
+    });
+
+    return updated;
+  });
+}
+
 export async function updateCustomer(input: UpdateCustomerInput) {
   const name = input.name.trim();
   const phone = input.phone?.trim();
@@ -1186,6 +1341,116 @@ export async function updateOrderItem(input: UpdateOrderItemInput) {
         orderId: input.orderId,
         type: "UPDATED",
         description: `Riga ordine aggiornata: ${normalized.label}`,
+        details: `${formatQuantity(normalized.quantity)} • ${(normalized.lineTotalCents / 100).toFixed(2)} EUR`
+      }
+    });
+  });
+}
+
+export async function createOrderItem(input: CreateOrderItemInput) {
+  const order = await prisma.order.findUnique({
+    where: { id: input.orderId },
+    include: {
+      payments: true
+    }
+  });
+
+  if (!order) {
+    throw new Error("Ordine non trovato.");
+  }
+
+  const nextServiceCatalogId = input.serviceCatalogId?.trim() || undefined;
+  const selectedServiceCatalog = nextServiceCatalogId
+    ? await prisma.serviceCatalog.findUnique({
+        where: { id: nextServiceCatalogId },
+        select: {
+          id: true,
+          code: true,
+          name: true
+        }
+      })
+    : null;
+
+  if (nextServiceCatalogId && !selectedServiceCatalog) {
+    throw new Error("Servizio catalogo non trovato.");
+  }
+
+  const normalized = computeOrderTotals([
+    {
+      label: input.label,
+      quantity: input.quantity,
+      catalogBasePriceCents: input.catalogBasePriceCents,
+      catalogPriceMode: usesLineTotalCatalogPricing({
+        explicitMode: input.catalogPriceMode,
+        format: input.format,
+        serviceCatalogCode: selectedServiceCatalog?.code,
+        serviceCatalogName: selectedServiceCatalog?.name
+      })
+        ? "LINE_TOTAL"
+        : "UNIT",
+      discountMode: input.discountMode,
+      discountValue: input.discountValue,
+      extraMode: input.extraMode,
+      extraValue: input.extraValue,
+      unitPriceCents: input.catalogBasePriceCents,
+      format: input.format,
+      material: input.material,
+      finishing: input.finishing,
+      notes: input.notes,
+      serviceCatalogId: nextServiceCatalogId
+    }
+  ]).items[0];
+
+  if (!normalized) {
+    throw new Error("La riga ordine deve avere almeno un titolo.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.orderItem.create({
+      data: {
+        orderId: input.orderId,
+        serviceCatalogId: nextServiceCatalogId || null,
+        label: normalized.label,
+        quantity: normalized.quantity,
+        catalogBasePriceCents: normalized.catalogBasePriceCents,
+        discountMode: normalized.discountMode,
+        discountValue: normalized.discountValue,
+        extraMode: normalized.extraMode,
+        extraValue: normalized.extraValue,
+        unitPriceCents: normalized.unitPriceCents,
+        lineTotalCents: normalized.lineTotalCents,
+        format: normalized.format?.trim() || null,
+        material: normalized.material?.trim() || null,
+        finishing: normalized.finishing?.trim() || null,
+        notes: normalized.notes?.trim() || null,
+        deliveredAt: null
+      }
+    });
+
+    const updatedItems = await tx.orderItem.findMany({
+      where: { orderId: input.orderId },
+      orderBy: { createdAt: "asc" }
+    });
+
+    const totalCents = updatedItems.reduce((sum, entry) => sum + entry.lineTotalCents, 0);
+    const paymentSummary = computePaymentSummary(totalCents, order.payments);
+
+    await tx.order.update({
+      where: { id: input.orderId },
+      data: {
+        totalCents,
+        paidCents: paymentSummary.paidCents,
+        balanceDueCents: paymentSummary.balanceDueCents,
+        paymentStatus: paymentSummary.paymentStatus,
+        depositCents: paymentSummary.depositCents
+      }
+    });
+
+    await tx.orderHistory.create({
+      data: {
+        orderId: input.orderId,
+        type: "UPDATED",
+        description: `Riga aggiunta: ${normalized.label}`,
         details: `${formatQuantity(normalized.quantity)} • ${(normalized.lineTotalCents / 100).toFixed(2)} EUR`
       }
     });
@@ -1731,6 +1996,7 @@ export async function createService(
   name: string,
   description: string | undefined,
   basePriceCents: number,
+  unit: ServiceUnitValue,
   quantityTiers?: string
 ) {
   const cleanName = name.trim();
@@ -1769,6 +2035,7 @@ export async function createService(
       name: cleanName,
       description: description?.trim() || undefined,
       basePriceCents: Math.max(0, basePriceCents),
+      unit: parseServiceUnit(unit),
       quantityTiers: normalizeQuantityTiers(quantityTiers)
     }
   });
@@ -1780,6 +2047,7 @@ export async function updateServiceCatalogEntry(input: {
   name: string;
   description?: string;
   basePriceCents: number;
+  unit: ServiceUnitValue;
   quantityTiers?: string;
   active: boolean;
 }) {
@@ -1807,6 +2075,7 @@ export async function updateServiceCatalogEntry(input: {
       name: cleanName,
       description: input.description?.trim() || undefined,
       basePriceCents: Math.max(0, input.basePriceCents),
+      unit: parseServiceUnit(input.unit),
       quantityTiers: normalizeQuantityTiers(input.quantityTiers),
       active: input.active
     }
@@ -1860,6 +2129,7 @@ export async function syncServiceCatalogEntries(rows: ServiceCatalogImportRow[])
         name: row.name,
         description: row.description,
         basePriceCents: row.basePriceCents,
+        unit: parseServiceUnit(row.unit),
         quantityTiers: normalizeQuantityTiers(row.quantityTiers),
         active: row.active
       }))
@@ -1878,6 +2148,7 @@ export async function syncServiceCatalogEntries(rows: ServiceCatalogImportRow[])
         name: row.name,
         description: row.description,
         basePriceCents: row.basePriceCents,
+        unit: parseServiceUnit(row.unit),
         quantityTiers: normalizeQuantityTiers(row.quantityTiers),
         active: row.active
       }
@@ -2055,12 +2326,16 @@ export async function getOrdersList(filters: {
   priority?: PriorityFilter;
   quote?: QuoteFilter;
   preset?: DashboardPreset;
+  sort?: OrderSortField;
+  direction?: OrderSortDirection;
 }) {
   const query = filters.query?.trim();
   const now = new Date();
   const todayStart = startOfDay(now);
   const tomorrowStart = addDays(todayStart, 1);
   const isDeliveredView = filters.view === "DELIVERED";
+  const sortField = filters.sort || "delivery";
+  const sortDirection = filters.direction || (isDeliveredView ? "desc" : "asc");
   const queryWhere = query
     ? {
         OR: [
@@ -2183,17 +2458,17 @@ export async function getOrdersList(filters: {
     orderBy: isDeliveredView ? [{ deliveredAt: "desc" }, { updatedAt: "desc" }] : [{ deliveryAt: "asc" }, { priority: "desc" }]
   });
 
-  if (isDeliveredView) {
-    return orders;
-  }
+  const ordersWithPriority = isDeliveredView ? orders : orders.map((order) => withEffectiveOrderPriority(order));
+  const filteredOrders =
+    !isDeliveredView && filters.priority && filters.priority !== "ALL"
+      ? ordersWithPriority.filter((order) => order.priority === filters.priority)
+      : ordersWithPriority;
 
-  const ordersWithPriority = sortByDeliveryThenPriority(orders.map((order) => withEffectiveOrderPriority(order)));
-
-  if (filters.priority && filters.priority !== "ALL") {
-    return ordersWithPriority.filter((order) => order.priority === filters.priority);
-  }
-
-  return ordersWithPriority;
+  return sortOrdersList(filteredOrders, {
+    field: sortField,
+    direction: sortDirection,
+    view: filters.view || "ACTIVE"
+  });
 }
 
 export async function getOrderById(id: string) {

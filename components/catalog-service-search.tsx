@@ -1,8 +1,9 @@
 "use client";
 
-import { useDeferredValue, useId, useState } from "react";
+import { useDeferredValue, useState } from "react";
 import { updateServiceAction } from "@/app/actions";
 import { formatCurrency } from "@/lib/format";
+import { formatServiceUnitPriceLabel, serviceUnitOptions, type ServiceUnitValue } from "@/lib/service-units";
 
 type CatalogServiceSearchProps = {
   services: Array<{
@@ -11,6 +12,7 @@ type CatalogServiceSearchProps = {
     name: string;
     description: string | null;
     basePriceCents: number;
+    unit: ServiceUnitValue;
     quantityTiers: string | null;
     active: boolean;
   }>;
@@ -30,6 +32,8 @@ function buildSearchHaystack(service: CatalogServiceSearchProps["services"][numb
       service.code || "",
       service.name,
       service.description || "",
+      formatServiceUnitPriceLabel(service.unit),
+      service.unit,
       service.quantityTiers || "",
       service.active ? "attivo" : "disattivato"
     ].join(" ")
@@ -101,6 +105,16 @@ function ServiceResultCard({ service }: { service: CatalogServiceSearchProps["se
             required
           />
         </div>
+        <div className="field service-admin-price">
+          <label htmlFor={`service-unit-${service.id}`}>Unita</label>
+          <select defaultValue={service.unit} id={`service-unit-${service.id}`} name="unit">
+            {serviceUnitOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="field full service-admin-description">
           <label htmlFor={`service-description-${service.id}`}>Descrizione</label>
           <textarea defaultValue={service.description || ""} id={`service-description-${service.id}`} name="description" />
@@ -121,7 +135,9 @@ function ServiceResultCard({ service }: { service: CatalogServiceSearchProps["se
           </label>
         </div>
         <div className="button-row service-admin-actions">
-          <span className="subtle">{formatCurrency(service.basePriceCents)}</span>
+          <span className="subtle">
+            {formatCurrency(service.basePriceCents)} • {formatServiceUnitPriceLabel(service.unit)}
+          </span>
           <button className="secondary" type="submit">
             Salva servizio
           </button>
@@ -135,7 +151,6 @@ export function CatalogServiceSearch({ services }: CatalogServiceSearchProps) {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const normalizedQuery = normalizeSearchValue(deferredQuery);
-  const datalistId = useId();
 
   const rankedResults = normalizedQuery
     ? services
@@ -161,7 +176,7 @@ export function CatalogServiceSearch({ services }: CatalogServiceSearchProps) {
       <div className="list-header">
         <div>
           <h4>Servizi presenti</h4>
-          <p className="card-muted">Il catalogo si apre solo su ricerca. Scrivi codice, nome, descrizione o uno scaglione per trovare subito il servizio giusto.</p>
+          <p className="card-muted">Scrivi liberamente codice, nome, descrizione o scaglioni: i risultati qui sotto restano modificabili, incluso il nome del servizio.</p>
         </div>
       </div>
 
@@ -171,19 +186,17 @@ export function CatalogServiceSearch({ services }: CatalogServiceSearchProps) {
           <input
             autoComplete="off"
             id="catalog-service-search"
-            list={datalistId}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Es. biglietti, manifesto 70x100, PVC, 1-20:0,50"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setQuery("");
+              }
+            }}
+            placeholder="Scrivi qui: biglietti, manifesto 70x100, PVC, 1-20:0,50"
             spellCheck={false}
+            type="search"
             value={query}
           />
-          <datalist id={datalistId}>
-            {services.map((service) => (
-              <option key={service.id} value={service.name}>
-                {service.code || ""}
-              </option>
-            ))}
-          </datalist>
           <div className="settings-catalog-search-meta">
             <span className="subtle">{services.length} servizi disponibili</span>
             {normalizedQuery ? <span className="subtle">{rankedResults.length} risultati trovati</span> : null}
@@ -202,7 +215,9 @@ export function CatalogServiceSearch({ services }: CatalogServiceSearchProps) {
                     type="button"
                   >
                     <span className="settings-catalog-suggestion-name">{service.name}</span>
-                    <span className="settings-catalog-suggestion-meta">{service.code || "Senza codice"} • {formatCurrency(service.basePriceCents)}</span>
+                    <span className="settings-catalog-suggestion-meta">
+                      {service.code || "Senza codice"} • {formatCurrency(service.basePriceCents)} • {formatServiceUnitPriceLabel(service.unit)}
+                    </span>
                   </button>
                 ))}
               </div>

@@ -8,9 +8,10 @@ import {
   MANUAL_FORM_DRAFT_STORAGE_EVENT,
   parseManualFormDraftSnapshot
 } from "@/lib/form-drafts";
+import { serviceUnitOptions } from "@/lib/service-units";
 
 const SERVICE_DRAFT_KEY = buildManualFormDraftStorageKey("service-create");
-const SERVICE_FORM_FIELDS = ["code", "name", "basePrice", "description", "quantityTiers"] as const;
+const SERVICE_FORM_FIELDS = ["code", "name", "basePrice", "unit", "description", "quantityTiers"] as const;
 
 export function ServiceCreateForm({ action }: { action: (formData: FormData) => void | Promise<void> }) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -150,6 +151,16 @@ export function ServiceCreateForm({ action }: { action: (formData: FormData) => 
       <div className="field">
         <label htmlFor="basePrice">Prezzo base</label>
         <input className="currency-input" id="basePrice" inputMode="decimal" name="basePrice" placeholder="0,00" />
+      </div>
+      <div className="field">
+        <label htmlFor="unit">Unita</label>
+        <select defaultValue="PZ" id="unit" name="unit">
+          {serviceUnitOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="field full">
         <label htmlFor="description">Descrizione</label>

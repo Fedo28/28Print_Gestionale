@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readSession } from "@/lib/auth-core";
 import { parseCurrencyToCents } from "@/lib/forms";
 import { createService, setServiceCatalogEntryActive } from "@/lib/orders";
+import { parseServiceUnit } from "@/lib/service-units";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,7 @@ export async function POST(request: NextRequest) {
       String(body.name || ""),
       String(body.description || "") || undefined,
       parseCurrencyToCents(String(body.basePrice || "")),
+      parseServiceUnit(body.unit),
       String(body.quantityTiers || "")
     );
 

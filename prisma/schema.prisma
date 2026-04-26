@@ -69,6 +69,12 @@ enum PaymentEntryStatus {
   SOSTITUITO
 }
 
+enum ServiceUnit {
+  PZ
+  MQ
+  ML
+}
+
 enum BillboardAssetKind {
   CARTELLONE
   MONITOR
@@ -204,6 +210,7 @@ model ServiceCatalog {
   name           String
   description    String?
   basePriceCents Int         @default(0)
+  unit           ServiceUnit @default(PZ)
   quantityTiers  String?
   active         Boolean     @default(true)
   createdAt      DateTime    @default(now())
