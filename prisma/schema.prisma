@@ -148,6 +148,7 @@ model Order {
   deliveredAt         DateTime?
   appointmentAt       DateTime?
   appointmentNote     String?
+  schedulePending     Boolean           @default(false)
   priority            Priority          @default(MEDIA)
   isQuote             Boolean           @default(false)
   mainPhase           MainPhase         @default(ACCETTATO)

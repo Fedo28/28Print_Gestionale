@@ -8,6 +8,7 @@ type QuoteRow = {
   orderCode: string;
   title: string;
   deliveryAt: Date | string;
+  schedulePending: boolean;
   priority: Priority;
   totalCents: number;
   balanceDueCents: number;
@@ -48,7 +49,7 @@ export function QuotesTable({ quotes }: { quotes: QuoteRow[] }) {
                 <strong>{quote.customer.name}</strong>
                 <div className="subtle">{quote.customer.phone || "Telefono non inserito"}</div>
               </td>
-              <td>{formatDateTime(quote.deliveryAt)}</td>
+              <td>{quote.schedulePending ? "Da definire" : formatDateTime(quote.deliveryAt)}</td>
               <td>{priorityLabels[quote.priority]}</td>
               <td>
                 <div className="strong">{formatCurrency(quote.totalCents)}</div>

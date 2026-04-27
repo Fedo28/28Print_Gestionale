@@ -81,7 +81,7 @@ export type CreateOrderInput = {
     notes?: string;
   };
   title: string;
-  deliveryAt: Date;
+  deliveryAt?: Date | null;
   appointmentAt?: Date | null;
   appointmentNote?: string;
   notes?: string;
@@ -94,7 +94,7 @@ export type CreateOrderInput = {
 export type UpdateOrderInput = {
   id: string;
   title: string;
-  deliveryAt: Date;
+  deliveryAt?: Date | null;
   appointmentAt?: Date | null;
   appointmentNote?: string;
   notes?: string;
@@ -144,6 +144,11 @@ export type ToggleOrderItemDeliveryInput = {
 };
 
 export type CloneOrderItemInput = {
+  orderId: string;
+  itemId: string;
+};
+
+export type DeleteOrderItemInput = {
   orderId: string;
   itemId: string;
 };
@@ -958,8 +963,10 @@ export async function createOrder(input: CreateOrderInput) {
     const balanceDueCents = computeBalanceDue(totalCents, paidCents);
     const paymentStatus = computePaymentStatus(totalCents, paidCents, paidCents > 0 ? 1 : 0);
     const appointmentAt = input.appointmentAt ?? undefined;
+    const hasExplicitScheduling = Boolean(input.deliveryAt || appointmentAt);
     const appointmentNote = appointmentAt ? input.appointmentNote?.trim() || undefined : undefined;
-    const priority = computeAutomaticPriority(input.deliveryAt);
+    const effectiveDeliveryAt = input.deliveryAt ?? appointmentAt ?? new Date();
+    const priority = computeAutomaticPriority(effectiveDeliveryAt);
 
     const order = await tx.order.create({
       data: {
@@ -968,9 +975,10 @@ export async function createOrder(input: CreateOrderInput) {
         title,
         titleNormalized,
         createdOn,
-        deliveryAt: input.deliveryAt,
+        deliveryAt: effectiveDeliveryAt,
         appointmentAt,
         appointmentNote,
+        schedulePending: Boolean(input.isQuote) && !hasExplicitScheduling,
         priority,
         isQuote: Boolean(input.isQuote),
         notes: input.notes?.trim() || undefined,
@@ -1065,16 +1073,26 @@ export async function updateOrder(input: UpdateOrderInput) {
 
     const nextIsQuote = Boolean(input.isQuote);
     const appointmentAt = input.appointmentAt ?? null;
+    const nextDeliveryAt = input.deliveryAt ?? null;
+    const hasScheduling = Boolean(nextDeliveryAt || appointmentAt);
+    const schedulePending = nextIsQuote && !hasScheduling;
+
+    if (!nextIsQuote && !hasScheduling) {
+      throw new Error("Per confermare come ordine devi impostare una consegna oppure un appuntamento.");
+    }
+
     const appointmentNote = appointmentAt ? input.appointmentNote?.trim() || null : null;
-    const priority = computeAutomaticPriority(input.deliveryAt);
+    const effectiveDeliveryAt = nextDeliveryAt ?? appointmentAt ?? order.deliveryAt;
+    const priority = computeAutomaticPriority(effectiveDeliveryAt);
     const updated = await tx.order.update({
       where: { id: input.id },
       data: {
         title,
         titleNormalized,
-        deliveryAt: input.deliveryAt,
+        deliveryAt: effectiveDeliveryAt,
         appointmentAt,
         appointmentNote,
+        schedulePending,
         priority,
         notes: input.notes?.trim() || undefined,
         invoiceStatus: input.invoiceStatus,
@@ -1406,7 +1424,7 @@ export async function createOrderItem(input: CreateOrderItemInput) {
   }
 
   return prisma.$transaction(async (tx) => {
-    await tx.orderItem.create({
+    const createdItem = await tx.orderItem.create({
       data: {
         orderId: input.orderId,
         serviceCatalogId: nextServiceCatalogId || null,
@@ -1454,6 +1472,8 @@ export async function createOrderItem(input: CreateOrderItemInput) {
         details: `${formatQuantity(normalized.quantity)} • ${(normalized.lineTotalCents / 100).toFixed(2)} EUR`
       }
     });
+
+    return createdItem;
   });
 }
 
@@ -1791,10 +1811,17 @@ export async function updateOrderQuoteFlag(orderId: string, isQuote: boolean) {
     throw new Error("Ordine non trovato.");
   }
 
+  if (!isQuote && order.schedulePending && !order.appointmentAt) {
+    throw new Error("Definisci prima una consegna oppure un appuntamento per confermare il preventivo come ordine.");
+  }
+
   return prisma.$transaction(async (tx) => {
     const updated = await tx.order.update({
       where: { id: orderId },
-      data: getQuoteTransitionPatch(order.isQuote, isQuote)
+      data: {
+        ...getQuoteTransitionPatch(order.isQuote, isQuote),
+        schedulePending: isQuote ? order.schedulePending : false
+      }
     });
 
     await tx.orderHistory.create({
@@ -1809,6 +1836,57 @@ export async function updateOrderQuoteFlag(orderId: string, isQuote: boolean) {
     });
 
     return updated;
+  });
+}
+
+export async function deleteOrderItem(input: DeleteOrderItemInput) {
+  const item = await prisma.orderItem.findUnique({
+    where: { id: input.itemId },
+    include: {
+      order: {
+        include: {
+          payments: true
+        }
+      }
+    }
+  });
+
+  if (!item || item.orderId !== input.orderId) {
+    throw new Error("Riga ordine non trovata.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.orderItem.delete({
+      where: { id: input.itemId }
+    });
+
+    const updatedItems = await tx.orderItem.findMany({
+      where: { orderId: input.orderId },
+      orderBy: { createdAt: "asc" }
+    });
+
+    const totalCents = updatedItems.reduce((sum, entry) => sum + entry.lineTotalCents, 0);
+    const paymentSummary = computePaymentSummary(totalCents, item.order.payments);
+
+    await tx.order.update({
+      where: { id: input.orderId },
+      data: {
+        totalCents,
+        paidCents: paymentSummary.paidCents,
+        balanceDueCents: paymentSummary.balanceDueCents,
+        paymentStatus: paymentSummary.paymentStatus,
+        depositCents: paymentSummary.depositCents
+      }
+    });
+
+    await tx.orderHistory.create({
+      data: {
+        orderId: input.orderId,
+        type: "UPDATED",
+        description: `Riga eliminata: ${item.label}`,
+        details: `${formatQuantity(item.quantity)} • ${(item.lineTotalCents / 100).toFixed(2)} EUR`
+      }
+    });
   });
 }
 

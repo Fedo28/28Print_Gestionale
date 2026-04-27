@@ -1,0 +1,2 @@
+ALTER TABLE "Order"
+ADD COLUMN "schedulePending" BOOLEAN NOT NULL DEFAULT false;

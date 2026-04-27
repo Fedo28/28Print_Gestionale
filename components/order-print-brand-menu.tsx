@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 
 type PrintBrand = "28-print" | "pr-adv";
@@ -13,6 +13,7 @@ export function OrderPrintBrandMenu({ orderId }: { orderId: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
+  const router = useRouter();
 
   useEffect(() => {
     if (!isOpen) {
@@ -40,11 +41,17 @@ export function OrderPrintBrandMenu({ orderId }: { orderId: string }) {
     };
   }, [isOpen]);
 
+  function handleSelectBrand(brand: PrintBrand) {
+    setIsOpen(false);
+    router.push(buildPrintHref(orderId, brand));
+  }
+
   return (
     <div className={`print-brand-menu${isOpen ? " open" : ""}`} ref={menuRef}>
       <button
         aria-controls={panelId}
         aria-expanded={isOpen}
+        aria-haspopup="menu"
         className={`button ghost print-brand-trigger${isOpen ? " active" : ""}`}
         onClick={() => setIsOpen((current) => !current)}
         type="button"
@@ -54,30 +61,24 @@ export function OrderPrintBrandMenu({ orderId }: { orderId: string }) {
       {isOpen ? (
         <div aria-label="Scelta logo per la stampa" className="print-brand-panel" id={panelId} role="menu">
           <span className="print-brand-panel-title">Scegli logo</span>
-          <Link
+          <button
             className="print-brand-option"
-            href={buildPrintHref(orderId, "28-print")}
-            onClick={() => setIsOpen(false)}
-            prefetch={false}
-            rel="noreferrer"
+            onClick={() => handleSelectBrand("28-print")}
             role="menuitem"
-            target="_blank"
+            type="button"
           >
             <strong>28 Print</strong>
             <span>Usa il logo standard gia salvato</span>
-          </Link>
-          <Link
+          </button>
+          <button
             className="print-brand-option"
-            href={buildPrintHref(orderId, "pr-adv")}
-            onClick={() => setIsOpen(false)}
-            prefetch={false}
-            rel="noreferrer"
+            onClick={() => handleSelectBrand("pr-adv")}
             role="menuitem"
-            target="_blank"
+            type="button"
           >
             <strong>PR adv</strong>
             <span>Usa il logo allegato PR adv</span>
-          </Link>
+          </button>
         </div>
       ) : null}
     </div>

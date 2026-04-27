@@ -26,6 +26,7 @@ import {
   createOrderItem,
   createOrder,
   createService,
+  deleteOrderItem,
   deleteCustomer,
   deleteOrder,
   updateServiceCatalogEntry,
@@ -70,6 +71,7 @@ function revalidateBillboardSurfaces() {
 }
 
 function parseOrderFormInput(formData: FormData, options?: { forceQuote?: boolean }) {
+  const isQuote = options?.forceQuote ?? parseBooleanFlag(formData.get("isQuote"));
   return {
     customerId: String(formData.get("customerId") || "").trim() || undefined,
     customer: {
@@ -85,12 +87,14 @@ function parseOrderFormInput(formData: FormData, options?: { forceQuote?: boolea
       notes: String(formData.get("customerNotes") || "")
     },
     title: String(formData.get("title") || ""),
-    deliveryAt: parseDateTime(formData.get("deliveryAt")?.toString() || null),
+    deliveryAt: isQuote
+      ? parseOptionalDateTime(formData.get("deliveryAt")?.toString() || null)
+      : parseDateTime(formData.get("deliveryAt")?.toString() || null),
     appointmentAt: parseOptionalDateTime(formData.get("appointmentAt")?.toString() || null),
     appointmentNote: String(formData.get("appointmentNote") || ""),
     notes: String(formData.get("notes") || ""),
     invoiceStatus: parseInvoiceStatus(formData.get("invoiceStatus")?.toString() || null),
-    isQuote: options?.forceQuote ?? parseBooleanFlag(formData.get("isQuote")),
+    isQuote,
     items: parseItemsPayload(formData.get("itemsPayload")?.toString() || null),
     initialDepositCents: parseCurrencyToCents(formData.get("initialDeposit")?.toString() || null)
   };
@@ -196,15 +200,18 @@ export async function createQuoteAction(formData: FormData) {
 export async function updateOrderAction(formData: FormData) {
   await requireAuth();
   const id = String(formData.get("id") || "");
+  const isQuote = parseBooleanFlag(formData.get("isQuote"));
   await updateOrder({
     id,
     title: String(formData.get("title") || ""),
-    deliveryAt: parseDateTime(formData.get("deliveryAt")?.toString() || null),
+    deliveryAt: isQuote
+      ? parseOptionalDateTime(formData.get("deliveryAt")?.toString() || null)
+      : parseOptionalDateTime(formData.get("deliveryAt")?.toString() || null),
     appointmentAt: parseOptionalDateTime(formData.get("appointmentAt")?.toString() || null),
     appointmentNote: String(formData.get("appointmentNote") || ""),
     notes: String(formData.get("notes") || ""),
     invoiceStatus: parseInvoiceStatus(formData.get("invoiceStatus")?.toString() || null),
-    isQuote: parseBooleanFlag(formData.get("isQuote"))
+    isQuote
   });
 
   revalidateOperationalSurfaces(id);
@@ -277,7 +284,7 @@ export async function createOrderItemAction(formData: FormData) {
   const quantityRaw = String(formData.get("quantity") || "").trim().replace(",", ".");
   const quantity = Number.parseFloat(quantityRaw || "1");
 
-  await createOrderItem({
+  const item = await createOrderItem({
     orderId,
     label: String(formData.get("label") || ""),
     serviceCatalogId: String(formData.get("serviceCatalogId") || "").trim() || undefined,
@@ -298,7 +305,7 @@ export async function createOrderItemAction(formData: FormData) {
   });
 
   revalidateOperationalSurfaces(orderId);
-  redirect(`/orders/${orderId}`);
+  redirect(`/orders/${orderId}?item=${item.id}#item-${item.id}`);
 }
 
 export async function toggleOrderItemDeliveryAction(formData: FormData) {
@@ -318,6 +325,16 @@ export async function cloneOrderItemAction(formData: FormData) {
   const itemId = String(formData.get("itemId") || "");
 
   await cloneOrderItem({ orderId, itemId });
+  revalidateOperationalSurfaces(orderId);
+  redirect(`/orders/${orderId}`);
+}
+
+export async function deleteOrderItemAction(formData: FormData) {
+  await requireAuth();
+  const orderId = String(formData.get("orderId") || "");
+  const itemId = String(formData.get("itemId") || "");
+
+  await deleteOrderItem({ orderId, itemId });
   revalidateOperationalSurfaces(orderId);
   redirect(`/orders/${orderId}`);
 }
@@ -375,7 +392,14 @@ export async function quickUpdateQuoteFlagAction(formData: FormData) {
   await requireAuth();
   const orderId = String(formData.get("orderId") || "");
   const isQuote = String(formData.get("isQuote") || "") === "true";
-  await updateOrderQuoteFlag(orderId, isQuote);
+  try {
+    await updateOrderQuoteFlag(orderId, isQuote);
+  } catch (error) {
+    if (!isQuote && error instanceof Error && error.message.includes("Definisci prima")) {
+      redirect(`/orders/${orderId}?needsScheduling=1#order-edit-panel`);
+    }
+    throw error;
+  }
   revalidateOperationalSurfaces(orderId);
 }
 
@@ -390,7 +414,14 @@ export async function markOrderInvoicedAction(formData: FormData) {
 export async function confirmQuoteAction(formData: FormData) {
   await requireAuth();
   const orderId = String(formData.get("orderId") || "");
-  await updateOrderQuoteFlag(orderId, false);
+  try {
+    await updateOrderQuoteFlag(orderId, false);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("Definisci prima")) {
+      redirect(`/orders/${orderId}?needsScheduling=1#order-edit-panel`);
+    }
+    throw error;
+  }
   revalidateOperationalSurfaces(orderId);
   redirect(`/orders/${orderId}`);
 }

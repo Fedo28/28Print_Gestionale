@@ -523,6 +523,43 @@ export function OrderForm({
     });
   }
 
+  function duplicateItemLine(index: number) {
+    const sourceItem = items[index];
+    if (!sourceItem) {
+      return;
+    }
+
+    const duplicatedItem = {
+      ...sourceItem
+    };
+
+    setItems((current) => {
+      const nextItems = [...current];
+      nextItems.splice(index + 1, 0, duplicatedItem);
+      return nextItems;
+    });
+
+    setActiveServiceField((current) => {
+      if (current === null) {
+        return null;
+      }
+
+      return current > index ? current + 1 : current;
+    });
+
+    setOpenTierIndex((current) => {
+      if (current === null) {
+        return null;
+      }
+
+      return current > index ? current + 1 : current;
+    });
+
+    closeInlineCatalogDraft();
+    closeLabelCalculator();
+    setOpenMobileItemIndex(isMobileViewport ? index + 1 : null);
+  }
+
   function findExactCustomerMatch(query: string) {
     const normalizedQuery = normalizeCustomerSearchValue(query);
     if (!normalizedQuery) {
@@ -1225,7 +1262,7 @@ export function OrderForm({
     : customerTypeLabels[(mobileMeta.customerType as CustomerType) || defaultCustomerType];
   const reviewCustomerName = selectedCustomer ? selectedCustomer.name : mobileMeta.customerName.trim() || "Da selezionare";
   const reviewTitle = mobileMeta.title.trim() || "Titolo da definire";
-  const reviewDelivery = mobileMeta.deliveryAt ? formatDateTime(mobileMeta.deliveryAt) : "Da impostare";
+  const reviewDelivery = mobileMeta.deliveryAt ? formatDateTime(mobileMeta.deliveryAt) : isQuoteMode ? "Da definire" : "Da impostare";
   const reviewAppointment = mobileMeta.appointmentAt ? formatDateTime(mobileMeta.appointmentAt) : "Non programmato";
   const reviewPriority = (() => {
     const deliveryAt = mobileMeta.deliveryAt.trim();
@@ -1250,7 +1287,7 @@ export function OrderForm({
     mobileStep === "customer"
       ? Boolean(selectedCustomerId || mobileMeta.customerName.trim())
       : mobileStep === "details"
-        ? Boolean(mobileMeta.title.trim() && mobileMeta.deliveryAt)
+        ? Boolean(mobileMeta.title.trim() && (isQuoteMode || mobileMeta.deliveryAt))
         : mobileStep === "items"
           ? filledRows > 0
           : true;
@@ -1830,7 +1867,19 @@ export function OrderForm({
           </div>
         ) : null}
         <div className="field order-line-qty">
-          <label htmlFor={`quantity-${index}`}>Qta</label>
+          <div className="order-line-field-head">
+            <label htmlFor={`quantity-${index}`}>Qta</label>
+            <button
+              className="ghost order-line-quantity-duplicate"
+              onClick={(event) => {
+                event.preventDefault();
+                duplicateItemLine(index);
+              }}
+              type="button"
+            >
+              Altro quantitativo
+            </button>
+          </div>
           <input
             className="numeric-input"
             inputMode="decimal"
@@ -2113,8 +2162,7 @@ export function OrderForm({
                   ...customer,
                   orderCount: customer.orders.length
                 }))}
-                helperText="Scrivi una sola volta qui: se il cliente esiste te lo suggerisco, se non esiste uso questo nome per crearlo come nuovo."
-                label="Cliente: cerca o crea"
+                label="Cliente"
                 onQueryChange={(value) => {
                   const exactMatch = findExactCustomerMatch(value);
                   if (exactMatch) {
@@ -2132,7 +2180,7 @@ export function OrderForm({
                   setSelectedCustomerId(customer.id);
                   setCustomerQuery(customer.name);
                 }}
-                placeholder="Scrivi nome, ragione sociale, telefono o email"
+                placeholder=""
                 query={customerQuery}
                 selectedCustomerId={selectedCustomerId}
               />
@@ -2163,16 +2211,6 @@ export function OrderForm({
               {selectedCustomerId ? null : (
                 <>
                   <input name="customerName" type="hidden" value={trimmedCustomerQuery} />
-                  <div className={`mini-item field full customer-create-preview${trimmedCustomerQuery ? " is-active" : ""}`}>
-                    <div className="customer-create-preview-copy">
-                      <strong>{trimmedCustomerQuery ? "Nuovo cliente da creare" : "Nuovo cliente"}</strong>
-                      <span className="subtle">
-                        {trimmedCustomerQuery
-                          ? `Se confermi l'ordine, creo il cliente come "${trimmedCustomerQuery}".`
-                          : "Inizia scrivendo il nome nel campo sopra. Se non esiste, lo creo come nuovo cliente."}
-                      </span>
-                    </div>
-                  </div>
                   <div className="field">
                     <label htmlFor="customerType">Tipo cliente</label>
                     <select defaultValue={defaultCustomerType} id="customerType" name="customerType">
@@ -2185,7 +2223,7 @@ export function OrderForm({
                   </div>
                   <div className="field">
                     <label htmlFor="customerPhone">Telefono</label>
-                    <input id="customerPhone" name="customerPhone" placeholder="Facoltativo" />
+                    <input id="customerPhone" name="customerPhone" />
                   </div>
                   <div className="field">
                     <label htmlFor="customerWhatsapp">WhatsApp</label>
@@ -2234,33 +2272,37 @@ export function OrderForm({
             {renderMobilePanelHead()}
             <div className="form-grid">
               <div className="field full">
-                <label htmlFor="title">Titolo / lavoro</label>
+                <label htmlFor="title">Titolo</label>
                 <input id="title" name="title" required />
               </div>
               <div className="field wide">
-                <label htmlFor="deliveryAt">Consegna prevista</label>
-                <input className="date-time-input" id="deliveryAt" name="deliveryAt" required type="datetime-local" />
+                <label htmlFor="deliveryAt">Consegna</label>
+                <input className="date-time-input" id="deliveryAt" name="deliveryAt" required={!isQuoteMode} type="datetime-local" />
               </div>
               <div className="field wide">
-                <label htmlFor="appointmentAt">Appuntamento programmato</label>
+                <label htmlFor="appointmentAt">Appuntamento</label>
                 <input className="date-time-input" id="appointmentAt" name="appointmentAt" type="datetime-local" />
               </div>
-              <p className="hint order-priority-auto-hint">
-                Priorita automatica: urgente per oggi e domani, alta per i due giorni successivi, bassa dal quarto giorno in poi.
-              </p>
-              <div className="field full">
-                <label htmlFor="appointmentNote">Nota appuntamento</label>
-                <select id="appointmentNote" name="appointmentNote" onChange={(event) => setAppointmentNoteValue(event.target.value)} value={appointmentNoteValue}>
-                  <option value="">Seleziona nota appuntamento</option>
-                  {availableAppointmentNoteOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="field full">
-                <label htmlFor="notes">Note operative</label>
+              <div className="field full order-notes-field">
+                <div className="order-notes-field-head">
+                  <label htmlFor="notes">Note operative</label>
+                  <div className="order-notes-appointment-inline">
+                    <label htmlFor="appointmentNote">Nota appunt.</label>
+                    <select
+                      id="appointmentNote"
+                      name="appointmentNote"
+                      onChange={(event) => setAppointmentNoteValue(event.target.value)}
+                      value={appointmentNoteValue}
+                    >
+                      <option value="">Nessuna</option>
+                      {availableAppointmentNoteOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
                 <textarea id="notes" name="notes" />
               </div>
             </div>
@@ -2276,18 +2318,6 @@ export function OrderForm({
           <div className="order-mobile-panel-heading-only">
             {renderMobilePanelHead()}
           </div>
-          {!isMobileViewport ? (
-            <button
-              className="ghost"
-              onClick={(event) => {
-                event.preventDefault();
-                addEmptyItemLine();
-              }}
-              type="button"
-            >
-              Aggiungi riga
-            </button>
-          ) : null}
         </div>
         {isCatalogEmpty ? (
           <div className="empty">
@@ -2352,17 +2382,19 @@ export function OrderForm({
                         lineState.lineFinalWithExtraCents / 100
                       )}
                     </span>
-                    {items.length > 1 && !isMobileViewport ? (
+                    {!isMobileViewport ? (
                       <button
-                        className="ghost order-line-remove"
+                        aria-label={`Elimina riga ${index + 1}`}
+                        className="ghost order-line-remove-icon"
                         onClick={(event) => {
                           event.preventDefault();
                           event.stopPropagation();
                           removeItemLine(index);
                         }}
+                        title="Elimina riga"
                         type="button"
                       >
-                        Rimuovi
+                        x
                       </button>
                     ) : null}
                   </div>
@@ -2372,18 +2404,16 @@ export function OrderForm({
           );
           })}
         </div>
-        {isMobileViewport ? (
-          <button
-            className="ghost order-lines-add-row"
-            onClick={(event) => {
-              event.preventDefault();
-              addEmptyItemLine();
-            }}
-            type="button"
-          >
-            Aggiungi riga
-          </button>
-        ) : null}
+        <button
+          className="ghost order-lines-add-row"
+          onClick={(event) => {
+            event.preventDefault();
+            addEmptyItemLine();
+          }}
+          type="button"
+        >
+          Aggiungi riga
+        </button>
         {!isMobileViewport ? (
           <div className="order-sheet-footer">
             <div className="form-grid order-sheet-payment-row">
@@ -2429,18 +2459,18 @@ export function OrderForm({
               <strong>{activeMobileLineState.item.label.trim() || activeMobileLineState.item.serviceQuery.trim() || "Nuova lavorazione"}</strong>
             </div>
             <div className="order-line-mobile-sheet-actions">
-              {items.length > 1 ? (
-                <button
-                  className="ghost order-line-remove"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    removeItemLine(activeMobileLineState.index);
-                  }}
-                  type="button"
-                >
-                  Rimuovi
-                </button>
-              ) : null}
+              <button
+                aria-label={`Elimina riga ${activeMobileLineState.index + 1}`}
+                className="ghost order-line-remove-icon"
+                onClick={(event) => {
+                  event.preventDefault();
+                  removeItemLine(activeMobileLineState.index);
+                }}
+                title="Elimina riga"
+                type="button"
+              >
+                x
+              </button>
               <button
                 className="ghost order-line-mobile-sheet-close"
                 onClick={(event) => {

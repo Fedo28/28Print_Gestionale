@@ -5084,6 +5084,40 @@ button.danger {
   gap: 18px;
 }
 
+.order-notes-field {
+  display: grid;
+  grid-gap: 10px;
+  gap: 10px;
+}
+
+.order-notes-field-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.order-notes-field-head > label {
+  margin: 0;
+}
+
+.order-notes-appointment-inline {
+  display: grid;
+  grid-gap: 4px;
+  gap: 4px;
+  width: min(100%, 220px);
+}
+
+.order-notes-appointment-inline label {
+  margin: 0;
+  font-size: 0.72rem;
+}
+
+.order-notes-appointment-inline select {
+  min-height: 40px;
+  padding-inline: 12px;
+}
+
 .order-advanced-disclosure {
   display: grid;
   grid-gap: 14px;
@@ -5139,7 +5173,7 @@ button.danger {
   display: grid;
   grid-gap: 14px;
   gap: 14px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
 }
 
 .order-lines-add-row {
@@ -5267,6 +5301,15 @@ button.danger {
 }
 
 @media (max-width: 768px) {
+  .order-notes-field-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .order-notes-appointment-inline {
+    width: 100%;
+  }
+
   .order-line-suggestions {
     gap: 6px;
   }
@@ -5323,7 +5366,27 @@ button.danger {
 }
 
 .order-line-grid .order-line-qty {
-  grid-column: span 3;
+  grid-column: span 2;
+}
+
+.order-line-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.order-line-field-head label {
+  margin: 0;
+}
+
+.order-line-quantity-duplicate {
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .order-line-grid .order-line-photo-format {
@@ -5331,23 +5394,42 @@ button.danger {
 }
 
 .order-line-grid .order-line-price {
-  grid-column: span 5;
+  grid-column: span 2;
 }
 
 .order-line-grid .order-line-discount-mode {
-  grid-column: 1 / span 3;
+  grid-column: span 2;
 }
 
 .order-line-grid .order-line-discount-value {
-  grid-column: span 3;
+  grid-column: span 2;
 }
 
 .order-line-grid .field.order-line-extra-mode {
-  grid-column: 1 / span 3;
+  grid-column: span 2;
 }
 
 .order-line-grid .order-line-extra-value {
-  grid-column: span 3;
+  grid-column: span 2;
+}
+
+.order-line-grid .order-line-qty input,
+.order-line-grid .order-line-price input,
+.order-line-grid .order-line-discount-mode select,
+.order-line-grid .order-line-discount-value input,
+.order-line-grid .field.order-line-extra-mode select,
+.order-line-grid .order-line-extra-value input {
+  min-width: 0;
+  padding-inline: 12px;
+}
+
+.order-line-grid .order-line-qty label,
+.order-line-grid .order-line-price label,
+.order-line-grid .order-line-discount-mode label,
+.order-line-grid .order-line-discount-value label,
+.order-line-grid .field.order-line-extra-mode label,
+.order-line-grid .order-line-extra-value label {
+  font-size: 0.76rem;
 }
 
 .order-line-grid .order-line-final input:disabled {
@@ -5418,8 +5500,35 @@ button.danger {
   gap: 8px;
 }
 
+.order-line-head-actions form {
+  display: inline-flex;
+}
+
 .order-line-total-pill {
   white-space: nowrap;
+}
+
+.order-line-remove-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 65, 70, 0.16);
+  color: #9d4146;
+  font-size: 0.96rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.order-line-remove-icon:hover,
+.order-line-remove-icon:focus-visible {
+  border-color: rgba(157, 65, 70, 0.28);
+  background: rgba(255, 238, 240, 0.9);
+  color: #882e34;
 }
 
 .order-line-index {
@@ -7804,6 +7913,14 @@ button.action-icon-button {
   gap: 14px;
 }
 
+.order-item-editor-summary-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
 .order-item-editor-copy {
   display: grid;
   grid-gap: 4px;
@@ -7846,6 +7963,10 @@ button.action-icon-button {
   color: var(--brand-dark);
   font-weight: 800;
   white-space: nowrap;
+}
+
+.order-item-editor-summary-actions form {
+  display: inline-flex;
 }
 
 .order-item-editor-new .order-item-editor-total {
@@ -10703,6 +10824,13 @@ textarea:focus-visible {
     font-size: 0.8rem;
   }
 
+  .order-line-remove-icon {
+    width: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    font-size: 0.9rem;
+  }
+
   .order-line-head-actions {
     justify-self: end;
     gap: 6px;
@@ -13552,6 +13680,12 @@ textarea:focus-visible {
 .order-detail-overview-delivery-card strong {
   font-size: 0.9rem;
   line-height: 1.15;
+}
+
+.order-detail-overview-delivery-date {
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.22;
 }
 
 .order-detail-overview-delivery-card .subtle {

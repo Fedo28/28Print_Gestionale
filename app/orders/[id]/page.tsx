@@ -4,6 +4,7 @@ import {
   cloneOrderItemAction,
   confirmQuoteAction,
   correctPaymentAction,
+  deleteOrderItemAction,
   markReadyAction,
   recordPaymentAction,
   toggleOrderItemDeliveryAction,
@@ -20,6 +21,7 @@ import { DeleteOrderForm } from "@/components/delete-order-form";
 import { OrderPrintBrandMenu } from "@/components/order-print-brand-menu";
 import { OrderItemEditorForm } from "@/components/order-item-editor-form";
 import { OrderEditToggleButton } from "@/components/order-edit-toggle-button";
+import { OrderItemDeleteButton } from "@/components/order-item-delete-button";
 import { formatAttachmentSize } from "@/lib/attachment-utils";
 import { requireAuth } from "@/lib/auth";
 import {
@@ -41,7 +43,13 @@ function getCustomerPrimaryContact(customer: { phone?: string | null; whatsapp?:
   return customer.phone?.trim() || customer.whatsapp?.trim() || "Telefono non inserito";
 }
 
-export default async function OrderDetailPage({ params }: { params: { id: string } }) {
+export default async function OrderDetailPage({
+  params,
+  searchParams
+}: {
+  params: { id: string };
+  searchParams?: { needsScheduling?: string; edit?: string; item?: string };
+}) {
   await requireAuth();
   const [order, services] = await Promise.all([getOrderById(params.id), getServiceCatalogAdmin()]);
 
@@ -53,13 +61,21 @@ export default async function OrderDetailPage({ params }: { params: { id: string
   const guidedAction = getGuidedPhaseAction(order.mainPhase);
   const hasWhatsapp = Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""));
   const useDirectUpload = resolveAttachmentStorageMode() === "blob";
+  const needsScheduling = searchParams?.needsScheduling === "1";
+  const shouldOpenEditPanel = needsScheduling || searchParams?.edit === "1";
+  const openItemId = searchParams?.item?.trim() || "";
+  const isSchedulePendingQuote = order.isQuote && order.schedulePending;
   const appointmentNoteOptions = getAppointmentNoteOptions(order.appointmentNote);
   const deliveredItemsCount = order.items.filter((item) => Boolean(item.deliveredAt)).length;
   const hasPartialDelivery = deliveredItemsCount > 0 && deliveredItemsCount < order.items.length;
-  const deliveryLabel =
-    order.mainPhase === "CONSEGNATO" && order.deliveredAt
-      ? `Consegnato il ${formatDateTime(order.deliveredAt)}`
-      : `Consegna ${formatDateTime(order.deliveryAt)}`;
+  const editPanelHref = `/orders/${order.id}?edit=1#order-edit-panel`;
+  const deliveryTitle = order.mainPhase === "CONSEGNATO" && order.deliveredAt ? "Consegnato" : "Consegna";
+  const deliveryDateLabel =
+    isSchedulePendingQuote
+      ? "Da definire"
+      : order.mainPhase === "CONSEGNATO" && order.deliveredAt
+        ? formatDateTime(order.deliveredAt)
+        : formatDateTime(order.deliveryAt);
   const mobilePaymentSummary =
     order.balanceDueCents > 0 ? `Residuo ${formatCurrency(order.balanceDueCents)}` : "Pagato";
   const accountingSummary =
@@ -87,14 +103,18 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         }
       />
 
-      <details className="card card-pad order-detail-disclosure order-detail-edit-card" id="order-edit-panel">
+      <details className="card card-pad order-detail-disclosure order-detail-edit-card" id="order-edit-panel" open={shouldOpenEditPanel}>
         <summary className="order-detail-edit-summary-hidden">
           Modifica ordine
         </summary>
         <div className="order-detail-edit-tray-head">
           <div>
             <strong>Modifica ordine</strong>
-            <span className="subtle">Consegna, stato, note e impostazioni principali</span>
+            <span className="subtle">
+              {needsScheduling
+                ? "Per confermare il preventivo come ordine devi impostare una consegna oppure un appuntamento."
+                : "Consegna, stato, note e impostazioni principali"}
+            </span>
           </div>
         </div>
         <div className="grid grid-2 order-detail-edit-grid">
@@ -106,14 +126,14 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                 <input defaultValue={order.title} id="title" name="title" required />
               </div>
               <div className="field">
-                <label htmlFor="deliveryAt">Consegna</label>
+                <label htmlFor="deliveryAt">{order.isQuote ? "Consegna (facoltativa)" : "Consegna"}</label>
                 <input
                   className="date-time-input"
-                  defaultValue={toDateTimeLocalInput(order.deliveryAt)}
+                  defaultValue={isSchedulePendingQuote && !order.appointmentAt ? "" : toDateTimeLocalInput(order.deliveryAt)}
                   id="deliveryAt"
                   name="deliveryAt"
                   type="datetime-local"
-                  required
+                  required={!order.isQuote}
                 />
               </div>
               <div className="field wide">
@@ -253,11 +273,12 @@ export default async function OrderDetailPage({ params }: { params: { id: string
             </div>
           </div>
 
-          <a className={`order-detail-overview-delivery-card${hasOperationalBlock ? " is-alert" : ""}`} href="#order-edit-panel">
-            <strong>{deliveryLabel}</strong>
+          <Link className={`order-detail-overview-delivery-card${hasOperationalBlock ? " is-alert" : ""}`} href={editPanelHref}>
+            <strong>{deliveryTitle}</strong>
+            <span className="order-detail-overview-delivery-date">{deliveryDateLabel}</span>
             {hasOperationalBlock ? <span className="subtle">{operationalStatusSummary}</span> : null}
             {order.appointmentAt ? <span className="subtle">{`Appuntamento ${formatDateTime(order.appointmentAt)}`}</span> : null}
-          </a>
+          </Link>
 
           <div className="order-detail-overview-actions">
             <div className="order-detail-overview-top-actions">
@@ -287,6 +308,10 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               <div className="empty order-detail-overview-empty">
                 {order.deliveredAt ? `Ordine gia consegnato il ${formatDateTime(order.deliveredAt)}.` : "Ordine gia consegnato."}
               </div>
+            ) : isSchedulePendingQuote ? (
+              <Link className="button primary order-detail-overview-primary-link" href={`/orders/${order.id}?needsScheduling=1&edit=1#order-edit-panel`}>
+                Definisci data per confermare
+              </Link>
             ) : order.isQuote ? (
               <form action={confirmQuoteAction} className="order-detail-header-inline-form order-detail-overview-primary-action">
                 <input name="orderId" type="hidden" value={order.id} />
@@ -326,7 +351,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
             </span>
           </div>
           <div className="mini-list">
-            <details className="mini-item order-item-editor order-item-editor-new">
+            <details className="mini-item order-item-editor order-item-editor-new" name="order-items">
               <summary className="order-item-editor-summary">
                 <div className="order-item-editor-copy">
                   <strong>Nuova riga</strong>
@@ -339,7 +364,13 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               </div>
             </details>
             {order.items.map((item) => (
-              <details className={`mini-item order-item-editor${item.deliveredAt ? " is-delivered" : ""}`} key={item.id}>
+              <details
+                className={`mini-item order-item-editor${item.deliveredAt ? " is-delivered" : ""}`}
+                id={`item-${item.id}`}
+                key={item.id}
+                name="order-items"
+                open={openItemId === item.id}
+              >
                 <summary className="order-item-editor-summary">
                   <div className="order-item-editor-copy">
                     <strong>{item.label}</strong>
@@ -352,7 +383,10 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                     {item.notes?.trim() ? <span className="order-item-editor-note-preview">{item.notes}</span> : null}
                     {item.deliveredAt ? <span className="order-item-delivered-pill">{`Consegnata il ${formatDateTime(item.deliveredAt)}`}</span> : null}
                   </div>
-                  <span className="order-item-editor-total">{formatCurrency(item.lineTotalCents)}</span>
+                  <span className="order-item-editor-summary-actions">
+                    <span className="order-item-editor-total">{formatCurrency(item.lineTotalCents)}</span>
+                    <OrderItemDeleteButton action={deleteOrderItemAction} itemId={item.id} orderId={order.id} />
+                  </span>
                 </summary>
                 <div className="order-item-editor-body">
                   <OrderItemEditorForm
