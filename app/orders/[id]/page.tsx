@@ -19,6 +19,7 @@ import { AttachmentUploadForm } from "@/components/attachment-upload-form";
 import { DeleteOrderForm } from "@/components/delete-order-form";
 import { OrderPrintBrandMenu } from "@/components/order-print-brand-menu";
 import { OrderItemEditorForm } from "@/components/order-item-editor-form";
+import { OrderEditToggleButton } from "@/components/order-edit-toggle-button";
 import { formatAttachmentSize } from "@/lib/attachment-utils";
 import { requireAuth } from "@/lib/auth";
 import {
@@ -65,284 +66,113 @@ export default async function OrderDetailPage({ params }: { params: { id: string
     activePayments.length === 0
       ? `Nessun movimento registrato • Residuo ${formatCurrency(order.balanceDueCents)}`
       : `${activePayments.length} movimenti • Pagato ${formatCurrency(order.paidCents)} • Residuo ${formatCurrency(order.balanceDueCents)}`;
+  const operationalStatusSummary =
+    order.operationalStatus === "ATTIVO"
+      ? "Operativo"
+      : order.operationalNote || operationalStatusLabels[order.operationalStatus];
+  const hasOperationalBlock = order.operationalStatus !== "ATTIVO";
 
   return (
     <div className="stack order-detail-page-shell">
       <PageHeader
         title={order.orderCode}
+        titleAction={<OrderEditToggleButton targetId="order-edit-panel" />}
         action={
-          <div className="order-detail-header-actions">
-            <div className="order-detail-header-delivery">
-              <span className="compact-kicker">Consegna</span>
-              <strong>{deliveryLabel}</strong>
-            </div>
-            <div className="order-detail-header-button-row">
-              {order.isQuote ? (
-                <form action={confirmQuoteAction} className="order-detail-header-inline-form">
-                  <input name="orderId" type="hidden" value={order.id} />
-                  <button className="primary" type="submit">
-                    Conferma come ordine
-                  </button>
-                </form>
-              ) : guidedAction?.kind === "transition" ? (
-                <form action={transitionPhaseAction} className="order-detail-header-inline-form">
-                  <input name="orderId" type="hidden" value={order.id} />
-                  <input name="nextPhase" type="hidden" value={guidedAction.nextPhase} />
-                  <button className="primary" type="submit">
-                    {guidedAction.label}
-                  </button>
-                </form>
-              ) : guidedAction?.kind === "ready" ? (
-                <form action={markReadyAction} className="order-detail-header-inline-form">
-                  <input name="orderId" type="hidden" value={order.id} />
-                  <button className="success" type="submit">
-                    Segna pronto
-                  </button>
-                </form>
-              ) : null}
-              <OrderPrintBrandMenu orderId={order.id} />
-              <Link className="button ghost" href={order.isQuote ? "/quotes" : order.mainPhase === "CONSEGNATO" ? "/orders?view=DELIVERED" : "/orders"}>
-                {order.isQuote ? "Torna ai preventivi" : "Torna agli ordini"}
-              </Link>
-            </div>
+          <div className="order-detail-header-actions order-detail-header-actions-simple">
+            <OrderPrintBrandMenu orderId={order.id} />
+            <Link className="button ghost" href={order.isQuote ? "/quotes" : order.mainPhase === "CONSEGNATO" ? "/orders?view=DELIVERED" : "/orders"}>
+              {order.isQuote ? "Torna ai preventivi" : "Torna agli ordini"}
+            </Link>
           </div>
         }
       />
 
-      <section className="hero-strip order-detail-hero-strip">
-        <article className="card card-pad hero-card order-hero-card order-detail-summary-card">
-          <div className="stack order-detail-summary-stack">
-            <div className="list-header">
-              <div>
-                <h3>{order.customer.name}</h3>
-                <p className="card-muted">{getCustomerPrimaryContact(order.customer)}</p>
-              </div>
-              <StatusPills
-                linked={!order.isQuote}
-                isQuote={order.isQuote}
-                phase={order.mainPhase}
-                status={order.operationalStatus}
-                payment={order.paymentStatus}
-              />
-            </div>
-
-            <div className="order-detail-summary-meta">
-              <span className="order-detail-summary-meta-item">
-                <span className="subtle">Lavoro</span>
-                <strong>{order.title}</strong>
-              </span>
-              <span className="order-detail-summary-meta-item">
-                <span className="subtle">Consegna</span>
-                <strong>{formatDateTime(order.deliveryAt)}</strong>
-              </span>
-              <span className="order-detail-summary-meta-item">
-                <span className="subtle">Lavorazioni</span>
-                <strong>{order.items.length}</strong>
-              </span>
-              {order.appointmentAt ? (
-                <span className="order-detail-summary-meta-item">
-                  <span className="subtle">Appuntamento</span>
-                  <strong>{formatDateTime(order.appointmentAt)}</strong>
-                </span>
-              ) : null}
-            </div>
-
-            <div className="toolbar status-cluster">
-              {order.isQuote ? (
-                <span className="pill">{invoiceStatusLabels[order.invoiceStatus]}</span>
-              ) : (
-                <Link className="pill" href={buildOrdersFilterHref({ invoice: order.invoiceStatus })} prefetch={false}>
-                  {invoiceStatusLabels[order.invoiceStatus]}
-                </Link>
-              )}
-              {order.isQuote ? (
-                <span className="pill">{priorityLabels[order.priority]}</span>
-              ) : (
-                <Link className="pill" href={buildOrdersFilterHref({ priority: order.priority })} prefetch={false}>
-                  {priorityLabels[order.priority]}
-                </Link>
-              )}
-              {order.isQuote ? (
-                <Link className="pill quote" href="/quotes" prefetch={false}>
-                  Preventivo
-                </Link>
-              ) : null}
-              {hasPartialDelivery ? <span className="pill warning">{`Parziale ${deliveredItemsCount}/${order.items.length}`}</span> : null}
-            </div>
+      <details className="card card-pad order-detail-disclosure order-detail-edit-card" id="order-edit-panel">
+        <summary className="order-detail-edit-summary-hidden">
+          Modifica ordine
+        </summary>
+        <div className="order-detail-edit-tray-head">
+          <div>
+            <strong>Modifica ordine</strong>
+            <span className="subtle">Consegna, stato, note e impostazioni principali</span>
           </div>
-        </article>
-
-        <article className="card card-pad action-panel order-detail-action-card">
-          <div className="stack">
-            <div className="order-detail-action-head">
-              <span className="compact-kicker">Consegna e avanzamento</span>
-              <strong>{deliveryLabel}</strong>
-              {order.appointmentAt ? <span className="subtle">{`Appuntamento ${formatDateTime(order.appointmentAt)}`}</span> : null}
-              {hasPartialDelivery ? <span className="subtle">{`${deliveredItemsCount} righe gia consegnate al cliente`}</span> : null}
-            </div>
-            <div className="order-detail-action-meta-grid">
-              <span className="order-detail-action-meta">
-                <strong>{order.items.length}</strong>
-                <span>Lavorazioni</span>
-              </span>
-              <span className="order-detail-action-meta">
-                <strong>{activePayments.length}</strong>
-                <span>Movimenti</span>
-              </span>
-              <span className="order-detail-action-meta">
-                <strong>{order.balanceDueCents > 0 ? formatCurrency(order.balanceDueCents) : "Saldo ok"}</strong>
-                <span>Stato incasso</span>
-              </span>
-            </div>
-            {guidedAction?.kind === "deliver" ? (
-              <div className="button-row action-row">
-                <form action={transitionPhaseAction} className="action-form action-form-wide">
-                  <input name="orderId" type="hidden" value={order.id} />
-                  <input name="nextPhase" type="hidden" value="CONSEGNATO" />
-                  {order.balanceDueCents > 0 ? (
-                    <input
-                      aria-label="Nota override consegna"
-                      name="note"
-                      placeholder="Nota facoltativa sulla consegna"
-                    />
-                  ) : null}
-                  <button className="primary" type="submit">
-                    Segna consegnato
-                  </button>
-                </form>
-                <div className="order-detail-inline-actions">
-                  <MarkOrderInvoicedButton compact invoiceStatus={order.invoiceStatus} orderId={order.id} />
-                  <ReadyWhatsAppButton hasPhone={hasWhatsapp} notifiedAt={order.readyWhatsappSentAt} orderId={order.id} />
-                </div>
+        </div>
+        <div className="grid grid-2 order-detail-edit-grid">
+          <div className="stack order-detail-edit-column">
+            <form action={updateOrderAction} className="form-grid">
+              <input name="id" type="hidden" value={order.id} />
+              <div className="field wide">
+                <label htmlFor="title">Titolo</label>
+                <input defaultValue={order.title} id="title" name="title" required />
               </div>
-            ) : order.mainPhase === "CONSEGNATO" ? (
-              <div className="empty">
-                {order.deliveredAt ? `Ordine gia consegnato il ${formatDateTime(order.deliveredAt)}.` : "Ordine gia consegnato."}
+              <div className="field">
+                <label htmlFor="deliveryAt">Consegna</label>
+                <input
+                  className="date-time-input"
+                  defaultValue={toDateTimeLocalInput(order.deliveryAt)}
+                  id="deliveryAt"
+                  name="deliveryAt"
+                  type="datetime-local"
+                  required
+                />
               </div>
-            ) : (
-              <p className="hint order-detail-action-inline-hint">L'azione principale e disponibile in alto accanto al pulsante stampa.</p>
-            )}
-            {!order.isQuote && guidedAction?.kind !== "deliver" ? (
-              <div className="button-row action-row order-detail-secondary-actions">
-                <div className="order-detail-inline-actions">
-                  <MarkOrderInvoicedButton compact invoiceStatus={order.invoiceStatus} orderId={order.id} />
-                  {order.mainPhase === "SVILUPPO_COMPLETATO" ? (
-                    <ReadyWhatsAppButton hasPhone={hasWhatsapp} notifiedAt={order.readyWhatsappSentAt} orderId={order.id} />
-                  ) : null}
-                </div>
+              <div className="field wide">
+                <label htmlFor="appointmentAt">Appuntamento programmato</label>
+                <input
+                  className="date-time-input"
+                  defaultValue={order.appointmentAt ? toDateTimeLocalInput(order.appointmentAt) : ""}
+                  id="appointmentAt"
+                  name="appointmentAt"
+                  type="datetime-local"
+                />
               </div>
-            ) : null}
+              <div className="field">
+                <label htmlFor="invoiceStatus">Stato fatturazione</label>
+                <select defaultValue={order.invoiceStatus} id="invoiceStatus" name="invoiceStatus">
+                  {Object.entries(invoiceStatusLabels).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label className="toggle-field" htmlFor="isQuote">
+                  <input defaultChecked={order.isQuote} id="isQuote" name="isQuote" type="checkbox" />
+                  <span>Preventivo</span>
+                </label>
+              </div>
+              <p className="hint order-priority-auto-hint">
+                Priorita automatica attuale: {priorityLabels[order.priority]}. Il sistema la ricalcola dalla consegna quando salvi.
+              </p>
+              <div className="field full">
+                <label htmlFor="appointmentNote">Nota appuntamento</label>
+                <select defaultValue={order.appointmentNote || ""} id="appointmentNote" name="appointmentNote">
+                  <option value="">Seleziona nota appuntamento</option>
+                  {appointmentNoteOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field full">
+                <label htmlFor="notes">Note interne</label>
+                <textarea defaultValue={order.notes || ""} id="notes" name="notes" />
+              </div>
+              <div className="button-row order-detail-submit-row">
+                <button className="primary" type="submit">
+                  Aggiorna ordine
+                </button>
+              </div>
+            </form>
           </div>
-        </article>
-      </section>
 
-      <div className="grid grid-2 order-detail-main-grid">
-        <details className="card card-pad order-detail-disclosure order-detail-info-card">
-          <summary className="order-detail-disclosure-summary">
-            <div className="order-detail-disclosure-copy">
-              <h3>Dettagli ordine</h3>
-              <span className="subtle">{order.title}</span>
-            </div>
-            <span className="action-icon-button" aria-hidden="true">
-              <SectionGlyph kind="edit" />
-            </span>
-          </summary>
-          <form action={updateOrderAction} className="form-grid">
-            <input name="id" type="hidden" value={order.id} />
-            <div className="field wide">
-              <label htmlFor="title">Titolo</label>
-              <input defaultValue={order.title} id="title" name="title" required />
-            </div>
-            <div className="field">
-              <label htmlFor="deliveryAt">Consegna</label>
-              <input
-                className="date-time-input"
-                defaultValue={toDateTimeLocalInput(order.deliveryAt)}
-                id="deliveryAt"
-                name="deliveryAt"
-                type="datetime-local"
-                required
-              />
-            </div>
-            <div className="field wide">
-              <label htmlFor="appointmentAt">Appuntamento programmato</label>
-              <input
-                className="date-time-input"
-                defaultValue={order.appointmentAt ? toDateTimeLocalInput(order.appointmentAt) : ""}
-                id="appointmentAt"
-                name="appointmentAt"
-                type="datetime-local"
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="invoiceStatus">Stato fatturazione</label>
-              <select defaultValue={order.invoiceStatus} id="invoiceStatus" name="invoiceStatus">
-                {Object.entries(invoiceStatusLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label className="toggle-field" htmlFor="isQuote">
-                <input defaultChecked={order.isQuote} id="isQuote" name="isQuote" type="checkbox" />
-                <span>Preventivo</span>
-              </label>
-            </div>
-            <p className="hint order-priority-auto-hint">
-              Priorita automatica attuale: {priorityLabels[order.priority]}. Il sistema la ricalcola dalla consegna quando salvi.
-            </p>
-            <div className="field full">
-              <label htmlFor="appointmentNote">Nota appuntamento</label>
-              <select defaultValue={order.appointmentNote || ""} id="appointmentNote" name="appointmentNote">
-                <option value="">Seleziona nota appuntamento</option>
-                {appointmentNoteOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field full">
-              <label htmlFor="notes">Note interne</label>
-              <textarea defaultValue={order.notes || ""} id="notes" name="notes" />
-            </div>
-            <div className="button-row order-detail-submit-row">
-              <button className="primary" type="submit">
-                Aggiorna ordine
-              </button>
-            </div>
-          </form>
-        </details>
-
-        <details className="card card-pad order-detail-disclosure order-detail-status-card">
-          <summary className="order-detail-disclosure-summary">
-            <div className="order-detail-disclosure-copy">
-              <h3>Stato operativo</h3>
-              <span className="subtle">
-                {order.operationalStatus === "ATTIVO"
-                  ? "Nessun blocco attivo"
-                  : order.operationalNote || operationalStatusLabels[order.operationalStatus]}
-              </span>
-            </div>
-            <div className="order-detail-summary-actions">
-              <DeleteOrderForm compact isQuote={order.isQuote} orderId={order.id} />
-              <span className="action-icon-button" aria-hidden="true">
-                <SectionGlyph kind="status" />
-              </span>
-            </div>
-          </summary>
-          <div className="stack">
-            <p className="hint">
-              {order.operationalStatus === "ATTIVO"
-                ? "Nessun blocco operativo attivo."
-                : `Motivo corrente: ${order.operationalNote || "non indicato"}`}
-            </p>
+          <div className="stack order-detail-edit-column">
             <form action={updateOrderStatusDetailAction} className="form-grid order-status-form">
               <input name="orderId" type="hidden" value={order.id} />
               <div className="field order-status-field">
-                <label htmlFor="operationalStatus">Stato</label>
+                <label htmlFor="operationalStatus">Stato operativo</label>
                 <select defaultValue={order.operationalStatus} id="operationalStatus" name="operationalStatus">
                   {Object.entries(operationalStatusLabels).map(([value, label]) => (
                     <option key={value} value={value}>
@@ -352,7 +182,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                 </select>
               </div>
               <div className="field wide order-status-note">
-                <label htmlFor="statusNote">Nota</label>
+                <label htmlFor="statusNote">Nota stato</label>
                 <input
                   defaultValue={order.operationalStatus === "ATTIVO" ? "" : order.operationalNote || ""}
                   id="statusNote"
@@ -360,6 +190,11 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                   placeholder="Motivo sospensione o dettaglio operativo"
                 />
               </div>
+              <p className="hint">
+                {order.operationalStatus === "ATTIVO"
+                  ? "Nessun blocco operativo attivo."
+                  : `Motivo corrente: ${order.operationalNote || "non indicato"}`}
+              </p>
               <div className="button-row order-status-actions">
                 <button className="secondary" type="submit">
                   Salva stato
@@ -367,100 +202,210 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               </div>
             </form>
           </div>
-        </details>
+        </div>
+      </details>
+
+      <div className="order-detail-title-pills">
+        <StatusPills
+          hideNeutralStatus
+          linked={!order.isQuote}
+          isQuote={order.isQuote}
+          phase={order.mainPhase}
+          status={order.operationalStatus}
+          payment={order.paymentStatus}
+        />
+        <div className="toolbar status-cluster order-detail-title-secondary-pills">
+          {order.isQuote ? (
+            <span className="pill compact-pill">{invoiceStatusLabels[order.invoiceStatus]}</span>
+          ) : (
+            <Link className="pill compact-pill" href={buildOrdersFilterHref({ invoice: order.invoiceStatus })} prefetch={false}>
+              {invoiceStatusLabels[order.invoiceStatus]}
+            </Link>
+          )}
+          {order.isQuote ? (
+            <span className={`pill compact-pill${order.priority === "URGENTE" ? " danger" : order.priority === "ALTA" ? " warning" : ""}`}>{priorityLabels[order.priority]}</span>
+          ) : (
+            <Link
+              className={`pill compact-pill${order.priority === "URGENTE" ? " danger" : order.priority === "ALTA" ? " warning" : ""}`}
+              href={buildOrdersFilterHref({ priority: order.priority })}
+              prefetch={false}
+            >
+              {priorityLabels[order.priority]}
+            </Link>
+          )}
+          {order.isQuote ? (
+            <Link className="pill compact-pill quote" href="/quotes" prefetch={false}>
+              Preventivo
+            </Link>
+          ) : null}
+          {hasPartialDelivery ? <span className="pill compact-pill warning">{`Parziale ${deliveredItemsCount}/${order.items.length}`}</span> : null}
+        </div>
       </div>
 
-      <section className="card card-pad order-detail-lines-card">
-        <div className="order-detail-section-head">
-          <div>
-            <h3>Righe ordine</h3>
-            <span className="subtle">{order.items.length} lavorazioni</span>
-          </div>
-          <span className="action-icon-button" aria-hidden="true">
-            <SectionGlyph kind="items" />
-          </span>
-        </div>
-        <div className="mini-list">
-          <details className="mini-item order-item-editor order-item-editor-new">
-            <summary className="order-item-editor-summary">
-              <div className="order-item-editor-copy">
-                <strong>Nuova riga</strong>
-                <span className="subtle">Aggiungi una lavorazione manuale o collegata al catalogo.</span>
+      <section className="order-detail-overview-card card card-pad">
+        <div className="order-detail-overview-bar">
+          <div className="order-detail-overview-main">
+            <div className="order-detail-overview-head">
+              <div>
+                <h3>{order.customer.name}</h3>
+                <p className="card-muted">{getCustomerPrimaryContact(order.customer)}</p>
               </div>
-              <span className="order-item-editor-total">Aggiungi</span>
-            </summary>
-            <div className="order-item-editor-body">
-              <OrderItemEditorForm fieldPrefix="new-item" mode="create" orderId={order.id} services={services} submitLabel="Crea riga" />
             </div>
-          </details>
-          {order.items.map((item) => (
-            <details className={`mini-item order-item-editor${item.deliveredAt ? " is-delivered" : ""}`} key={item.id}>
-              <summary className="order-item-editor-summary">
-                <div className="order-item-editor-copy">
-                  <strong>{item.label}</strong>
-                  <span className="subtle">
-                    {usesLineTotalQuantityTiers(item.serviceCatalog) ||
-                    String(item.format || "").trim().toLowerCase().startsWith("calcolatore etichette")
-                      ? `${formatQuantity(item.quantity)} pz • Scaglione ${formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}`
-                      : `${formatQuantity(item.quantity)} x ${formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}`}
-                  </span>
-                  {item.notes?.trim() ? <span className="order-item-editor-note-preview">{item.notes}</span> : null}
-                  {item.deliveredAt ? <span className="order-item-delivered-pill">{`Consegnata il ${formatDateTime(item.deliveredAt)}`}</span> : null}
-                </div>
-                <span className="order-item-editor-total">{formatCurrency(item.lineTotalCents)}</span>
-              </summary>
-              <div className="order-item-editor-body">
-                <OrderItemEditorForm
-                  fieldPrefix={`item-${item.id}`}
-                  mode="update"
-                  orderId={order.id}
-                  services={services}
-                  submitLabel="Salva riga"
-                  values={{
-                    id: item.id,
-                    label: item.label,
-                    serviceCatalogId: item.serviceCatalogId,
-                    quantity: item.quantity,
-                    catalogBasePriceCents: item.catalogBasePriceCents,
-                    unitPriceCents: item.unitPriceCents,
-                    discountMode: item.discountMode,
-                    discountValue: item.discountValue,
-                    extraMode: item.extraMode,
-                    extraValue: item.extraValue,
-                    format: item.format,
-                    material: item.material,
-                    finishing: item.finishing,
-                    notes: item.notes
-                  }}
-                />
-                <div className="button-row order-item-editor-actions">
-                  <form action={cloneOrderItemAction}>
-                    <input name="orderId" type="hidden" value={order.id} />
-                    <input name="itemId" type="hidden" value={item.id} />
-                    <button className="ghost" type="submit">
-                      Clona riga
-                    </button>
-                  </form>
-                </div>
-                <div className="button-row order-item-editor-actions">
-                  {item.deliveredAt ? <span className="subtle">{`Riga consegnata il ${formatDateTime(item.deliveredAt)}`}</span> : null}
-                  <form action={toggleOrderItemDeliveryAction} className="order-item-delivery-action">
-                    <input name="orderId" type="hidden" value={order.id} />
-                    <input name="itemId" type="hidden" value={item.id} />
-                    <input name="delivered" type="hidden" value={item.deliveredAt ? "false" : "true"} />
-                    <button className="ghost" type="submit">
-                      {item.deliveredAt ? "Riapri riga" : "Segna come consegnata"}
-                    </button>
-                  </form>
-                </div>
+          </div>
+
+          <a className={`order-detail-overview-delivery-card${hasOperationalBlock ? " is-alert" : ""}`} href="#order-edit-panel">
+            <strong>{deliveryLabel}</strong>
+            {hasOperationalBlock ? <span className="subtle">{operationalStatusSummary}</span> : null}
+            {order.appointmentAt ? <span className="subtle">{`Appuntamento ${formatDateTime(order.appointmentAt)}`}</span> : null}
+          </a>
+
+          <div className="order-detail-overview-actions">
+            <div className="order-detail-overview-top-actions">
+              <MarkOrderInvoicedButton compact invoiceStatus={order.invoiceStatus} orderId={order.id} />
+              <DeleteOrderForm compact isQuote={order.isQuote} orderId={order.id} />
+              {order.mainPhase === "SVILUPPO_COMPLETATO" ? (
+                <ReadyWhatsAppButton hasPhone={hasWhatsapp} notifiedAt={order.readyWhatsappSentAt} orderId={order.id} />
+              ) : null}
+            </div>
+
+            {guidedAction?.kind === "deliver" ? (
+              <form action={transitionPhaseAction} className="action-form action-form-wide order-detail-overview-primary-action">
+                <input name="orderId" type="hidden" value={order.id} />
+                <input name="nextPhase" type="hidden" value="CONSEGNATO" />
+                {order.balanceDueCents > 0 ? (
+                  <input
+                    aria-label="Nota override consegna"
+                    name="note"
+                    placeholder="Nota facoltativa sulla consegna"
+                  />
+                ) : null}
+                <button className="primary" type="submit">
+                  Segna consegnato
+                </button>
+              </form>
+            ) : order.mainPhase === "CONSEGNATO" ? (
+              <div className="empty order-detail-overview-empty">
+                {order.deliveredAt ? `Ordine gia consegnato il ${formatDateTime(order.deliveredAt)}.` : "Ordine gia consegnato."}
               </div>
-            </details>
-          ))}
+            ) : order.isQuote ? (
+              <form action={confirmQuoteAction} className="order-detail-header-inline-form order-detail-overview-primary-action">
+                <input name="orderId" type="hidden" value={order.id} />
+                <button className="primary" type="submit">
+                  Conferma come ordine
+                </button>
+              </form>
+            ) : guidedAction?.kind === "transition" ? (
+              <form action={transitionPhaseAction} className="order-detail-header-inline-form order-detail-overview-primary-action">
+                <input name="orderId" type="hidden" value={order.id} />
+                <input name="nextPhase" type="hidden" value={guidedAction.nextPhase} />
+                <button className="primary" type="submit">
+                  {guidedAction.label}
+                </button>
+              </form>
+            ) : guidedAction?.kind === "ready" ? (
+              <form action={markReadyAction} className="order-detail-header-inline-form order-detail-overview-primary-action">
+                <input name="orderId" type="hidden" value={order.id} />
+                <button className="success" type="submit">
+                  Segna pronto
+                </button>
+              </form>
+            ) : null}
+          </div>
         </div>
       </section>
 
-      <div className="grid grid-2 order-detail-secondary-grid">
-        <section className="card card-pad order-detail-notes-card">
+      <div className="order-detail-work-grid">
+        <section className="card card-pad order-detail-lines-card">
+          <div className="order-detail-section-head">
+            <div>
+              <h3>Righe ordine</h3>
+              <span className="subtle">{order.items.length} lavorazioni</span>
+            </div>
+            <span className="action-icon-button" aria-hidden="true">
+              <SectionGlyph kind="items" />
+            </span>
+          </div>
+          <div className="mini-list">
+            <details className="mini-item order-item-editor order-item-editor-new">
+              <summary className="order-item-editor-summary">
+                <div className="order-item-editor-copy">
+                  <strong>Nuova riga</strong>
+                  <span className="subtle">Aggiungi una lavorazione manuale o collegata al catalogo.</span>
+                </div>
+                <span className="order-item-editor-total">Aggiungi</span>
+              </summary>
+              <div className="order-item-editor-body">
+                <OrderItemEditorForm fieldPrefix="new-item" mode="create" orderId={order.id} services={services} submitLabel="Crea riga" />
+              </div>
+            </details>
+            {order.items.map((item) => (
+              <details className={`mini-item order-item-editor${item.deliveredAt ? " is-delivered" : ""}`} key={item.id}>
+                <summary className="order-item-editor-summary">
+                  <div className="order-item-editor-copy">
+                    <strong>{item.label}</strong>
+                    <span className="subtle">
+                      {usesLineTotalQuantityTiers(item.serviceCatalog) ||
+                      String(item.format || "").trim().toLowerCase().startsWith("calcolatore etichette")
+                        ? `${formatQuantity(item.quantity)} pz • Scaglione ${formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}`
+                        : `${formatQuantity(item.quantity)} x ${formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}`}
+                    </span>
+                    {item.notes?.trim() ? <span className="order-item-editor-note-preview">{item.notes}</span> : null}
+                    {item.deliveredAt ? <span className="order-item-delivered-pill">{`Consegnata il ${formatDateTime(item.deliveredAt)}`}</span> : null}
+                  </div>
+                  <span className="order-item-editor-total">{formatCurrency(item.lineTotalCents)}</span>
+                </summary>
+                <div className="order-item-editor-body">
+                  <OrderItemEditorForm
+                    fieldPrefix={`item-${item.id}`}
+                    mode="update"
+                    orderId={order.id}
+                    services={services}
+                    submitLabel="Salva riga"
+                    values={{
+                      id: item.id,
+                      label: item.label,
+                      serviceCatalogId: item.serviceCatalogId,
+                      quantity: item.quantity,
+                      catalogBasePriceCents: item.catalogBasePriceCents,
+                      unitPriceCents: item.unitPriceCents,
+                      discountMode: item.discountMode,
+                      discountValue: item.discountValue,
+                      extraMode: item.extraMode,
+                      extraValue: item.extraValue,
+                      format: item.format,
+                      material: item.material,
+                      finishing: item.finishing,
+                      notes: item.notes
+                    }}
+                  />
+                  <div className="button-row order-item-editor-actions">
+                    <form action={cloneOrderItemAction}>
+                      <input name="orderId" type="hidden" value={order.id} />
+                      <input name="itemId" type="hidden" value={item.id} />
+                      <button className="ghost" type="submit">
+                        Clona riga
+                      </button>
+                    </form>
+                  </div>
+                  <div className="button-row order-item-editor-actions">
+                    {item.deliveredAt ? <span className="subtle">{`Riga consegnata il ${formatDateTime(item.deliveredAt)}`}</span> : null}
+                    <form action={toggleOrderItemDeliveryAction} className="order-item-delivery-action">
+                      <input name="orderId" type="hidden" value={order.id} />
+                      <input name="itemId" type="hidden" value={item.id} />
+                      <input name="delivered" type="hidden" value={item.deliveredAt ? "false" : "true"} />
+                      <button className="ghost" type="submit">
+                        {item.deliveredAt ? "Riapri riga" : "Segna come consegnata"}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        <div className="order-detail-side-stack">
+          <section className="card card-pad order-detail-notes-card">
           <div className="order-detail-section-head">
             <div>
               <h3>Note</h3>
@@ -475,40 +420,12 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           <div className={`order-detail-note-panel${order.notes?.trim() ? "" : " is-empty"}`}>
             {order.notes?.trim() ? <p>{order.notes}</p> : <span>Nessuna nota disponibile per questo ordine.</span>}
           </div>
-        </section>
+          </section>
 
-        <details className="card card-pad order-detail-disclosure order-detail-attachments-card">
+          <details className="card card-pad order-detail-disclosure order-detail-cashflow-card">
           <summary className="order-detail-disclosure-summary">
             <div className="order-detail-disclosure-copy">
-              <h3>Allegati</h3>
-              <span className="subtle">{order.attachments.length === 0 ? "Nessun file" : `${order.attachments.length} file`}</span>
-            </div>
-            <span className="action-icon-button" aria-hidden="true">
-              <SectionGlyph kind="attachments" />
-            </span>
-          </summary>
-          <AttachmentUploadForm orderId={order.id} useDirectUpload={useDirectUpload} />
-          <div className="mini-list">
-            {order.attachments.length === 0 ? (
-              <div className="empty">Nessun file caricato.</div>
-            ) : (
-              order.attachments.map((attachment) => (
-                <a className="mini-item" href={attachment.filePath} key={attachment.id} rel="noreferrer" target="_blank">
-                  <strong>{attachment.fileName}</strong>
-                  <span className="subtle">
-                    {formatAttachmentSize(attachment.sizeBytes)} • {formatDateTime(attachment.createdAt)}
-                  </span>
-                </a>
-              ))
-            )}
-          </div>
-        </details>
-      </div>
-
-      <details className="card card-pad order-detail-disclosure order-detail-payments-card">
-          <summary className="order-detail-disclosure-summary">
-            <div className="order-detail-disclosure-copy">
-              <h3>Pagamenti</h3>
+              <h3>Incassi</h3>
               <span className="subtle payment-summary-desktop">
                 {activePayments.length === 0
                   ? `Nessun movimento • Residuo ${formatCurrency(order.balanceDueCents)}`
@@ -520,6 +437,24 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               <SectionGlyph kind="payments" />
             </span>
           </summary>
+          <div className="order-detail-accounting-grid order-detail-cashflow-stats">
+            <span className="order-detail-accounting-stat">
+              <span className="subtle">Totale</span>
+              <strong>{formatCurrency(order.totalCents)}</strong>
+            </span>
+            <span className="order-detail-accounting-stat">
+              <span className="subtle">Acconto</span>
+              <strong>{formatCurrency(order.depositCents)}</strong>
+            </span>
+            <span className="order-detail-accounting-stat">
+              <span className="subtle">Pagato</span>
+              <strong>{formatCurrency(order.paidCents)}</strong>
+            </span>
+            <span className="order-detail-accounting-stat">
+              <span className="subtle">Residuo</span>
+              <strong>{formatCurrency(order.balanceDueCents)}</strong>
+            </span>
+          </div>
           <form action={recordPaymentAction} className="form-grid payment-entry-form">
             <input name="orderId" type="hidden" value={order.id} />
             <div className="field">
@@ -603,60 +538,61 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               ))
             )}
           </div>
-      </details>
+          </details>
 
-      <section className="card card-pad order-detail-accounting-card">
-        <div className="order-detail-section-head">
-          <div>
-            <h3>Contabile</h3>
-            <span className="subtle">{accountingSummary}</span>
-          </div>
-          <span className="action-icon-button" aria-hidden="true">
-            <SectionGlyph kind="payments" />
-          </span>
-        </div>
-        <div className="order-detail-accounting-grid">
-          <span className="order-detail-accounting-stat">
-            <span className="subtle">Totale</span>
-            <strong>{formatCurrency(order.totalCents)}</strong>
-          </span>
-          <span className="order-detail-accounting-stat">
-            <span className="subtle">Acconto</span>
-            <strong>{formatCurrency(order.depositCents)}</strong>
-          </span>
-          <span className="order-detail-accounting-stat">
-            <span className="subtle">Pagato</span>
-            <strong>{formatCurrency(order.paidCents)}</strong>
-          </span>
-          <span className="order-detail-accounting-stat">
-            <span className="subtle">Residuo</span>
-            <strong>{formatCurrency(order.balanceDueCents)}</strong>
-          </span>
-        </div>
-      </section>
-
-      <details className="card card-pad order-detail-disclosure order-detail-history-card">
-        <summary className="order-detail-disclosure-summary">
-          <div className="order-detail-disclosure-copy">
-            <h3>Cronologia</h3>
-            <span className="subtle">{order.history.length} eventi</span>
-          </div>
-          <span className="action-icon-button" aria-hidden="true">
-            <SectionGlyph kind="history" />
-          </span>
-        </summary>
-        <div className="timeline">
-          {order.history.map((entry) => (
-            <article className="timeline-item" key={entry.id}>
-              <div className="list-header">
-                <strong>{entry.description}</strong>
-                <span className="subtle">{formatDateTime(entry.createdAt)}</span>
+          <div className="order-detail-side-bottom-grid">
+            <details className="card card-pad order-detail-disclosure order-detail-attachments-card">
+              <summary className="order-detail-disclosure-summary">
+                <div className="order-detail-disclosure-copy">
+                  <h3>Allegati</h3>
+                  <span className="subtle">{order.attachments.length === 0 ? "Nessun file" : `${order.attachments.length} file`}</span>
+                </div>
+                <span className="action-icon-button" aria-hidden="true">
+                  <SectionGlyph kind="attachments" />
+                </span>
+              </summary>
+              <AttachmentUploadForm orderId={order.id} useDirectUpload={useDirectUpload} />
+              <div className="mini-list">
+                {order.attachments.length === 0 ? (
+                  <div className="empty">Nessun file caricato.</div>
+                ) : (
+                  order.attachments.map((attachment) => (
+                    <a className="mini-item" href={attachment.filePath} key={attachment.id} rel="noreferrer" target="_blank">
+                      <strong>{attachment.fileName}</strong>
+                      <span className="subtle">
+                        {formatAttachmentSize(attachment.sizeBytes)} • {formatDateTime(attachment.createdAt)}
+                      </span>
+                    </a>
+                  ))
+                )}
               </div>
-              {entry.details ? <div className="subtle">{entry.details}</div> : null}
-            </article>
-          ))}
+            </details>
+
+            <details className="card card-pad order-detail-disclosure order-detail-history-card">
+              <summary className="order-detail-disclosure-summary">
+                <div className="order-detail-disclosure-copy">
+                  <h3>Cronologia</h3>
+                  <span className="subtle">{order.history.length} eventi</span>
+                </div>
+                <span className="action-icon-button" aria-hidden="true">
+                  <SectionGlyph kind="history" />
+                </span>
+              </summary>
+              <div className="timeline">
+                {order.history.map((entry) => (
+                  <article className="timeline-item" key={entry.id}>
+                    <div className="list-header">
+                      <strong>{entry.description}</strong>
+                      <span className="subtle">{formatDateTime(entry.createdAt)}</span>
+                    </div>
+                    {entry.details ? <div className="subtle">{entry.details}</div> : null}
+                  </article>
+                ))}
+              </div>
+            </details>
+          </div>
         </div>
-      </details>
+      </div>
     </div>
   );
 }

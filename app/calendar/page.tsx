@@ -423,11 +423,12 @@ function CalendarSummaryGrid({
   view: CalendarView;
 }) {
   return (
-    <div className="grid calendar-summary-grid">
+    <div className={`grid calendar-summary-grid calendar-summary-grid-${view}`}>
       <CalendarMetricCard
         href={getCalendarMetricHref(view, "workload")}
         hint={labelPrefix === "oggi" ? "Consegne previste" : "Consegne nei 7 giorni"}
         icon={<CalendarGlyph kind="work" />}
+        kind="workload"
         label="Carico"
         priority="primary"
         tone="neutral"
@@ -437,6 +438,7 @@ function CalendarSummaryGrid({
         href={getCalendarMetricHref(view, "appointments")}
         hint="Installazioni e incontri"
         icon={<CalendarGlyph kind="schedule" />}
+        kind="appointments"
         label="Appuntamenti"
         priority="primary"
         tone="brand"
@@ -446,6 +448,7 @@ function CalendarSummaryGrid({
         href={getCalendarMetricHref(view, "toStart")}
         hint="Ordini da far partire"
         icon={<CalendarGlyph kind="play" />}
+        kind="toStart"
         label="Da avviare"
         priority="secondary"
         tone="neutral"
@@ -455,6 +458,7 @@ function CalendarSummaryGrid({
         href={getCalendarMetricHref(view, "working")}
         hint="Produzione attiva"
         icon={<CalendarGlyph kind="gear" />}
+        kind="working"
         label="In lavorazione"
         priority="secondary"
         tone="warning"
@@ -464,6 +468,7 @@ function CalendarSummaryGrid({
         href={getCalendarMetricHref(view, "blocked")}
         hint="File o approvazioni in attesa"
         icon={<CalendarGlyph kind="pause" />}
+        kind="blocked"
         label="Sospesi"
         priority="secondary"
         tone="danger"
@@ -473,6 +478,7 @@ function CalendarSummaryGrid({
         href={getCalendarMetricHref(view, "overdue")}
         hint={overdueLabel}
         icon={<CalendarGlyph kind="alert" />}
+        kind="overdue"
         label="Arretrati"
         priority="primary"
         tone={summary.overdue > 0 ? "danger" : "neutral"}
@@ -482,6 +488,7 @@ function CalendarSummaryGrid({
         href={getCalendarMetricHref(view, "ready")}
         hint="Ordini già pronti"
         icon={<CalendarGlyph kind="spark" />}
+        kind="ready"
         label="Pronti"
         priority="secondary"
         tone="success"
@@ -498,7 +505,8 @@ function CalendarMetricCard({
   hint,
   tone,
   href,
-  priority
+  priority,
+  kind
 }: {
   icon: ReactNode;
   label: string;
@@ -507,8 +515,9 @@ function CalendarMetricCard({
   tone: "neutral" | "danger" | "warning" | "success" | "brand";
   href: string;
   priority: "primary" | "secondary";
+  kind: "workload" | "appointments" | "toStart" | "working" | "blocked" | "overdue" | "ready";
 }) {
-  const className = `card card-pad compact-metric calendar-metric-card calendar-metric-card-link compact-metric-${tone} calendar-metric-card-${priority}`;
+  const className = `card card-pad compact-metric calendar-metric-card calendar-metric-card-link compact-metric-${tone} calendar-metric-card-${priority} calendar-metric-kind-${kind}`;
   const content = (
     <>
       <div className="calendar-metric-head">

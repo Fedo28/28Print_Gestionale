@@ -6,7 +6,7 @@ import { QuickOrderControls } from "@/components/quick-order-controls";
 import { StatusPills } from "@/components/status-pills";
 import { formatCurrency, formatDateKey, formatDateTime } from "@/lib/format";
 import { buildOrdersFilterHref } from "@/lib/order-filters";
-import { countUniqueOrders, getDashboardData, type DashboardWeekDayLoad } from "@/lib/orders";
+import { getDashboardData, type DashboardWeekDayLoad } from "@/lib/orders";
 import { getWorkdayHighlight } from "@/lib/workday-highlights";
 
 type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
@@ -30,8 +30,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
   const priorityOrders = mergeUniqueOrders(overdueOrders, todayOrders);
   const nextDelivery = priorityOrders[0];
   const nextAppointment = todayAppointments[0];
-  const totalAttention = countUniqueOrders(priorityOrders, blockedOrders, balanceOrders);
-  const weeklyWorkload = weekLoad.reduce((sum, day) => sum + day.workload, 0);
   const weeklyAppointments = weekLoad.reduce((sum, day) => sum + day.appointments, 0);
   const activePanel = parseDashboardPanel(panel);
   const links = {
@@ -158,7 +156,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
           icon={<DashboardGlyph kind="clock" />}
           label="Oggi"
           value={todayOrders.length}
-          hint="Consegne di oggi"
           tone="neutral"
         />
         <MiniMetricCard
@@ -167,7 +164,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
           icon={<DashboardGlyph kind="calendar" />}
           label="Agenda"
           value={todayAppointments.length}
-          hint="Previsti oggi"
           tone="brand"
         />
         <MiniMetricCard
@@ -176,7 +172,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
           icon={<DashboardGlyph kind="alert" />}
           label="Arretrati"
           value={overdueOrders.length}
-          hint="Scadenze passate"
           tone="danger"
         />
         <MiniMetricCard
@@ -185,7 +180,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
           icon={<DashboardGlyph kind="play" />}
           label="Da avviare"
           value={toStartOrders.length}
-          hint="Ancora da iniziare"
           tone="neutral"
         />
         <MiniMetricCard
@@ -194,7 +188,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
           icon={<DashboardGlyph kind="tools" />}
           label="In lavorazione"
           value={workingOrders.length}
-          hint="Gia in cantiere"
           tone="warning"
         />
         <MiniMetricCard
@@ -203,7 +196,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
           icon={<DashboardGlyph kind="pause" />}
           label="Sospesi"
           value={blockedOrders.length}
-          hint="File o approvazioni"
           tone="warning"
         />
         <MiniMetricCard
@@ -212,7 +204,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
           icon={<DashboardGlyph kind="spark" />}
           label="Pronti"
           value={readyOrders.length}
-          hint="Da ritirare"
           tone="success"
         />
         <MiniMetricCard
@@ -221,7 +212,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
           icon={<DashboardGlyph kind="cash" />}
           label="Saldi"
           value={balanceOrders.length}
-          hint="Ancora aperti"
           tone="brand"
         />
       </section>
@@ -230,10 +220,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
         <div className="list-header compact-section-head">
           <div>
             <span className="compact-kicker">Calendario</span>
-            <h3>Settimana sotto controllo</h3>
-            <p className="card-muted">
-              {weeklyWorkload} lavori in consegna e {weeklyAppointments} appuntamenti nei prossimi 7 giorni.
-            </p>
           </div>
           <Link className="compact-link" href="/calendar?view=week">
             Apri settimana
@@ -284,7 +270,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
       <section className="card card-pad compact-focus-card dashboard-panel-shell" id="dashboard-operativa">
         <div className="list-header compact-section-head">
           <div>
-            <span className="compact-kicker">Liste rapide</span>
             <h3>Dashboard operativa</h3>
           </div>
         </div>
@@ -327,7 +312,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
         {activePanel === "PRIORITY" ? (
           <section className="grid dashboard-lanes-grid">
             <DashboardLane
-              description="Arretrati e consegne di oggi"
               emptyMessage="Nessuna urgenza operativa per oggi."
               orders={priorityOrders}
               title="Priorita oggi"
@@ -347,7 +331,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
         {activePanel === "PRODUCTION" ? (
           <section className="grid dashboard-lanes-grid">
             <DashboardLane
-              description="Ordini accettati ancora da far partire"
               emptyMessage="Niente in attesa di avvio."
               density="dense"
               orders={toStartOrders}
@@ -358,7 +341,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
             />
 
             <DashboardLane
-              description="Lavorazioni gia partite"
               emptyMessage="Nessun lavoro in corso."
               density="dense"
               orders={workingOrders}
@@ -369,7 +351,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
             />
 
             <DashboardLane
-              description="Ordini fermi in attesa di sblocco"
               density="dense"
               emptyMessage="Nessun ordine sospeso."
               orders={blockedOrders}
@@ -381,7 +362,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
             />
 
             <DashboardLane
-              description="Ordini pronti al ritiro o consegna"
               density="dense"
               emptyMessage="Nessun ordine pronto."
               orders={readyOrders}
@@ -397,7 +377,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
         {activePanel === "APPOINTMENTS" ? (
           <section className="grid dashboard-lanes-grid">
             <DashboardLane
-              description="Installazioni, sopralluoghi e ritiri pianificati"
               emptyMessage="Nessun appuntamento programmato oggi."
               orders={todayAppointments}
               title="Appuntamenti di oggi"
@@ -412,7 +391,6 @@ export async function DashboardPage({ panel }: { panel?: string }) {
         {activePanel === "FINANCE" ? (
           <section className="grid dashboard-lanes-grid">
             <DashboardLane
-              description="Ordini con residui ancora da chiudere"
               emptyMessage="Nessun saldo aperto."
               orders={balanceOrders}
               title="Saldi aperti"
@@ -425,46 +403,12 @@ export async function DashboardPage({ panel }: { panel?: string }) {
           </section>
         ) : null}
       </section>
-
-      <section className="card card-pad compact-focus-card dashboard-attention-card">
-        <div className="compact-focus-head">
-          <div>
-            <span className="compact-kicker">Attenzione</span>
-            <h3>Ordini che meritano uno sguardo</h3>
-          </div>
-          <strong className="focus-total">{totalAttention}</strong>
-        </div>
-        <div className="compact-signal-list">
-          <CompactSignal
-            href={links.overdue}
-            icon={<DashboardGlyph kind="alert" />}
-            label="Da riallineare"
-            value={String(overdueOrders.length)}
-            detail={overdueOrders[0] ? `${overdueOrders[0].orderCode} • ${overdueOrders[0].customer.name}` : "Nessun arretrato"}
-          />
-          <CompactSignal
-            href={links.blocked}
-            icon={<DashboardGlyph kind="pause" />}
-            label="Blocchi"
-            value={String(blockedOrders.length)}
-            detail={blockedOrders[0] ? `${blockedOrders[0].orderCode} • ${blockedOrders[0].customer.name}` : "Nessun fermo"}
-          />
-          <CompactSignal
-            href={links.balance}
-            icon={<DashboardGlyph kind="cash" />}
-            label="Incassi aperti"
-            value={String(balanceOrders.length)}
-            detail={balanceOrders[0] ? `${balanceOrders[0].orderCode} • ${formatCurrency(balanceOrders[0].balanceDueCents)}` : "Nessun saldo"}
-          />
-        </div>
-      </section>
     </div>
   );
 }
 
 function DashboardLane({
   title,
-  description,
   orders,
   emptyMessage,
   viewHref,
@@ -475,7 +419,6 @@ function DashboardLane({
   density = "default"
 }: {
   title: string;
-  description: string;
   orders: DashboardOrder[];
   emptyMessage: string;
   viewHref?: string;
@@ -494,7 +437,6 @@ function DashboardLane({
       <div className="list-header compact-section-head">
         <div>
           <h3>{title}</h3>
-          <p className="card-muted">{description}</p>
         </div>
         {viewHref && viewLabel ? (
           <Link className="compact-link" href={viewHref}>
@@ -560,7 +502,6 @@ function MiniMetricCard({
   icon,
   label,
   value,
-  hint,
   tone
 }: {
   accent: DashboardAccent;
@@ -568,7 +509,6 @@ function MiniMetricCard({
   icon: ReactNode;
   label: string;
   value: number;
-  hint: string;
   tone: "neutral" | "danger" | "warning" | "success" | "brand";
 }) {
   return (
@@ -581,7 +521,6 @@ function MiniMetricCard({
         <span className="compact-metric-label">{label}</span>
       </div>
       <strong>{value}</strong>
-      <span className="hint">{hint}</span>
     </Link>
   );
 }
