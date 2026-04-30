@@ -14,6 +14,7 @@ export type OrderSortDirection = "asc" | "desc";
 export type DashboardPreset =
   | "ALL"
   | "TODAY"
+  | "TOMORROW"
   | "APPOINTMENTS_TODAY"
   | "OVERDUE"
   | "PRIORITY_TODAY"
@@ -21,18 +22,23 @@ export type DashboardPreset =
   | "WORKING"
   | "BLOCKED"
   | "READY"
+  | "FINANCE_PAID"
+  | "FINANCE_UNPAID"
   | "BALANCE";
 
 export const dashboardPresetLabels: Record<Exclude<DashboardPreset, "ALL">, string> = {
   TODAY: "Consegne di oggi",
+  TOMORROW: "Consegne di domani",
   APPOINTMENTS_TODAY: "Appuntamenti di oggi",
   OVERDUE: "Arretrati",
-  PRIORITY_TODAY: "Priorita di oggi",
+  PRIORITY_TODAY: "Priorita lavorazione",
   TO_START: "Da avviare",
   WORKING: "In lavorazione",
   BLOCKED: "Sospesi",
   READY: "Pronti",
-  BALANCE: "Saldi aperti"
+  FINANCE_PAID: "Pagati da fatturare",
+  FINANCE_UNPAID: "Da incassare e fatturare",
+  BALANCE: "Da fatturare"
 };
 
 export type OrderListFilters = {
@@ -106,6 +112,7 @@ export function parseDashboardPreset(raw: string | null): DashboardPreset {
     raw &&
     [
       "TODAY",
+      "TOMORROW",
       "APPOINTMENTS_TODAY",
       "OVERDUE",
       "PRIORITY_TODAY",
@@ -113,6 +120,8 @@ export function parseDashboardPreset(raw: string | null): DashboardPreset {
       "WORKING",
       "BLOCKED",
       "READY",
+      "FINANCE_PAID",
+      "FINANCE_UNPAID",
       "BALANCE"
     ].includes(raw)
   ) {

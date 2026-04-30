@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Priority } from "@prisma/client";
 import { priorityLabels } from "@/lib/constants";
 import { formatCurrency, formatDateTime } from "@/lib/format";
+import { getPriorityToneClass } from "@/lib/priorities";
 
 type QuoteRow = {
   id: string;
@@ -20,7 +21,7 @@ type QuoteRow = {
 
 export function QuotesTable({ quotes }: { quotes: QuoteRow[] }) {
   return (
-    <table>
+    <table className="quotes-table">
       <thead>
         <tr>
           <th>Preventivo</th>
@@ -39,29 +40,38 @@ export function QuotesTable({ quotes }: { quotes: QuoteRow[] }) {
             </td>
           </tr>
         ) : (
-          quotes.map((quote) => (
-            <tr key={quote.id}>
-              <td>
+          quotes.map((quote) => {
+            const priorityToneClass = getPriorityToneClass(quote.priority);
+            return (
+            <tr className={`quote-row ${priorityToneClass}`} key={quote.id}>
+              <td data-label="Preventivo">
                 <div className="order-code">{quote.orderCode}</div>
                 <div className="subtle">{quote.title}</div>
               </td>
-              <td>
+              <td data-label="Cliente">
                 <strong>{quote.customer.name}</strong>
                 <div className="subtle">{quote.customer.phone || "Telefono non inserito"}</div>
               </td>
-              <td>{quote.schedulePending ? "Da definire" : formatDateTime(quote.deliveryAt)}</td>
-              <td>{priorityLabels[quote.priority]}</td>
-              <td>
+              <td className={`quotes-table-delivery-cell ${priorityToneClass}`} data-label="Consegna stimata">
+                <div className={`order-deadline-chip ${priorityToneClass}${quote.schedulePending ? " delivered" : ""}`}>
+                  <strong>{quote.schedulePending ? "Da definire" : formatDateTime(quote.deliveryAt)}</strong>
+                  <span>{quote.schedulePending ? "Pianificazione" : "Stimata"}</span>
+                </div>
+              </td>
+              <td data-label="Priorita">
+                <span className={`order-priority-chip ${priorityToneClass}`}>{priorityLabels[quote.priority]}</span>
+              </td>
+              <td data-label="Importi">
                 <div className="strong">{formatCurrency(quote.totalCents)}</div>
                 <div className="subtle">Residuo {formatCurrency(quote.balanceDueCents)}</div>
               </td>
-              <td>
+              <td className="quotes-table-actions-cell" data-label="Azioni">
                 <Link className="button ghost" href={`/orders/${quote.id}`}>
                   Apri scheda
                 </Link>
               </td>
             </tr>
-          ))
+          )})
         )}
       </tbody>
     </table>

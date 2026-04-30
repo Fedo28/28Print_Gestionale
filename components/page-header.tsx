@@ -14,7 +14,6 @@ export function PageHeader({
   return (
     <header className="page-head">
       <div className="page-head-copy">
-        <span className="page-kicker">Gestionale operativo</span>
         <div className="page-head-title-row">
           <h2>{title}</h2>
           {titleAction ? <div className="page-head-title-action">{titleAction}</div> : null}

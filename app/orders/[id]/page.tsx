@@ -26,8 +26,11 @@ import { formatAttachmentSize } from "@/lib/attachment-utils";
 import { requireAuth } from "@/lib/auth";
 import {
   getAppointmentNoteOptions,
+  mainPhaseLabels,
   invoiceStatusLabels,
+  normalizeMainPhaseForWorkflow,
   operationalStatusLabels,
+  paymentStatusLabels,
   paymentMethodLabels,
   priorityLabels
 } from "@/lib/constants";
@@ -70,6 +73,7 @@ export default async function OrderDetailPage({
   const hasPartialDelivery = deliveredItemsCount > 0 && deliveredItemsCount < order.items.length;
   const editPanelHref = `/orders/${order.id}?edit=1#order-edit-panel`;
   const deliveryTitle = order.mainPhase === "CONSEGNATO" && order.deliveredAt ? "Consegnato" : "Consegna";
+  const visiblePhase = normalizeMainPhaseForWorkflow(order.mainPhase);
   const deliveryDateLabel =
     isSchedulePendingQuote
       ? "Da definire"
@@ -87,6 +91,27 @@ export default async function OrderDetailPage({
       ? "Operativo"
       : order.operationalNote || operationalStatusLabels[order.operationalStatus];
   const hasOperationalBlock = order.operationalStatus !== "ATTIVO";
+  const workflowToneClass =
+    visiblePhase === "CONSEGNATO"
+      ? "is-emerald"
+      : visiblePhase === "SVILUPPO_COMPLETATO"
+        ? "is-violet"
+        : visiblePhase === "IN_LAVORAZIONE"
+          ? "is-indigo"
+          : "is-azure";
+  const paymentToneClass =
+    order.paymentStatus === "PAGATO"
+      ? "is-emerald"
+      : order.paymentStatus === "NON_PAGATO"
+        ? "is-coral"
+        : "is-amber";
+  const totalToneClass = order.balanceDueCents > 0 ? "is-slate" : "is-teal";
+  const workflowSummary = hasPartialDelivery ? `Parziale ${deliveredItemsCount}/${order.items.length}` : operationalStatusSummary;
+  const paymentSummary =
+    order.balanceDueCents > 0
+      ? `${invoiceStatusLabels[order.invoiceStatus]} • Residuo ${formatCurrency(order.balanceDueCents)}`
+      : `${invoiceStatusLabels[order.invoiceStatus]} • Saldo chiuso`;
+  const totalSummary = `Pagato ${formatCurrency(order.paidCents)} • Acconto ${formatCurrency(order.depositCents)}`;
 
   return (
     <div className="stack order-detail-page-shell">
@@ -273,13 +298,6 @@ export default async function OrderDetailPage({
             </div>
           </div>
 
-          <Link className={`order-detail-overview-delivery-card${hasOperationalBlock ? " is-alert" : ""}`} href={editPanelHref}>
-            <strong>{deliveryTitle}</strong>
-            <span className="order-detail-overview-delivery-date">{deliveryDateLabel}</span>
-            {hasOperationalBlock ? <span className="subtle">{operationalStatusSummary}</span> : null}
-            {order.appointmentAt ? <span className="subtle">{`Appuntamento ${formatDateTime(order.appointmentAt)}`}</span> : null}
-          </Link>
-
           <div className="order-detail-overview-actions">
             <div className="order-detail-overview-top-actions">
               <MarkOrderInvoicedButton compact invoiceStatus={order.invoiceStatus} orderId={order.id} />
@@ -338,6 +356,38 @@ export default async function OrderDetailPage({
           </div>
         </div>
       </section>
+
+      <div className="order-detail-kpi-grid">
+        <Link
+          className={`order-detail-kpi-card ${workflowToneClass}`}
+          href={order.isQuote ? "/quotes" : buildOrdersFilterHref({ phase: visiblePhase })}
+          prefetch={false}
+        >
+          <span className="order-detail-kpi-label">Workflow</span>
+          <strong className="order-detail-kpi-value">{mainPhaseLabels[visiblePhase]}</strong>
+          <span className="order-detail-kpi-meta">{workflowSummary}</span>
+        </Link>
+
+        <Link className={`order-detail-kpi-card ${paymentToneClass}`} href="#order-detail-cashflow">
+          <span className="order-detail-kpi-label">Pagamento</span>
+          <strong className="order-detail-kpi-value">{paymentStatusLabels[order.paymentStatus]}</strong>
+          <span className="order-detail-kpi-meta">{paymentSummary}</span>
+        </Link>
+
+        <Link className={`order-detail-kpi-card ${hasOperationalBlock ? "is-coral" : "is-sky"}`} href={editPanelHref}>
+          <span className="order-detail-kpi-label">{deliveryTitle}</span>
+          <strong className="order-detail-kpi-value order-detail-kpi-value-date">{deliveryDateLabel}</strong>
+          <span className="order-detail-kpi-meta">
+            {order.appointmentAt ? `Appuntamento ${formatDateTime(order.appointmentAt)}` : workflowSummary}
+          </span>
+        </Link>
+
+        <Link className={`order-detail-kpi-card ${totalToneClass}`} href="#order-detail-cashflow">
+          <span className="order-detail-kpi-label">Totale ordine</span>
+          <strong className="order-detail-kpi-value">{formatCurrency(order.totalCents)}</strong>
+          <span className="order-detail-kpi-meta">{totalSummary}</span>
+        </Link>
+      </div>
 
       <div className="order-detail-work-grid">
         <section className="card card-pad order-detail-lines-card">
@@ -439,24 +489,7 @@ export default async function OrderDetailPage({
         </section>
 
         <div className="order-detail-side-stack">
-          <section className="card card-pad order-detail-notes-card">
-          <div className="order-detail-section-head">
-            <div>
-              <h3>Note</h3>
-              <span className="subtle">
-                {order.notes?.trim() ? "Solo lettura. Per modificarle entra nella sezione di modifica." : "Nessuna nota interna salvata"}
-              </span>
-            </div>
-            <span className="action-icon-button" aria-hidden="true">
-              <SectionGlyph kind="notes" />
-            </span>
-          </div>
-          <div className={`order-detail-note-panel${order.notes?.trim() ? "" : " is-empty"}`}>
-            {order.notes?.trim() ? <p>{order.notes}</p> : <span>Nessuna nota disponibile per questo ordine.</span>}
-          </div>
-          </section>
-
-          <details className="card card-pad order-detail-disclosure order-detail-cashflow-card">
+          <details className="card card-pad order-detail-disclosure order-detail-cashflow-card" id="order-detail-cashflow">
           <summary className="order-detail-disclosure-summary">
             <div className="order-detail-disclosure-copy">
               <h3>Incassi</h3>
@@ -573,6 +606,23 @@ export default async function OrderDetailPage({
             )}
           </div>
           </details>
+
+          <section className="card card-pad order-detail-notes-card">
+          <div className="order-detail-section-head">
+            <div>
+              <h3>Note</h3>
+              <span className="subtle">
+                {order.notes?.trim() ? "Interne" : "Nessuna nota interna"}
+              </span>
+            </div>
+            <span className="action-icon-button" aria-hidden="true">
+              <SectionGlyph kind="notes" />
+            </span>
+          </div>
+          <div className={`order-detail-note-panel${order.notes?.trim() ? "" : " is-empty"}`}>
+            {order.notes?.trim() ? <p>{order.notes}</p> : <span>Nessuna nota disponibile per questo ordine.</span>}
+          </div>
+          </section>
 
           <div className="order-detail-side-bottom-grid">
             <details className="card card-pad order-detail-disclosure order-detail-attachments-card">

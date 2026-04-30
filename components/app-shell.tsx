@@ -6,16 +6,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { MouseEvent, ReactNode } from "react";
 import { GlobalSearch } from "@/components/global-search";
-import { ThemeToggle } from "@/components/theme-toggle";
-import {
-  DEFAULT_THEME,
-  THEME_STORAGE_KEY,
-  THEMES,
-  applyTheme,
-  persistTheme,
-  readStoredTheme,
-  type ThemeName
-} from "@/lib/theme";
 import brandLogo from "../logo.png";
 
 type NavTone = "neutral" | "sky" | "coral" | "lilac" | "rose" | "amber" | "mint" | "teal";
@@ -33,12 +23,12 @@ type NavIcon =
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: "dashboard", tone: "sky" },
-  { href: "/customers", label: "Clienti", icon: "customers", tone: "coral" },
+  { href: "/production", label: "Produzione", icon: "production", tone: "mint" },
   { href: "/orders", label: "Ordini", icon: "orders", tone: "lilac" },
-  { href: "/quotes", label: "Preventivi", icon: "quotes", tone: "rose" },
+  { href: "/quotes", label: "Preventivi", icon: "quotes", tone: "coral" },
+  { href: "/customers", label: "Clienti", icon: "customers", tone: "rose" },
   { href: "/calendar", label: "Calendario", icon: "calendar", tone: "amber" },
   { href: "/billboards", label: "Cartelloni", icon: "billboards", tone: "teal" },
-  { href: "/production", label: "Produzione", icon: "production", tone: "mint" },
   { href: "/stats", label: "Statistiche", icon: "stats", tone: "sky" }
 ] as const satisfies ReadonlyArray<{
   href: string;
@@ -55,10 +45,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isLoginRoute = pathname === "/login";
   const isPrintRoute = pathname.endsWith("/print");
   const isDashboardRoute = pathname === "/";
+  const activeNavItem =
+    navItems.find((item) => pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))) ?? navItems[0];
   const [isCompactViewport, setIsCompactViewport] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
-  const [theme, setTheme] = useState<ThemeName>(DEFAULT_THEME);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -69,25 +60,6 @@ export function AppShell({ children }: { children: ReactNode }) {
     setIsMobileNavOpen(false);
     setIsMobileSearchOpen(false);
   }, [pathname]);
-
-  useEffect(() => {
-    const initialTheme = readStoredTheme();
-    setTheme(initialTheme);
-    applyTheme(initialTheme);
-
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key !== null && event.key !== THEME_STORAGE_KEY) {
-        return;
-      }
-
-      const nextTheme = readStoredTheme();
-      setTheme(nextTheme);
-      applyTheme(nextTheme);
-    };
-
-    window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
-  }, []);
 
   useEffect(() => {
     const schedulePrefetch = () => {
@@ -237,13 +209,6 @@ export function AppShell({ children }: { children: ReactNode }) {
     setIsMobileSearchOpen((current) => !current);
   }
 
-  function handleThemeChange(isDarkModeEnabled: boolean) {
-    const nextTheme = isDarkModeEnabled ? THEMES.dark : THEMES.light;
-    setTheme(nextTheme);
-    applyTheme(nextTheme);
-    persistTheme(nextTheme);
-  }
-
   function renderNavLinks(options?: { onNavigate?: (event: MouseEvent<HTMLAnchorElement>) => void }) {
     return (
       <>
@@ -251,6 +216,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
           return (
             <Link
+              aria-label={item.label}
               className={`nav-link nav-tone-${item.tone} ${active ? "active" : ""}`}
               href={item.href}
               key={item.href}
@@ -270,22 +236,26 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="shell">
+    <div className={`shell page-tone-${activeNavItem.tone}`}>
       <aside className="sidebar">
         <div className="sidebar-frame">
-          <div className="brand">
-            <Image
-              alt="28 Print"
-              className="brand-logo"
-              height={132}
-              priority
-              sizes="220px"
-              src={brandLogo}
-              width={132}
-            />
+          <div className="sidebar-brand-panel">
+            <Link aria-label="Vai alla dashboard" className="brand" href="/">
+              <Image
+                alt="28 Print"
+                className="brand-logo"
+                height={132}
+                priority
+                sizes="220px"
+                src={brandLogo}
+                width={132}
+              />
+            </Link>
           </div>
 
-          <nav className="nav-list">{renderNavLinks()}</nav>
+          <div className="sidebar-nav-panel">
+            <nav className="nav-list">{renderNavLinks()}</nav>
+          </div>
         </div>
       </aside>
 
@@ -411,13 +381,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             <nav className="nav-list mobile-nav-list">{renderNavLinks({ onNavigate: handleMobileNavLinkClick })}</nav>
             <div className="mobile-nav-utilities">
               <div className="mobile-nav-section-label">Utility rapide</div>
-              <ThemeToggle
-                checked={theme === THEMES.dark}
-                className="mobile-drawer-theme-toggle"
-                hint="Tema serale"
-                label="Dark mode"
-                onChange={handleThemeChange}
-              />
               <Link
                 className="mobile-nav-utility-link"
                 href="/settings"
@@ -450,13 +413,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="shell-toolbar">
               <GlobalSearch />
               <div className="shell-toolbar-actions">
-                <ThemeToggle
-                  checked={theme === THEMES.dark}
-                  className="toolbar-theme-toggle"
-                  hint="Tema serale"
-                  label="Dark mode"
-                  onChange={handleThemeChange}
-                />
                 <Link
                   aria-label="Apri impostazioni"
                   className="shell-toolbar-icon-link shell-toolbar-settings-link"

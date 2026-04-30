@@ -34,10 +34,9 @@ export default async function QuotesPage({ searchParams }: Props) {
   });
 
   return (
-    <div className="stack">
+    <div className="stack quotes-page-shell">
       <PageHeader
         title="Preventivi"
-        description="Archivio preventivi separato dal flusso ordini, per tenere distinta la trattativa dal lavoro operativo."
         action={
           <Link className="button primary" href="/quotes/new">
             Nuovo preventivo
@@ -45,7 +44,7 @@ export default async function QuotesPage({ searchParams }: Props) {
         }
       />
 
-      <section className="card card-pad">
+      <section className="card card-pad quotes-page-filters-card">
         <form className="toolbar filters-bar" method="get">
           <div className="filters-grow">
             <input
@@ -74,7 +73,7 @@ export default async function QuotesPage({ searchParams }: Props) {
         ) : null}
       </section>
 
-      <section className="card card-pad table-wrap orders-table-wrap">
+      <section className="card card-pad table-wrap orders-table-wrap quotes-page-results-card">
         <QuotesTable quotes={quotes} />
       </section>
     </div>

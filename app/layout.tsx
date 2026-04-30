@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import { Manrope, Space_Grotesk } from "next/font/google";
+import { Manrope, Sora, Space_Grotesk } from "next/font/google";
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/app-shell";
-import { DEFAULT_THEME, themeBootstrapScript } from "@/lib/theme";
 import brandLogo from "../logo.png";
 import "./globals.css";
 
@@ -92,6 +91,11 @@ const spaceGrotesk = Space_Grotesk({
   variable: "--font-display"
 });
 
+const sora = Sora({
+  subsets: ["latin"],
+  variable: "--font-accent"
+});
+
 export const metadata: Metadata = {
   title: "Gestionale 28 Print",
   description: "Gestionale ordini per stampa digitale",
@@ -111,9 +115,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html data-theme={DEFAULT_THEME} lang="it" suppressHydrationWarning>
+    <html lang="it">
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript }} />
         {process.env.NODE_ENV !== "production" ? (
           <>
             <meta content="no-store, no-cache, must-revalidate, proxy-revalidate" httpEquiv="Cache-Control" />
@@ -123,7 +126,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           </>
         ) : null}
       </head>
-      <body className={`${manrope.variable} ${spaceGrotesk.variable}`}>
+      <body className={`${manrope.variable} ${spaceGrotesk.variable} ${sora.variable}`}>
         <AppShell>{children}</AppShell>
       </body>
     </html>

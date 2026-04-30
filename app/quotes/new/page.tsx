@@ -12,7 +12,7 @@ export default async function NewQuotePage() {
   const [customers, services] = await Promise.all([getCustomers(), getServices()]);
 
   return (
-    <div className="stack">
+    <div className="stack order-entry-page-shell quote-create-page-shell">
       <PageHeader action={<OrderDraftHeaderAction kind="quote" />} title="Nuovo preventivo" />
       <OrderForm action={createQuoteAction} customers={customers} kind="quote" services={services} />
     </div>

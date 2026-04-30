@@ -6,10 +6,28 @@ export const dynamic = "force-dynamic";
 type Props = {
   searchParams?: {
     panel?: string;
+    focus?: string;
+    day?: string;
+    dayFocus?: string;
+    readyMode?: string;
+    financeMode?: string;
+    financeSort?: string;
+    pulse?: string;
   };
 };
 
 export default async function Page({ searchParams }: Props) {
   await requireAuth();
-  return <DashboardPage panel={searchParams?.panel} />;
+  return (
+    <DashboardPage
+      day={searchParams?.day}
+      dayFocus={searchParams?.dayFocus}
+      financeMode={searchParams?.financeMode}
+      financeSort={searchParams?.financeSort}
+      focus={searchParams?.focus}
+      panel={searchParams?.panel}
+      pulse={searchParams?.pulse}
+      readyMode={searchParams?.readyMode}
+    />
+  );
 }

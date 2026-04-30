@@ -21,7 +21,7 @@ import {
   phaseOrder
 } from "@/lib/constants";
 import { canTransitionPhase } from "@/lib/order-phase-transitions";
-import { formatCompactDate, formatDateKey, formatQuantity, formatWeekdayLabel } from "@/lib/format";
+import { formatCompactDate, formatCurrency, formatDateKey, formatQuantity, formatWeekdayLabel } from "@/lib/format";
 import { comparePriorityDesc, computeAutomaticPriority } from "@/lib/priorities";
 import { type ServiceUnitValue, parseServiceUnit } from "@/lib/service-units";
 import {
@@ -29,6 +29,8 @@ import {
   clampDiscountValue,
   computeLineTotalWithAdjustmentsCents,
   computeEffectiveUnitPriceCents,
+  formatDiscountSummary,
+  formatExtraSummary,
   normalizeQuantityTiers,
   normalizeQuantityValue,
   usesLineTotalQuantityTiers
@@ -88,6 +90,10 @@ export type CreateOrderInput = {
   invoiceStatus: InvoiceStatus;
   isQuote?: boolean;
   items: OrderItemInput[];
+  globalDiscountMode?: DiscountMode;
+  globalDiscountValue?: number;
+  globalExtraMode?: DiscountMode;
+  globalExtraValue?: number;
   initialDepositCents?: number;
 };
 
@@ -933,7 +939,7 @@ export async function createOrder(input: CreateOrderInput) {
     throw new Error("Il titolo ordine e obbligatorio.");
   }
 
-  const { items, totalCents } = computeOrderTotals(input.items);
+  const { items, totalCents: itemsTotalCents } = computeOrderTotals(input.items);
   if (!items.length) {
     throw new Error("Inserisci almeno una riga ordine valida.");
   }
@@ -942,7 +948,30 @@ export async function createOrder(input: CreateOrderInput) {
   const createdOn = formatDateKey(createdAt);
   const titleNormalized = normalizeForUniqueness(title);
   const orderCode = buildOrderCode(createdAt, title);
+  const globalDiscountMode = (input.globalDiscountMode || "NONE") as DiscountMode;
+  const globalDiscountValue = clampDiscountValue(globalDiscountMode, Number(input.globalDiscountValue ?? 0));
+  const globalExtraMode = (input.globalExtraMode || "NONE") as DiscountMode;
+  const globalExtraValue = clampDiscountValue(globalExtraMode, Number(input.globalExtraValue ?? 0));
+  const totalCents = computeLineTotalWithAdjustmentsCents(
+    itemsTotalCents,
+    1,
+    globalDiscountMode,
+    globalDiscountValue,
+    globalExtraMode,
+    globalExtraValue,
+    "LINE_TOTAL"
+  );
   const initialDepositCents = Math.max(0, input.initialDepositCents ?? 0);
+  const globalDiscountLabel = formatDiscountSummary(globalDiscountMode, globalDiscountValue);
+  const globalExtraLabel = formatExtraSummary(globalExtraMode, globalExtraValue);
+  const notesWithAdjustments = [
+    input.notes?.trim() || "",
+    globalDiscountMode !== "NONE" || globalExtraMode !== "NONE"
+      ? `Rettifiche totali: ${globalDiscountMode !== "NONE" ? globalDiscountLabel : ""}${globalDiscountMode !== "NONE" && globalExtraMode !== "NONE" ? " • " : ""}${globalExtraMode !== "NONE" ? globalExtraLabel : ""}`
+      : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   return prisma.$transaction(async (tx) => {
     const duplicate = await tx.order.findUnique({
@@ -981,7 +1010,7 @@ export async function createOrder(input: CreateOrderInput) {
         schedulePending: Boolean(input.isQuote) && !hasExplicitScheduling,
         priority,
         isQuote: Boolean(input.isQuote),
-        notes: input.notes?.trim() || undefined,
+        notes: notesWithAdjustments || undefined,
         invoiceStatus: input.invoiceStatus,
         totalCents,
         depositCents: paidCents,
@@ -2240,8 +2269,9 @@ export async function getDashboardData() {
   const now = new Date();
   const todayStart = startOfDay(now);
   const tomorrowStart = addDays(todayStart, 1);
+  const dayAfterTomorrowStart = addDays(todayStart, 2);
   const weekEnd = addDays(todayStart, 7);
-  const [todayOrdersRaw, todayAppointments, overdueOrders, blockedOrders, readyOrders, balanceOrders, toStartOrdersRaw, workingOrdersRaw, weekLoadOrders] = await Promise.all([
+  const [todayOrdersRaw, todayAppointments, overdueOrders, blockedOrders, readyOrders, invoiceOrders, toStartOrdersRaw, workingOrdersRaw, weekLoadOrders, weekDetailOrdersRaw] = await Promise.all([
     prisma.order.findMany({
       where: {
         ...operationalOrderWhere(),
@@ -2295,11 +2325,11 @@ export async function getDashboardData() {
     prisma.order.findMany({
       where: {
         ...operationalOrderWhere(),
-        balanceDueCents: { gt: 0 },
+        invoiceStatus: "DA_FATTURARE",
         mainPhase: { not: "CONSEGNATO" }
       },
       include: { customer: true },
-      orderBy: [{ balanceDueCents: "desc" }, { deliveryAt: "asc" }]
+      orderBy: [{ deliveryAt: "asc" }, { createdAt: "asc" }]
     }),
     prisma.order.findMany({
       where: {
@@ -2345,12 +2375,38 @@ export async function getDashboardData() {
         mainPhase: true,
         operationalStatus: true
       }
+    }),
+    prisma.order.findMany({
+      where: {
+        ...operationalOrderWhere(),
+        mainPhase: { not: "CONSEGNATO" },
+        OR: [
+          {
+            deliveryAt: {
+              gte: todayStart,
+              lt: weekEnd
+            }
+          },
+          {
+            appointmentAt: {
+              gte: todayStart,
+              lt: weekEnd
+            }
+          }
+        ]
+      },
+      include: { customer: true },
+      orderBy: [{ appointmentAt: "asc" }, { deliveryAt: "asc" }]
     })
   ]);
 
   const todayOrders = sortByPriorityThenDelivery(todayOrdersRaw.map((order) => withEffectiveOrderPriority(order, now)));
   const toStartOrders = sortByPriorityThenDelivery(toStartOrdersRaw.map((order) => withEffectiveOrderPriority(order, now)));
   const workingOrders = sortByPriorityThenDelivery(workingOrdersRaw.map((order) => withEffectiveOrderPriority(order, now)));
+  const priorityOrders = workingOrders.filter((order) => {
+    const deliveryTime = new Date(order.deliveryAt).getTime();
+    return order.mainPhase === "IN_LAVORAZIONE" && deliveryTime >= todayStart.getTime() && deliveryTime < dayAfterTomorrowStart.getTime();
+  });
 
   return {
     todayOrders,
@@ -2358,9 +2414,11 @@ export async function getDashboardData() {
     overdueOrders,
     blockedOrders,
     readyOrders,
-    balanceOrders,
+    invoiceOrders,
+    priorityOrders,
     toStartOrders,
     workingOrders,
+    weekOrders: weekDetailOrdersRaw,
     weekLoad: buildDashboardWeekLoad(weekLoadOrders, now)
   };
 }
@@ -2436,6 +2494,14 @@ export async function getOrdersList(filters: {
             lt: tomorrowStart
           }
         }
+      : filters.preset === "TOMORROW"
+        ? {
+            mainPhase: { notIn: ["CONSEGNATO", "SVILUPPO_COMPLETATO"] as MainPhase[] },
+            deliveryAt: {
+              gte: tomorrowStart,
+              lt: addDays(tomorrowStart, 1)
+            }
+          }
       : filters.preset === "APPOINTMENTS_TODAY"
         ? {
             mainPhase: { not: "CONSEGNATO" as MainPhase },
@@ -2453,20 +2519,12 @@ export async function getOrdersList(filters: {
             }
           : filters.preset === "PRIORITY_TODAY"
             ? {
-                mainPhase: { notIn: ["CONSEGNATO", "SVILUPPO_COMPLETATO"] as MainPhase[] },
-                OR: [
-                  {
-                    deliveryAt: {
-                      lt: todayStart
-                    }
-                  },
-                  {
-                    deliveryAt: {
-                      gte: todayStart,
-                      lt: tomorrowStart
-                    }
-                  }
-                ]
+                mainPhase: "IN_LAVORAZIONE" as MainPhase,
+                operationalStatus: "ATTIVO" as OperationalStatus,
+                deliveryAt: {
+                  gte: todayStart,
+                  lt: addDays(todayStart, 2)
+                }
               }
             : filters.preset === "TO_START"
               ? {
@@ -2489,11 +2547,23 @@ export async function getOrdersList(filters: {
                     ? {
                         mainPhase: "SVILUPPO_COMPLETATO" as MainPhase
                       }
+                    : filters.preset === "FINANCE_PAID"
+                      ? {
+                        mainPhase: { not: "CONSEGNATO" as MainPhase },
+                        invoiceStatus: "DA_FATTURARE" as InvoiceStatus,
+                        paymentStatus: "PAGATO" as PaymentStatus
+                      }
+                    : filters.preset === "FINANCE_UNPAID"
+                      ? {
+                        mainPhase: { not: "CONSEGNATO" as MainPhase },
+                        invoiceStatus: "DA_FATTURARE" as InvoiceStatus,
+                        paymentStatus: { not: "PAGATO" as PaymentStatus }
+                      }
                     : filters.preset === "BALANCE"
                       ? {
-                          mainPhase: { not: "CONSEGNATO" as MainPhase },
-                          balanceDueCents: { gt: 0 }
-                        }
+                        mainPhase: { not: "CONSEGNATO" as MainPhase },
+                        invoiceStatus: "DA_FATTURARE" as InvoiceStatus
+                      }
                       : {};
 
   const viewWhere = isDeliveredView

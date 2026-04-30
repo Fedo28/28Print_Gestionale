@@ -204,7 +204,6 @@ export function GlobalSearch({
       </form>
 
       <div className="global-search-meta">
-        {variant === "desktop" ? <span className="subtle">Comando rapido: {shortcutLabel} + K</span> : null}
         {variant === "mobile-sheet" && query.trim().length < 2 ? (
           <span className="subtle">Scrivi almeno 2 caratteri per vedere i risultati.</span>
         ) : null}

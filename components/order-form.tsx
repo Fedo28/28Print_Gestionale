@@ -31,8 +31,10 @@ import {
   type CatalogPriceMode,
   computeLineTotalWithAdjustmentsCents,
   computeEffectiveUnitPriceCents,
-  discountModeLabels,
+  formatDiscountSummary,
+  formatExtraSummary,
   getTieredUnitPrice,
+  parseFlexibleAdjustmentInput,
   parseQuantityValue,
   parseQuantityTiers,
   type QuantityTier,
@@ -216,26 +218,8 @@ function parseDisplayPriceToCents(value: string) {
   return normalized ? Math.max(0, Math.round(Number(normalized) * 100) || 0) : 0;
 }
 
-function parseDiscountValue(mode: DiscountModeValue, value: string) {
-  const normalized = value.trim().replace(/\./g, "").replace(",", ".");
-  if (!normalized) {
-    return 0;
-  }
-
-  const parsed = Math.max(0, Number(normalized));
-  if (!Number.isFinite(parsed)) {
-    return 0;
-  }
-
-  if (mode === "AMOUNT") {
-    return Math.round(parsed * 100);
-  }
-
-  if (mode === "PERCENT") {
-    return Math.min(100, Math.round(parsed));
-  }
-
-  return 0;
+function parseAdjustmentState(value: string, fallbackMode: DiscountModeValue = "AMOUNT") {
+  return parseFlexibleAdjustmentInput(value, fallbackMode);
 }
 
 function formatQuantityInput(value: string | number) {
@@ -375,6 +359,8 @@ type MobileOrderMeta = {
   appointmentNote: string;
   notes: string;
   invoiceStatus: string;
+  globalDiscount: string;
+  globalExtra: string;
   initialDeposit: string;
 };
 
@@ -411,6 +397,8 @@ function createEmptyMobileOrderMeta(): MobileOrderMeta {
     appointmentNote: "",
     notes: "",
     invoiceStatus: "DA_FATTURARE",
+    globalDiscount: "",
+    globalExtra: "",
     initialDeposit: ""
   };
 }
@@ -452,6 +440,8 @@ export function OrderForm({
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<string | null>(null);
   const [hasSavedDraft, setHasSavedDraft] = useState(false);
   const [appointmentNoteValue, setAppointmentNoteValue] = useState("");
+  const [globalDiscountValue, setGlobalDiscountValue] = useState("");
+  const [globalExtraValue, setGlobalExtraValue] = useState("");
   const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId);
   const trimmedCustomerQuery = customerQuery.trim();
   const photographyFormats = getPhotographyFormatOptions(catalogServices);
@@ -639,6 +629,8 @@ export function OrderForm({
     setMobileMeta(createEmptyMobileOrderMeta());
     setMobileStep("customer");
     setAppointmentNoteValue("");
+    setGlobalDiscountValue("");
+    setGlobalExtraValue("");
     setItems([emptyItem()]);
     setOpenMobileItemIndex(null);
     setActiveServiceField(null);
@@ -697,6 +689,8 @@ export function OrderForm({
       appointmentNote: String(formData.get("appointmentNote") || ""),
       notes: String(formData.get("notes") || ""),
       invoiceStatus: String(formData.get("invoiceStatus") || "DA_FATTURARE"),
+      globalDiscount: String(formData.get("globalDiscount") || ""),
+      globalExtra: String(formData.get("globalExtra") || ""),
       initialDeposit: String(formData.get("initialDeposit") || "")
     });
   }
@@ -722,6 +716,17 @@ export function OrderForm({
       window.requestAnimationFrame(() => {
         formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
+    }
+  }
+
+  function openNativeDatePicker(event: React.PointerEvent<HTMLInputElement>) {
+    const input = event.currentTarget as HTMLInputElement & {
+      showPicker?: () => void;
+    };
+
+    if (typeof input.showPicker === "function") {
+      event.preventDefault();
+      input.showPicker();
     }
   }
 
@@ -785,6 +790,8 @@ export function OrderForm({
     setSelectedCustomerId(nextSelectedCustomerId);
     setCustomerQuery(draft.customerQuery);
     setAppointmentNoteValue(draft.fields.appointmentNote);
+    setGlobalDiscountValue(draft.fields.globalDiscount);
+    setGlobalExtraValue(draft.fields.globalExtra);
     setItems(
       normalizeEditorItems(draft.items.length > 0 ? draft.items.map((item) => createItemStateFromDraft(item)) : [emptyItem()])
     );
@@ -1211,16 +1218,16 @@ export function OrderForm({
         const service = catalogServices.find((entry) => entry.id === item.serviceCatalogId);
         const quantity = parseQuantityValue(item.quantity, 1);
         const catalogBasePriceCents = parseDisplayPriceToCents(item.unitPrice);
-        const discountValue = parseDiscountValue(item.discountMode, item.discountValue);
-        const extraValue = parseDiscountValue(item.extraMode, item.extraValue);
+        const parsedDiscount = parseAdjustmentState(item.discountValue, item.discountMode);
+        const parsedExtra = parseAdjustmentState(item.extraValue, item.extraMode);
         const catalogPriceMode = getCatalogPriceModeForItem(item);
         const lineTotalCents = computeLineTotalWithAdjustmentsCents(
           catalogBasePriceCents,
           quantity,
-          item.discountMode,
-          discountValue,
-          item.extraMode,
-          extraValue,
+          parsedDiscount.mode,
+          parsedDiscount.value,
+          parsedExtra.mode,
+          parsedExtra.value,
           catalogPriceMode
         );
         const unitPriceCents = computeEffectiveUnitPriceCents(lineTotalCents, quantity);
@@ -1235,27 +1242,46 @@ export function OrderForm({
           quantity,
           catalogBasePriceCents,
           catalogPriceMode,
-          discountValue,
-          extraValue,
+          discountMode: parsedDiscount.mode,
+          discountValue: parsedDiscount.value,
+          extraMode: parsedExtra.mode,
+          extraValue: parsedExtra.value,
           unitPriceCents
         };
       })
       .filter((item) => item.label.trim() && (!item.serviceQuery || item.serviceQuery !== "Fotografie" || Boolean(item.serviceCatalogId)))
   );
-  const previewTotalCents = items.reduce((sum, item) => {
+  const basePreviewTotalCents = items.reduce((sum, item) => {
     const quantity = parseQuantityValue(item.quantity, 1);
     const catalogPriceMode = getCatalogPriceModeForItem(item);
+    const parsedDiscount = parseAdjustmentState(item.discountValue, item.discountMode);
+    const parsedExtra = parseAdjustmentState(item.extraValue, item.extraMode);
     const lineTotalCents = computeLineTotalWithAdjustmentsCents(
       parseDisplayPriceToCents(item.unitPrice),
       quantity,
-      item.discountMode,
-      parseDiscountValue(item.discountMode, item.discountValue),
-      item.extraMode,
-      parseDiscountValue(item.extraMode, item.extraValue),
+      parsedDiscount.mode,
+      parsedDiscount.value,
+      parsedExtra.mode,
+      parsedExtra.value,
       catalogPriceMode
     );
     return sum + (Number.isFinite(lineTotalCents) ? lineTotalCents : 0);
   }, 0);
+  const parsedGlobalDiscount = parseAdjustmentState(globalDiscountValue);
+  const parsedGlobalExtra = parseAdjustmentState(globalExtraValue);
+  const previewTotalCents = computeLineTotalWithAdjustmentsCents(
+    basePreviewTotalCents,
+    1,
+    parsedGlobalDiscount.mode,
+    parsedGlobalDiscount.value,
+    parsedGlobalExtra.mode,
+    parsedGlobalExtra.value,
+    "LINE_TOTAL"
+  );
+  const globalDiscountSummary =
+    parsedGlobalDiscount.mode !== "NONE" ? formatDiscountSummary(parsedGlobalDiscount.mode, parsedGlobalDiscount.value) : "";
+  const globalExtraSummary =
+    parsedGlobalExtra.mode !== "NONE" ? formatExtraSummary(parsedGlobalExtra.mode, parsedGlobalExtra.value) : "";
   const filledRows = items.filter((item) => item.label.trim() || item.notes.trim()).length;
   const selectedCustomerTypeLabel = selectedCustomer
     ? customerTypeLabels[selectedCustomer.type]
@@ -1308,10 +1334,10 @@ export function OrderForm({
       totalCents: computeLineTotalWithAdjustmentsCents(
         parseDisplayPriceToCents(item.unitPrice),
         parseQuantityValue(item.quantity, 1),
-        item.discountMode,
-        parseDiscountValue(item.discountMode, item.discountValue),
-        item.extraMode,
-        parseDiscountValue(item.extraMode, item.extraValue),
+        parseAdjustmentState(item.discountValue, item.discountMode).mode,
+        parseAdjustmentState(item.discountValue, item.discountMode).value,
+        parseAdjustmentState(item.extraValue, item.extraMode).mode,
+        parseAdjustmentState(item.extraValue, item.extraMode).value,
         getCatalogPriceModeForItem(item)
       )
     }))
@@ -1342,13 +1368,15 @@ export function OrderForm({
       (!selectedService || normalizeCatalogSearch(item.serviceQuery) !== normalizeCatalogSearch(selectedService.name) || isPhotographyRow);
     const hasTierEntries = parsedTiers.length > 0;
     const catalogPriceMode = getCatalogPriceModeForItem(item);
+    const parsedDiscount = parseAdjustmentState(item.discountValue, item.discountMode);
+    const parsedExtra = parseAdjustmentState(item.extraValue, item.extraMode);
     const lineFinalWithExtraCents = computeLineTotalWithAdjustmentsCents(
       parseDisplayPriceToCents(item.unitPrice),
       lineQuantity,
-      item.discountMode,
-      parseDiscountValue(item.discountMode, item.discountValue),
-      item.extraMode,
-      parseDiscountValue(item.extraMode, item.extraValue),
+      parsedDiscount.mode,
+      parsedDiscount.value,
+      parsedExtra.mode,
+      parsedExtra.value,
       catalogPriceMode
     );
 
@@ -1937,91 +1965,57 @@ export function OrderForm({
             value={item.unitPrice}
           />
         </div>
-        <div className="field order-line-discount-mode">
-          <label htmlFor={`discountMode-${index}`}>Sconto</label>
-          <select
-            id={`discountMode-${index}`}
-            onChange={(event) =>
-              setItems((current) =>
-                current.map((entry, itemIndex) =>
-                  itemIndex === index
-                    ? {
-                        ...entry,
-                        discountMode: event.target.value as DiscountModeValue,
-                        discountValue: event.target.value === "NONE" ? "" : entry.discountValue
-                      }
-                    : entry
-                )
-              )
-            }
-            value={item.discountMode}
-          >
-            {Object.entries(discountModeLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
         <div className="field order-line-discount-value">
-          <label htmlFor={`discountValue-${index}`}>Valore sconto</label>
+          <label htmlFor={`discountValue-${index}`}>Sconto</label>
           <input
             className="numeric-input"
-            disabled={item.discountMode === "NONE"}
             id={`discountValue-${index}`}
             inputMode="decimal"
             onChange={(event) =>
-              setItems((current) =>
-                current.map((entry, itemIndex) =>
-                  itemIndex === index ? { ...entry, discountValue: event.target.value } : entry
-                )
-              )
+              setItems((current) => {
+                const nextValue = event.target.value;
+                return current.map((entry, itemIndex) => {
+                  if (itemIndex !== index) {
+                    return entry;
+                  }
+
+                  const parsed = parseAdjustmentState(nextValue);
+                  return {
+                    ...entry,
+                    discountMode: parsed.mode,
+                    discountValue: nextValue
+                  };
+                });
+              })
             }
-            placeholder={item.discountMode === "PERCENT" ? "10" : "0,00"}
+            placeholder="0,00"
             value={item.discountValue}
           />
         </div>
-        <div className="field order-line-extra-mode">
-          <label htmlFor={`extraMode-${index}`}>Lavorazione extra</label>
-          <select
-            id={`extraMode-${index}`}
-            onChange={(event) =>
-              setItems((current) =>
-                current.map((entry, itemIndex) =>
-                  itemIndex === index
-                    ? {
-                        ...entry,
-                        extraMode: event.target.value as DiscountModeValue,
-                        extraValue: event.target.value === "NONE" ? "" : entry.extraValue
-                      }
-                    : entry
-                )
-              )
-            }
-            value={item.extraMode}
-          >
-            {Object.entries(discountModeLabels).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
         <div className="field order-line-extra-value">
-          <label htmlFor={`extraValue-${index}`}>Valore extra</label>
+          <label htmlFor={`extraValue-${index}`}>Lavorazione extra</label>
           <input
             className="numeric-input"
-            disabled={item.extraMode === "NONE"}
             id={`extraValue-${index}`}
             inputMode="decimal"
             onChange={(event) =>
-              setItems((current) =>
-                current.map((entry, itemIndex) =>
-                  itemIndex === index ? { ...entry, extraValue: event.target.value } : entry
-                )
-              )
+              setItems((current) => {
+                const nextValue = event.target.value;
+                return current.map((entry, itemIndex) => {
+                  if (itemIndex !== index) {
+                    return entry;
+                  }
+
+                  const parsed = parseAdjustmentState(nextValue);
+                  return {
+                    ...entry,
+                    extraMode: parsed.mode,
+                    extraValue: nextValue
+                  };
+                });
+              })
             }
-            placeholder={item.extraMode === "PERCENT" ? "10" : "0,00"}
+            placeholder="0,00"
             value={item.extraValue}
           />
         </div>
@@ -2090,6 +2084,7 @@ export function OrderForm({
     <form
       action={action}
       className="stack order-form-shell"
+      data-order-kind={kind}
       data-mobile-order-step={mobileStep}
       onChangeCapture={scheduleMobileMetaSync}
       onInputCapture={scheduleMobileMetaSync}
@@ -2275,33 +2270,46 @@ export function OrderForm({
                 <label htmlFor="title">Titolo</label>
                 <input id="title" name="title" required />
               </div>
-              <div className="field wide">
+              <div className="field wide order-details-delivery-field">
                 <label htmlFor="deliveryAt">Consegna</label>
-                <input className="date-time-input" id="deliveryAt" name="deliveryAt" required={!isQuoteMode} type="datetime-local" />
+                <input
+                  className="date-time-input"
+                  id="deliveryAt"
+                  name="deliveryAt"
+                  onPointerDown={openNativeDatePicker}
+                  required={!isQuoteMode}
+                  type="datetime-local"
+                />
               </div>
-              <div className="field wide">
+              <div className="field wide order-details-appointment-field">
                 <label htmlFor="appointmentAt">Appuntamento</label>
-                <input className="date-time-input" id="appointmentAt" name="appointmentAt" type="datetime-local" />
+                <input
+                  className="date-time-input"
+                  id="appointmentAt"
+                  name="appointmentAt"
+                  onPointerDown={openNativeDatePicker}
+                  type="datetime-local"
+                />
+              </div>
+              <div className="field wide order-details-appointment-note-field">
+                <label htmlFor="appointmentNote">Nota appunt.</label>
+                <select
+                  id="appointmentNote"
+                  name="appointmentNote"
+                  onChange={(event) => setAppointmentNoteValue(event.target.value)}
+                  value={appointmentNoteValue}
+                >
+                  <option value="">Nessuna</option>
+                  {availableAppointmentNoteOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="field full order-notes-field">
                 <div className="order-notes-field-head">
                   <label htmlFor="notes">Note operative</label>
-                  <div className="order-notes-appointment-inline">
-                    <label htmlFor="appointmentNote">Nota appunt.</label>
-                    <select
-                      id="appointmentNote"
-                      name="appointmentNote"
-                      onChange={(event) => setAppointmentNoteValue(event.target.value)}
-                      value={appointmentNoteValue}
-                    >
-                      <option value="">Nessuna</option>
-                      {availableAppointmentNoteOptions.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                 </div>
                 <textarea id="notes" name="notes" />
               </div>
@@ -2416,6 +2424,38 @@ export function OrderForm({
         </button>
         {!isMobileViewport ? (
           <div className="order-sheet-footer">
+            <div className="order-sheet-footer-head">
+              <strong>Rettifiche totali</strong>
+            </div>
+            <div className="form-grid order-sheet-adjustments-row">
+              <div className="field order-sheet-adjustment-field">
+                <label htmlFor="globalDiscount">Sconto complessivo</label>
+                <input
+                  className="currency-input"
+                  id="globalDiscount"
+                  inputMode="decimal"
+                  name="globalDiscount"
+                  onChange={(event) => setGlobalDiscountValue(event.target.value)}
+                  placeholder="0,00"
+                  value={globalDiscountValue}
+                />
+              </div>
+              <div className="field order-sheet-adjustment-field">
+                <label htmlFor="globalExtra">Extra complessivo</label>
+                <input
+                  className="currency-input"
+                  id="globalExtra"
+                  inputMode="decimal"
+                  name="globalExtra"
+                  onChange={(event) => setGlobalExtraValue(event.target.value)}
+                  placeholder="0,00"
+                  value={globalExtraValue}
+                />
+              </div>
+            </div>
+            <div className="order-sheet-footer-subhead">
+              <strong>Fatturazione e acconto</strong>
+            </div>
             <div className="form-grid order-sheet-payment-row">
               <div className="field order-sheet-invoice-field">
                 <label htmlFor="invoiceStatus">Richiesta fattura</label>
@@ -2434,6 +2474,13 @@ export function OrderForm({
               <div className="order-sheet-chip order-sheet-total-card">
                 <span className="card-muted">Totale anteprima</span>
                 <strong>{formatCurrency(previewTotalCents)}</strong>
+                {globalDiscountSummary || globalExtraSummary ? (
+                  <span className="subtle order-sheet-total-note">
+                    Base {formatCurrency(basePreviewTotalCents)}
+                    {globalDiscountSummary ? ` • ${globalDiscountSummary}` : ""}
+                    {globalExtraSummary ? ` • ${globalExtraSummary}` : ""}
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>
@@ -2547,6 +2594,38 @@ export function OrderForm({
             ) : null}
 
             <div className="order-sheet-footer order-mobile-review-footer">
+              <div className="order-sheet-footer-head">
+                <strong>Rettifiche totali</strong>
+              </div>
+              <div className="form-grid order-sheet-adjustments-row">
+                <div className="field order-sheet-adjustment-field">
+                  <label htmlFor="globalDiscount-mobile">Sconto complessivo</label>
+                  <input
+                    className="currency-input"
+                    id="globalDiscount-mobile"
+                    inputMode="decimal"
+                    name="globalDiscount"
+                    onChange={(event) => setGlobalDiscountValue(event.target.value)}
+                    placeholder="0,00"
+                    value={globalDiscountValue}
+                  />
+                </div>
+                <div className="field order-sheet-adjustment-field">
+                  <label htmlFor="globalExtra-mobile">Extra complessivo</label>
+                  <input
+                    className="currency-input"
+                    id="globalExtra-mobile"
+                    inputMode="decimal"
+                    name="globalExtra"
+                    onChange={(event) => setGlobalExtraValue(event.target.value)}
+                    placeholder="0,00"
+                    value={globalExtraValue}
+                  />
+                </div>
+              </div>
+              <div className="order-sheet-footer-subhead">
+                <strong>Fatturazione e acconto</strong>
+              </div>
               <div className="form-grid order-sheet-payment-row">
                 <div className="field order-sheet-invoice-field">
                   <label htmlFor="invoiceStatus">Richiesta fattura</label>
@@ -2565,6 +2644,13 @@ export function OrderForm({
                 <div className="order-sheet-chip order-sheet-total-card">
                   <span className="card-muted">Totale anteprima</span>
                   <strong>{formatCurrency(previewTotalCents)}</strong>
+                  {globalDiscountSummary || globalExtraSummary ? (
+                    <span className="subtle order-sheet-total-note">
+                      Base {formatCurrency(basePreviewTotalCents)}
+                      {globalDiscountSummary ? ` • ${globalDiscountSummary}` : ""}
+                      {globalExtraSummary ? ` • ${globalExtraSummary}` : ""}
+                    </span>
+                  ) : null}
                 </div>
               </div>
             </div>

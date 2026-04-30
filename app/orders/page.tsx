@@ -13,7 +13,6 @@ import {
 } from "@/lib/constants";
 import {
   buildOrdersFilterHref,
-  dashboardPresetLabels,
   type DashboardPreset,
   type OrderListView,
   type OrderSortDirection,
@@ -129,7 +128,7 @@ export default async function OrdersPage({ searchParams }: Props) {
     filters.phase !== "ALL" || filters.status !== "ALL" || filters.payment !== "ALL" || filters.invoice !== "ALL" || filters.priority !== "ALL";
   const tabLinks = [
     { key: "ACTIVE_ALL", label: "Attivi", href: buildOrdersTabHref("ACTIVE_ALL", filters.q, filters.sort, filters.dir) },
-    { key: "TODAY", label: "Oggi", href: buildOrdersTabHref("TODAY", filters.q, filters.sort, filters.dir) },
+    { key: "TODAY", label: "Priorita", href: buildOrdersTabHref("TODAY", filters.q, filters.sort, filters.dir) },
     { key: "TO_START", label: "Da avviare", href: buildOrdersTabHref("TO_START", filters.q, filters.sort, filters.dir) },
     { key: "WORKING", label: "In lavorazione", href: buildOrdersTabHref("WORKING", filters.q, filters.sort, filters.dir) },
     { key: "BLOCKED", label: "Sospesi", href: buildOrdersTabHref("BLOCKED", filters.q, filters.sort, filters.dir) },
@@ -141,13 +140,6 @@ export default async function OrdersPage({ searchParams }: Props) {
     <div className="stack orders-page-shell">
       <PageHeader
         title={view === "DELIVERED" ? "Storico ordini" : "Ordini"}
-        description={
-          view === "DELIVERED"
-            ? "Storico dei lavori gia consegnati, separato dalla vista operativa per tenere pulita la lista ordini."
-            : filters.preset !== "ALL"
-            ? `${dashboardPresetLabels[filters.preset]}. Puoi affinare ulteriormente la lista con ricerca e filtri aggiuntivi.`
-            : "Ricerca per codice, titolo, cliente e telefono sugli ordini confermati. Ordinamento per consegna e priorita."
-        }
         action={
           <Link className="button primary" href="/orders/new">
             Nuovo ordine

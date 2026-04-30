@@ -48,6 +48,34 @@ export function clampDiscountValue(mode: DiscountModeValue, value: number) {
   return normalized;
 }
 
+export function parseFlexibleAdjustmentInput(
+  raw: string | null | undefined,
+  fallbackMode: DiscountModeValue = "AMOUNT"
+): { mode: DiscountModeValue; value: number } {
+  const value = String(raw || "").trim();
+  if (!value) {
+    return { mode: "NONE", value: 0 };
+  }
+
+  const normalized = value.replace(/\s+/g, "");
+  const forcePercent = normalized.includes("%");
+  const mode: DiscountModeValue = forcePercent ? "PERCENT" : fallbackMode === "PERCENT" ? "PERCENT" : "AMOUNT";
+
+  if (mode === "PERCENT") {
+    const parsed = Number.parseFloat(normalized.replace("%", "").replace(",", "."));
+    return {
+      mode,
+      value: clampDiscountValue(mode, Number.isFinite(parsed) ? parsed : 0)
+    };
+  }
+
+  const parsed = Number.parseFloat(normalized.replace(/\./g, "").replace(",", "."));
+  return {
+    mode,
+    value: clampDiscountValue(mode, Number.isFinite(parsed) ? Math.round(parsed * 100) : 0)
+  };
+}
+
 export function computeDiscountedUnitPrice(basePriceCents: number, mode: DiscountModeValue, value: number) {
   const safeBase = Number.isFinite(basePriceCents) ? Math.max(0, Math.round(basePriceCents)) : 0;
   const safeValue = clampDiscountValue(mode, value);

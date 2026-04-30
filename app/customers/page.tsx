@@ -38,7 +38,7 @@ export default async function CustomersPage({ searchParams }: Props) {
       <PageHeader title="Clienti" />
 
       <div className="grid grid-2 customers-page-grid">
-        <section className="card card-pad customers-entry-card">
+        <section className="card card-pad customers-entry-card" id="customers-new-entry">
           <div className="list-header">
             <div>
               <h3>Nuovo cliente</h3>

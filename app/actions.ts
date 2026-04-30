@@ -54,6 +54,7 @@ import {
   updateOwnStaffNickname
 } from "@/lib/staff-users";
 import { parseServiceUnit } from "@/lib/service-units";
+import { parseFlexibleAdjustmentInput } from "@/lib/pricing";
 
 function revalidateOperationalSurfaces(orderId?: string) {
   revalidatePath("/");
@@ -72,6 +73,8 @@ function revalidateBillboardSurfaces() {
 
 function parseOrderFormInput(formData: FormData, options?: { forceQuote?: boolean }) {
   const isQuote = options?.forceQuote ?? parseBooleanFlag(formData.get("isQuote"));
+  const globalDiscount = parseFlexibleAdjustmentInput(formData.get("globalDiscount")?.toString() || null);
+  const globalExtra = parseFlexibleAdjustmentInput(formData.get("globalExtra")?.toString() || null);
   return {
     customerId: String(formData.get("customerId") || "").trim() || undefined,
     customer: {
@@ -96,6 +99,10 @@ function parseOrderFormInput(formData: FormData, options?: { forceQuote?: boolea
     invoiceStatus: parseInvoiceStatus(formData.get("invoiceStatus")?.toString() || null),
     isQuote,
     items: parseItemsPayload(formData.get("itemsPayload")?.toString() || null),
+    globalDiscountMode: globalDiscount.mode,
+    globalDiscountValue: globalDiscount.value,
+    globalExtraMode: globalExtra.mode,
+    globalExtraValue: globalExtra.value,
     initialDepositCents: parseCurrencyToCents(formData.get("initialDeposit")?.toString() || null)
   };
 }
