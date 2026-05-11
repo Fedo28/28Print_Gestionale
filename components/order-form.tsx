@@ -3,6 +3,8 @@
 import { Customer, CustomerType, ServiceCatalog } from "@prisma/client";
 import { useEffect, useRef, useState } from "react";
 import { CustomerAutocomplete } from "@/components/customer-autocomplete";
+import { UndoButtonContent } from "@/components/undo-button-content";
+import { useUndoHistory } from "@/components/use-undo-history";
 import { normalizeCustomerSearchValue } from "@/lib/customer-search";
 import { isLabelCalculatorMaterialService } from "@/lib/label-calculator";
 import { customerTypeLabels, getAppointmentNoteOptions, invoiceStatusLabels, priorityLabels } from "@/lib/constants";
@@ -45,6 +47,7 @@ import {
 type CustomerWithOrders = Customer & { orders: { id: string }[] };
 
 type ItemState = {
+  bodyMode: boolean;
   serviceQuery: string;
   photoMode: boolean;
   photoFormat: string;
@@ -74,6 +77,7 @@ type LabelCalculatorDraft = {
 const LABEL_CALCULATOR_FORMAT_PREFIX = "Calcolatore etichette";
 
 const emptyItem = (): ItemState => ({
+  bodyMode: false,
   serviceQuery: "",
   photoMode: false,
   photoFormat: "",
@@ -185,6 +189,7 @@ function computeLabelCalculatorTotalCents(
 
 function createItemStateFromDraft(item?: Partial<OrderDraftSnapshot["items"][number]>): ItemState {
   return {
+    bodyMode: Boolean(item?.bodyMode),
     serviceQuery: typeof item?.serviceQuery === "string" ? item.serviceQuery : "",
     photoMode: Boolean(item?.photoMode),
     photoFormat: typeof item?.photoFormat === "string" ? item.photoFormat : "",
@@ -364,6 +369,25 @@ type MobileOrderMeta = {
   initialDeposit: string;
 };
 
+type OrderFormUndoSnapshot = {
+  selectedCustomerId: string;
+  customerQuery: string;
+  items: ItemState[];
+  fields: OrderDraftFieldValues;
+  appointmentNoteValue: string;
+  globalDiscountValue: string;
+  globalExtraValue: string;
+  mobileStep: MobileOrderStep;
+  openMobileItemIndex: number | null;
+  openDesktopItemIndex: number | null;
+  activeServiceField: number | null;
+  openTierIndex: number | null;
+  catalogDraftRowIndex: number | null;
+  catalogDraft: InlineCatalogDraft;
+  labelCalculatorRowIndex: number | null;
+  labelCalculatorDraft: LabelCalculatorDraft;
+};
+
 const MOBILE_ORDER_MEDIA_QUERY = "(max-width: 768px)";
 const MOBILE_ORDER_STEPS: Array<{
   id: MobileOrderStep;
@@ -396,7 +420,7 @@ function createEmptyMobileOrderMeta(): MobileOrderMeta {
     appointmentAt: "",
     appointmentNote: "",
     notes: "",
-    invoiceStatus: "DA_FATTURARE",
+    invoiceStatus: "NON_RICHIESTO",
     globalDiscount: "",
     globalExtra: "",
     initialDeposit: ""
@@ -417,6 +441,9 @@ export function OrderForm({
   const formRef = useRef<HTMLFormElement>(null);
   const inlineCatalogNameInputRef = useRef<HTMLInputElement>(null);
   const mobileMetaFrameRef = useRef<number | null>(null);
+  const formMutationFrameRef = useRef<number | null>(null);
+  const undoSeededRef = useRef(false);
+  const undoRestoringRef = useRef(false);
   const [catalogServices, setCatalogServices] = useState<ServiceCatalog[]>(services);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [customerQuery, setCustomerQuery] = useState("");
@@ -425,6 +452,7 @@ export function OrderForm({
   const [mobileStep, setMobileStep] = useState<MobileOrderStep>("customer");
   const [mobileMeta, setMobileMeta] = useState<MobileOrderMeta>(createEmptyMobileOrderMeta());
   const [openMobileItemIndex, setOpenMobileItemIndex] = useState<number | null>(null);
+  const [openDesktopItemIndex, setOpenDesktopItemIndex] = useState<number | null>(0);
   const [activeServiceField, setActiveServiceField] = useState<number | null>(null);
   const [openTierIndex, setOpenTierIndex] = useState<number | null>(null);
   const [catalogDraftRowIndex, setCatalogDraftRowIndex] = useState<number | null>(null);
@@ -439,9 +467,21 @@ export function OrderForm({
   const [draftRestoredAt, setDraftRestoredAt] = useState<string | null>(null);
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<string | null>(null);
   const [hasSavedDraft, setHasSavedDraft] = useState(false);
+  const [formMutationTick, setFormMutationTick] = useState(0);
   const [appointmentNoteValue, setAppointmentNoteValue] = useState("");
   const [globalDiscountValue, setGlobalDiscountValue] = useState("");
   const [globalExtraValue, setGlobalExtraValue] = useState("");
+  const orderUndo = useUndoHistory<OrderFormUndoSnapshot>({
+    limit: 40,
+    debounceMs: 220
+  });
+  const {
+    canUndo: canUndoOrderForm,
+    undo: undoOrderForm,
+    undoCount: undoOrderFormCount,
+    reset: resetOrderUndo,
+    record: recordOrderUndo
+  } = orderUndo;
   const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId);
   const trimmedCustomerQuery = customerQuery.trim();
   const photographyFormats = getPhotographyFormatOptions(catalogServices);
@@ -449,6 +489,7 @@ export function OrderForm({
   const labelCalculatorMaterials = catalogServices.filter(isLabelCalculatorMaterialService);
   const isCatalogEmpty = catalogServices.length === 0;
   const defaultCustomerType: CustomerType = "PUBBLICO";
+  const defaultInvoiceStatus = "NON_RICHIESTO";
   const isQuoteMode = kind === "quote";
   const availableAppointmentNoteOptions = getAppointmentNoteOptions(appointmentNoteValue);
   const draftStorageKey = buildOrderDraftStorageKey(kind as OrderDraftMode);
@@ -456,9 +497,16 @@ export function OrderForm({
   const mobileStepIndex = MOBILE_ORDER_STEPS.findIndex((step) => step.id === mobileStep);
   const isMobileItemSheetOpen = openMobileItemIndex !== null;
 
-  function addEmptyItemLine() {
+  function addEmptyItemLine(options?: { bodyMode?: boolean }) {
     const nextIndex = items.length;
-    setItems((current) => [...current, emptyItem()]);
+    setItems((current) => [
+      ...current,
+      {
+        ...emptyItem(),
+        bodyMode: Boolean(options?.bodyMode)
+      }
+    ]);
+    setOpenDesktopItemIndex(nextIndex);
     setOpenMobileItemIndex(isMobileViewport ? nextIndex : null);
   }
 
@@ -476,6 +524,17 @@ export function OrderForm({
 
   function removeItemLine(index: number) {
     setItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setOpenDesktopItemIndex((current) => {
+      if (current === null) {
+        return null;
+      }
+
+      if (current === index) {
+        return items.length > 1 ? Math.max(0, index - 1) : 0;
+      }
+
+      return current > index ? current - 1 : current;
+    });
     setActiveServiceField((current) => {
       if (current === null) {
         return null;
@@ -528,6 +587,7 @@ export function OrderForm({
       nextItems.splice(index + 1, 0, duplicatedItem);
       return nextItems;
     });
+    setOpenDesktopItemIndex(index + 1);
 
     setActiveServiceField((current) => {
       if (current === null) {
@@ -548,6 +608,37 @@ export function OrderForm({
     closeInlineCatalogDraft();
     closeLabelCalculator();
     setOpenMobileItemIndex(isMobileViewport ? index + 1 : null);
+  }
+
+  function setItemBodyMode(index: number, bodyMode: boolean) {
+    setItems((current) =>
+      current.map((entry, itemIndex) =>
+        itemIndex === index
+          ? {
+              ...entry,
+              bodyMode,
+              photoMode: bodyMode ? false : entry.photoMode,
+              photoFormat: bodyMode ? "" : entry.photoFormat,
+              serviceCatalogId: bodyMode ? "" : entry.serviceCatalogId,
+              format: bodyMode ? "" : entry.format,
+              material: bodyMode ? "" : entry.material,
+              finishing: bodyMode ? "" : entry.finishing
+            }
+          : entry
+      )
+    );
+
+    setOpenDesktopItemIndex(index);
+    setActiveServiceField(bodyMode ? null : index);
+    setOpenTierIndex((current) => (current === index ? null : current));
+
+    if (catalogDraftRowIndex === index) {
+      closeInlineCatalogDraft();
+    }
+
+    if (labelCalculatorRowIndex === index) {
+      closeLabelCalculator();
+    }
   }
 
   function findExactCustomerMatch(query: string) {
@@ -633,6 +724,7 @@ export function OrderForm({
     setGlobalExtraValue("");
     setItems([emptyItem()]);
     setOpenMobileItemIndex(null);
+    setOpenDesktopItemIndex(0);
     setActiveServiceField(null);
     setOpenTierIndex(null);
     setCatalogDraftRowIndex(null);
@@ -688,7 +780,7 @@ export function OrderForm({
       appointmentAt: String(formData.get("appointmentAt") || ""),
       appointmentNote: String(formData.get("appointmentNote") || ""),
       notes: String(formData.get("notes") || ""),
-      invoiceStatus: String(formData.get("invoiceStatus") || "DA_FATTURARE"),
+      invoiceStatus: String(formData.get("invoiceStatus") || defaultInvoiceStatus),
       globalDiscount: String(formData.get("globalDiscount") || ""),
       globalExtra: String(formData.get("globalExtra") || ""),
       initialDeposit: String(formData.get("initialDeposit") || "")
@@ -708,6 +800,73 @@ export function OrderForm({
       syncMobileMetaFromForm();
       mobileMetaFrameRef.current = null;
     });
+  }
+
+  function noteFormMutation() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (formMutationFrameRef.current !== null) {
+      return;
+    }
+
+    formMutationFrameRef.current = window.requestAnimationFrame(() => {
+      setFormMutationTick((value) => value + 1);
+      formMutationFrameRef.current = null;
+    });
+  }
+
+  function captureOrderFormUndoSnapshot(): OrderFormUndoSnapshot {
+    return {
+      selectedCustomerId,
+      customerQuery,
+      items: items.map((item) => ({ ...item })),
+      fields: { ...readDraftFieldsFromForm() },
+      appointmentNoteValue,
+      globalDiscountValue,
+      globalExtraValue,
+      mobileStep,
+      openMobileItemIndex,
+      openDesktopItemIndex,
+      activeServiceField,
+      openTierIndex,
+      catalogDraftRowIndex,
+      catalogDraft: { ...catalogDraft },
+      labelCalculatorRowIndex,
+      labelCalculatorDraft: { ...labelCalculatorDraft }
+    };
+  }
+
+  function restoreOrderFormUndoSnapshot(snapshot: OrderFormUndoSnapshot) {
+    undoRestoringRef.current = true;
+    setSelectedCustomerId(snapshot.selectedCustomerId);
+    setCustomerQuery(snapshot.customerQuery);
+    setItems(normalizeEditorItems(snapshot.items.map((item) => ({ ...item }))));
+    setAppointmentNoteValue(snapshot.appointmentNoteValue);
+    setGlobalDiscountValue(snapshot.globalDiscountValue);
+    setGlobalExtraValue(snapshot.globalExtraValue);
+    setMobileStep(snapshot.mobileStep);
+    setOpenMobileItemIndex(snapshot.openMobileItemIndex);
+    setOpenDesktopItemIndex(snapshot.openDesktopItemIndex);
+    setActiveServiceField(snapshot.activeServiceField);
+    setOpenTierIndex(snapshot.openTierIndex);
+    setCatalogDraftRowIndex(snapshot.catalogDraftRowIndex);
+    setCatalogDraft({ ...snapshot.catalogDraft });
+    setCatalogDraftMessage(null);
+    setLabelCalculatorRowIndex(snapshot.labelCalculatorRowIndex);
+    setLabelCalculatorDraft({ ...snapshot.labelCalculatorDraft });
+    setCatalogActionFeedback(null);
+
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        applyDraftFields(snapshot.fields);
+        syncMobileMetaFromForm();
+        undoRestoringRef.current = false;
+      });
+    } else {
+      undoRestoringRef.current = false;
+    }
   }
 
   function jumpToMobileStep(step: MobileOrderStep) {
@@ -787,11 +946,16 @@ export function OrderForm({
         ? draft.selectedCustomerId
         : "";
 
+    const nextDraftFields = {
+      ...draft.fields,
+      invoiceStatus: draft.fields.invoiceStatus || defaultInvoiceStatus
+    };
+
     setSelectedCustomerId(nextSelectedCustomerId);
     setCustomerQuery(draft.customerQuery);
-    setAppointmentNoteValue(draft.fields.appointmentNote);
-    setGlobalDiscountValue(draft.fields.globalDiscount);
-    setGlobalExtraValue(draft.fields.globalExtra);
+    setAppointmentNoteValue(nextDraftFields.appointmentNote);
+    setGlobalDiscountValue(nextDraftFields.globalDiscount);
+    setGlobalExtraValue(nextDraftFields.globalExtra);
     setItems(
       normalizeEditorItems(draft.items.length > 0 ? draft.items.map((item) => createItemStateFromDraft(item)) : [emptyItem()])
     );
@@ -800,16 +964,19 @@ export function OrderForm({
     setDraftRestoredAt(draft.savedAt);
 
     window.setTimeout(() => {
-      applyDraftFields(draft.fields);
+      applyDraftFields(nextDraftFields);
       setDraftHydrated(true);
       syncMobileMetaFromForm();
     }, 0);
-  }, [customers, draftStorageKey, kind, submittedDraftKey]);
+  }, [customers, defaultInvoiceStatus, draftStorageKey, kind, submittedDraftKey]);
 
   useEffect(() => {
     return () => {
       if (typeof window !== "undefined" && mobileMetaFrameRef.current) {
         window.cancelAnimationFrame(mobileMetaFrameRef.current);
+      }
+      if (typeof window !== "undefined" && formMutationFrameRef.current) {
+        window.cancelAnimationFrame(formMutationFrameRef.current);
       }
     };
   }, []);
@@ -821,6 +988,46 @@ export function OrderForm({
 
     scheduleMobileMetaSync();
   }, [draftHydrated, selectedCustomerId, customerQuery, items]);
+
+  useEffect(() => {
+    if (!draftHydrated || !formRef.current) {
+      return;
+    }
+
+    const snapshot = captureOrderFormUndoSnapshot();
+
+    if (!undoSeededRef.current) {
+      resetOrderUndo(snapshot);
+      undoSeededRef.current = true;
+      return;
+    }
+
+    if (undoRestoringRef.current) {
+      return;
+    }
+
+    recordOrderUndo(snapshot);
+  }, [
+    activeServiceField,
+    appointmentNoteValue,
+    catalogDraft,
+    catalogDraftRowIndex,
+    customerQuery,
+    draftHydrated,
+    formMutationTick,
+    globalDiscountValue,
+    globalExtraValue,
+    items,
+    labelCalculatorDraft,
+    labelCalculatorRowIndex,
+    mobileStep,
+    openDesktopItemIndex,
+    openMobileItemIndex,
+    openTierIndex,
+    recordOrderUndo,
+    resetOrderUndo,
+    selectedCustomerId
+  ]);
 
   useEffect(() => {
     if (catalogDraftRowIndex === null || typeof window === "undefined") {
@@ -838,10 +1045,12 @@ export function OrderForm({
   useEffect(() => {
     if (!items.length) {
       setOpenMobileItemIndex(null);
+      setOpenDesktopItemIndex(null);
       return;
     }
 
     setOpenMobileItemIndex((current) => (current === null ? null : Math.min(current, items.length - 1)));
+    setOpenDesktopItemIndex((current) => (current === null ? null : Math.min(current, items.length - 1)));
   }, [items.length]);
 
   useEffect(() => {
@@ -1234,6 +1443,7 @@ export function OrderForm({
 
         return {
           ...item,
+          bodyMode: undefined,
           photoMode: undefined,
           photoFormat: undefined,
           label: item.label || item.serviceQuery || service?.name || "",
@@ -1303,7 +1513,7 @@ export function OrderForm({
 
     return priorityLabels[computeAutomaticPriority(date)];
   })();
-  const reviewInvoice = invoiceStatusLabels[mobileMeta.invoiceStatus as keyof typeof invoiceStatusLabels] || invoiceStatusLabels.DA_FATTURARE;
+  const reviewInvoice = invoiceStatusLabels[mobileMeta.invoiceStatus as keyof typeof invoiceStatusLabels] || invoiceStatusLabels.NON_RICHIESTO;
   const mobileDraftStatusMessage = draftRestoredAt
     ? `Bozza recuperata da ${formatDateTime(draftRestoredAt)}`
     : lastDraftSavedAt
@@ -1362,7 +1572,9 @@ export function OrderForm({
       (entry) => entry.serviceId === item.serviceCatalogId && entry.label === item.photoFormat
     );
     const isPhotographyRow = item.photoMode || item.serviceQuery === "Fotografie" || Boolean(selectedPhotographyOption);
+    const canUseCatalogTools = !item.bodyMode;
     const showSuggestions =
+      canUseCatalogTools &&
       activeServiceField === index &&
       item.serviceQuery.trim().length > 0 &&
       (!selectedService || normalizeCatalogSearch(item.serviceQuery) !== normalizeCatalogSearch(selectedService.name) || isPhotographyRow);
@@ -1383,6 +1595,7 @@ export function OrderForm({
     return {
       item,
       index,
+      canUseCatalogTools,
       selectedService,
       deactivatableService,
       suggestions,
@@ -1400,6 +1613,7 @@ export function OrderForm({
     const {
       item,
       index,
+      canUseCatalogTools,
       selectedService,
       deactivatableService,
       suggestions,
@@ -1415,7 +1629,33 @@ export function OrderForm({
     return (
       <div className="form-grid order-line-grid">
         <div className={`field wide order-line-service${isPhotographyRow ? " order-line-service-photo" : ""}`}>
-          <label htmlFor={`service-${index}`}>Articolo / servizio</label>
+          <div className="order-line-service-head">
+            <label htmlFor={`service-${index}`}>Articolo / servizio</label>
+            <div className="order-line-mode-switch" role="tablist" aria-label={`Modalita riga ${index + 1}`}>
+              <button
+                aria-selected={!item.bodyMode}
+                className={`ghost order-line-mode-chip${item.bodyMode ? "" : " active"}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  setItemBodyMode(index, false);
+                }}
+                type="button"
+              >
+                Da catalogo
+              </button>
+              <button
+                aria-selected={item.bodyMode}
+                className={`ghost order-line-mode-chip${item.bodyMode ? " active" : ""}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  setItemBodyMode(index, true);
+                }}
+                type="button"
+              >
+                A corpo
+              </button>
+            </div>
+          </div>
           <input
             autoComplete="off"
             id={`service-${index}`}
@@ -1424,7 +1664,7 @@ export function OrderForm({
               const normalizedNextValue = normalizeCatalogSearch(nextValue);
               const matchesSelectedService =
                 selectedService && normalizedNextValue === normalizeCatalogSearch(selectedService.name);
-              const exactMatchedService = findExactServiceMatch(nextValue);
+              const exactMatchedService = item.bodyMode ? undefined : findExactServiceMatch(nextValue);
               const preserveMatchedSelection =
                 matchesSelectedService || (Boolean(exactMatchedService) && selectedService?.id === exactMatchedService?.id);
 
@@ -1458,6 +1698,7 @@ export function OrderForm({
                   )
                 );
               setActiveServiceField(index);
+              setOpenDesktopItemIndex(index);
               if (!event.target.value.trim()) {
                 setOpenTierIndex((current) => (current === index ? null : current));
               }
@@ -1467,72 +1708,81 @@ export function OrderForm({
                 setActiveServiceField((current) => (current === index ? null : current));
               }, 120);
             }}
-            onFocus={() => setActiveServiceField(index)}
-            placeholder="Scrivi per cercare nel catalogo o inserire una voce libera"
+            onFocus={() => {
+              setActiveServiceField(index);
+              setOpenDesktopItemIndex(index);
+            }}
+            placeholder={item.bodyMode ? "Descrivi la lavorazione a corpo" : "Scrivi per cercare nel catalogo o inserire una voce libera"}
             value={item.serviceQuery}
           />
-          <div className="order-line-service-tools">
-            {hasTierEntries ? <span className="pill order-line-tier-badge">Prezzo a scaglioni</span> : null}
-            <button
-              className="ghost order-line-service-action order-line-tier-toggle"
-              onClick={(event) => {
-                event.preventDefault();
-                if (catalogDraftRowIndex === index) {
-                  closeInlineCatalogDraft();
-                } else {
-                  closeLabelCalculator();
-                  openInlineCatalogDraft(index);
-                }
-              }}
-              type="button"
-            >
-              {catalogDraftRowIndex === index ? "Chiudi nuovo servizio" : "Nuovo in catalogo"}
-            </button>
-            <button
-              className="ghost order-line-service-action order-line-calculator-toggle"
-              disabled={labelCalculatorMaterials.length === 0}
-              onClick={(event) => {
-                event.preventDefault();
-                if (labelCalculatorRowIndex === index) {
-                  closeLabelCalculator();
-                } else {
-                  closeInlineCatalogDraft();
-                  openLabelCalculator(index);
-                }
-              }}
-              type="button"
-            >
-              Calcolatore etichette
-            </button>
-            {deactivatableService ? (
+          {canUseCatalogTools ? (
+            <div className="order-line-service-tools">
+              {hasTierEntries ? <span className="pill order-line-tier-badge">Prezzo a scaglioni</span> : null}
               <button
-                className="ghost order-line-service-action order-line-catalog-remove"
-                disabled={catalogMutatingServiceId === deactivatableService.id}
+                className="ghost order-line-service-action order-line-tier-toggle"
                 onClick={(event) => {
                   event.preventDefault();
-                  void deactivateCatalogService(index, deactivatableService);
+                  if (catalogDraftRowIndex === index) {
+                    closeInlineCatalogDraft();
+                  } else {
+                    closeLabelCalculator();
+                    openInlineCatalogDraft(index);
+                  }
                 }}
                 type="button"
               >
-                {catalogMutatingServiceId === deactivatableService.id ? "Disattivazione..." : "Disattiva dal catalogo"}
+                {catalogDraftRowIndex === index ? "Chiudi nuovo servizio" : "Nuovo in catalogo"}
               </button>
-            ) : null}
-            <button
-              className="ghost order-line-service-action order-line-tier-toggle"
-              disabled={!hasTierEntries}
-              onClick={(event) => {
-                event.preventDefault();
-                if (!hasTierEntries) {
-                  return;
-                }
+              <button
+                className="ghost order-line-service-action order-line-calculator-toggle"
+                disabled={labelCalculatorMaterials.length === 0}
+                onClick={(event) => {
+                  event.preventDefault();
+                  if (labelCalculatorRowIndex === index) {
+                    closeLabelCalculator();
+                  } else {
+                    closeInlineCatalogDraft();
+                    openLabelCalculator(index);
+                  }
+                }}
+                type="button"
+              >
+                Calcolatore etichette
+              </button>
+              {deactivatableService ? (
+                <button
+                  className="ghost order-line-service-action order-line-catalog-remove"
+                  disabled={catalogMutatingServiceId === deactivatableService.id}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void deactivateCatalogService(index, deactivatableService);
+                  }}
+                  type="button"
+                >
+                  {catalogMutatingServiceId === deactivatableService.id ? "Disattivazione..." : "Disattiva dal catalogo"}
+                </button>
+              ) : null}
+              <button
+                className="ghost order-line-service-action order-line-tier-toggle"
+                disabled={!hasTierEntries}
+                onClick={(event) => {
+                  event.preventDefault();
+                  if (!hasTierEntries) {
+                    return;
+                  }
 
-                setOpenTierIndex((current) => (current === index ? null : index));
-              }}
-              type="button"
-            >
-              Scaglioni
-            </button>
-          </div>
+                  setOpenTierIndex((current) => (current === index ? null : index));
+                }}
+                type="button"
+              >
+                Scaglioni
+              </button>
+            </div>
+          ) : (
+            <div className="order-line-service-tools order-line-service-tools-body">
+              <span className="pill order-line-body-pill">Voce libera non collegata al catalogo</span>
+            </div>
+          )}
           {showSuggestions ? (
             <div className="order-line-suggestions">
               {suggestions.length > 0 ? (
@@ -2086,8 +2336,10 @@ export function OrderForm({
       className="stack order-form-shell"
       data-order-kind={kind}
       data-mobile-order-step={mobileStep}
-      onChangeCapture={scheduleMobileMetaSync}
-      onInputCapture={scheduleMobileMetaSync}
+      onChangeCapture={() => {
+        scheduleMobileMetaSync();
+        noteFormMutation();
+      }}
       onSubmit={() => {
         if (typeof window !== "undefined") {
           window.sessionStorage.setItem(submittedDraftKey, "1");
@@ -2338,46 +2590,55 @@ export function OrderForm({
         <div className="order-lines-stack">
           {items.map((item, index) => {
             const lineState = buildLineEditorState(item, index);
-            const lineHeadline = item.label.trim() || item.serviceQuery.trim() || `Riga ${index + 1}`;
-            const lineSummaryParts = [`Qta ${formatQuantity(lineState.lineQuantity)}`];
+            const lineHeadline = item.label.trim() || item.serviceQuery.trim() || (item.bodyMode ? "Voce a corpo" : `Riga ${index + 1}`);
+            const lineSummaryParts = [item.bodyMode ? "A corpo" : `Qta ${formatQuantity(lineState.lineQuantity)}`];
             if (item.photoFormat.trim()) {
               lineSummaryParts.push(item.photoFormat.trim());
             } else if (item.format.trim()) {
               lineSummaryParts.push(item.format.trim());
             }
             const isMobileLineActive = isMobileViewport && openMobileItemIndex === index;
-            const isMobileLineOpen = !isMobileViewport;
+            const isDesktopLineOpen = !isMobileViewport && openDesktopItemIndex === index;
+            const isLineCollapsed = isMobileViewport ? !isMobileLineActive : !isDesktopLineOpen;
 
             return (
               <article
-                className={`order-line-card${isMobileLineOpen ? "" : " is-mobile-collapsed"}${
+                className={`order-line-card${isLineCollapsed ? " is-mobile-collapsed" : ""}${
+                  !isMobileViewport && !isDesktopLineOpen ? " is-desktop-collapsed" : ""
+                }${
                   isMobileViewport ? " is-mobile-tappable" : ""
-                }${isMobileLineActive ? " is-mobile-active" : ""}`}
-                aria-expanded={isMobileViewport ? isMobileLineActive : undefined}
+                }${isMobileLineActive ? " is-mobile-active" : ""}${item.bodyMode ? " is-body-row" : ""}`}
+                aria-expanded={isMobileViewport ? isMobileLineActive : isDesktopLineOpen}
                 key={index}
                 onClick={() => {
                   if (isMobileViewport && !isMobileLineActive) {
                     openMobileItemEditor(index);
+                  } else if (!isMobileViewport && !isDesktopLineOpen) {
+                    setOpenDesktopItemIndex(index);
                   }
                 }}
                 onKeyDown={(event) => {
-                  if (!isMobileViewport || isMobileLineActive) {
+                  if ((isMobileViewport && isMobileLineActive) || (!isMobileViewport && isDesktopLineOpen)) {
                     return;
                   }
 
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    openMobileItemEditor(index);
+                    if (isMobileViewport) {
+                      openMobileItemEditor(index);
+                    } else {
+                      setOpenDesktopItemIndex(index);
+                    }
                   }
                 }}
-                role={isMobileViewport && !isMobileLineActive ? "button" : undefined}
-                tabIndex={isMobileViewport && !isMobileLineActive ? 0 : undefined}
+                role={(isMobileViewport && !isMobileLineActive) || (!isMobileViewport && !isDesktopLineOpen) ? "button" : undefined}
+                tabIndex={(isMobileViewport && !isMobileLineActive) || (!isMobileViewport && !isDesktopLineOpen) ? 0 : undefined}
               >
                 <div className="order-line-head">
                   <div className="order-line-head-main">
                     <div className="order-line-index">#{index + 1}</div>
                     <div className="order-line-head-copy">
-                      <strong className="order-line-heading-label">{`Riga ${index + 1}`}</strong>
+                      <strong className="order-line-heading-label">{item.bodyMode ? "A corpo" : `Riga ${index + 1}`}</strong>
                       <span className="order-line-mobile-summary">
                         <span>{lineHeadline}</span>
                         <span>{lineSummaryParts.join(" • ")}</span>
@@ -2390,6 +2651,19 @@ export function OrderForm({
                         lineState.lineFinalWithExtraCents / 100
                       )}
                     </span>
+                    {!isMobileViewport ? (
+                      <button
+                        className="ghost order-line-toggle"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setOpenDesktopItemIndex((current) => (current === index ? null : index));
+                        }}
+                        type="button"
+                      >
+                        {isDesktopLineOpen ? "Chiudi" : "Apri"}
+                      </button>
+                    ) : null}
                     {!isMobileViewport ? (
                       <button
                         aria-label={`Elimina riga ${index + 1}`}
@@ -2407,21 +2681,23 @@ export function OrderForm({
                     ) : null}
                   </div>
                 </div>
-                {!isMobileViewport ? renderLineEditor(lineState) : null}
+                {!isMobileViewport && isDesktopLineOpen ? renderLineEditor(lineState) : null}
               </article>
           );
           })}
         </div>
-        <button
-          className="ghost order-lines-add-row"
-          onClick={(event) => {
-            event.preventDefault();
-            addEmptyItemLine();
-          }}
-          type="button"
-        >
-          Aggiungi riga
-        </button>
+        <div className="order-lines-actions">
+          <button
+            className="ghost order-lines-add-row order-lines-add-row-primary"
+            onClick={(event) => {
+              event.preventDefault();
+              addEmptyItemLine();
+            }}
+            type="button"
+          >
+            Aggiungi riga
+          </button>
+        </div>
         {!isMobileViewport ? (
           <div className="order-sheet-footer">
             <div className="order-sheet-footer-head">
@@ -2459,7 +2735,7 @@ export function OrderForm({
             <div className="form-grid order-sheet-payment-row">
               <div className="field order-sheet-invoice-field">
                 <label htmlFor="invoiceStatus">Richiesta fattura</label>
-                <select defaultValue="DA_FATTURARE" id="invoiceStatus" name="invoiceStatus">
+                <select defaultValue={defaultInvoiceStatus} id="invoiceStatus" name="invoiceStatus">
                   {Object.entries(invoiceStatusLabels).map(([value, label]) => (
                     <option key={value} value={value}>
                       {label}
@@ -2629,7 +2905,7 @@ export function OrderForm({
               <div className="form-grid order-sheet-payment-row">
                 <div className="field order-sheet-invoice-field">
                   <label htmlFor="invoiceStatus">Richiesta fattura</label>
-                  <select defaultValue="DA_FATTURARE" id="invoiceStatus" name="invoiceStatus">
+                  <select defaultValue={defaultInvoiceStatus} id="invoiceStatus" name="invoiceStatus">
                     {Object.entries(invoiceStatusLabels).map(([value, label]) => (
                       <option key={value} value={value}>
                         {label}
@@ -2659,6 +2935,27 @@ export function OrderForm({
       ) : null}
 
       <div className="button-row order-desktop-submit-row">
+        <button
+          className="ghost undo-action-button"
+          disabled={!canUndoOrderForm}
+          onClick={(event) => {
+            event.preventDefault();
+            if (!canUndoOrderForm) {
+              return;
+            }
+            if (!window.confirm("Vuoi annullare l'ultima modifica del documento in compilazione?")) {
+              return;
+            }
+            const snapshot = undoOrderForm();
+            if (!snapshot) {
+              return;
+            }
+            restoreOrderFormUndoSnapshot(snapshot);
+          }}
+          type="button"
+        >
+          <UndoButtonContent count={canUndoOrderForm ? undoOrderFormCount : undefined} label="Indietro" />
+        </button>
         <button
           className="secondary"
           onClick={(event) => {
@@ -2693,6 +2990,26 @@ export function OrderForm({
           <span className="subtle">{`${filledRows} righe compilate • ${formatCurrency(previewTotalCents)}`}</span>
         </div>
         <div className="order-mobile-footer-actions">
+          <button
+            className="ghost undo-action-button"
+            disabled={!canUndoOrderForm}
+            onClick={() => {
+              if (!canUndoOrderForm) {
+                return;
+              }
+              if (!window.confirm("Vuoi annullare l'ultima modifica del documento in compilazione?")) {
+                return;
+              }
+              const snapshot = undoOrderForm();
+              if (!snapshot) {
+                return;
+              }
+              restoreOrderFormUndoSnapshot(snapshot);
+            }}
+            type="button"
+          >
+            <UndoButtonContent count={canUndoOrderForm ? undoOrderFormCount : undefined} label="Indietro" />
+          </button>
           <button
             className="secondary"
             disabled={mobileStepIndex === 0}

@@ -1,17 +1,13 @@
 "use client";
 
 import type { DiscountMode, ServiceCatalog } from "@prisma/client";
-import { useDeferredValue, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import { createOrderItemAction, updateOrderItemAction } from "@/app/actions";
+import { UndoButtonContent } from "@/components/undo-button-content";
+import { useUndoHistory } from "@/components/use-undo-history";
 import { formatCurrency } from "@/lib/format";
-import { getTieredUnitPrice, parseQuantityValue, usesLineTotalQuantityTiers } from "@/lib/pricing";
+import { getTieredUnitPrice, parseFlexibleAdjustmentInput, parseQuantityValue, usesLineTotalQuantityTiers } from "@/lib/pricing";
 import { formatServiceUnitPriceLabel, formatServiceUnitShortLabel } from "@/lib/service-units";
-
-const discountModeOptions = [
-  { value: "NONE", label: "Nessuno" },
-  { value: "AMOUNT", label: "Euro" },
-  { value: "PERCENT", label: "%" }
-] as const;
 
 type OrderItemEditorService = Pick<ServiceCatalog, "id" | "code" | "name" | "basePriceCents" | "quantityTiers" | "unit">;
 
@@ -39,6 +35,21 @@ type OrderItemEditorFormProps = {
   services: OrderItemEditorService[];
   values?: OrderItemEditorValues;
   submitLabel: string;
+};
+
+type OrderItemEditorUndoSnapshot = {
+  serviceCatalogId: string;
+  serviceQuery: string;
+  quantity: string;
+  catalogBasePrice: string;
+  priceOverridden: boolean;
+  label: string;
+  discountInput: string;
+  extraInput: string;
+  format: string;
+  material: string;
+  finishing: string;
+  notes: string;
 };
 
 function formatPriceInput(cents: number) {
@@ -131,6 +142,18 @@ function getInitialPriceOverrideState(
   return expectedPrice !== currentPrice;
 }
 
+function formatAdjustmentInput(mode: DiscountMode, value: number) {
+  if (mode === "PERCENT") {
+    return `${value}%`;
+  }
+
+  if (mode === "AMOUNT") {
+    return formatPriceInput(value);
+  }
+
+  return "";
+}
+
 export function OrderItemEditorForm({
   mode,
   orderId,
@@ -150,6 +173,28 @@ export function OrderItemEditorForm({
   const [catalogBasePrice, setCatalogBasePrice] = useState(initialBasePrice);
   const [priceOverridden, setPriceOverridden] = useState(getInitialPriceOverrideState(values, services, initialQuantity));
   const [isServiceFocused, setIsServiceFocused] = useState(false);
+  const [label, setLabel] = useState(values?.label || "");
+  const [discountInput, setDiscountInput] = useState(
+    values ? formatAdjustmentInput(values.discountMode, values.discountValue) : ""
+  );
+  const [extraInput, setExtraInput] = useState(
+    values ? formatAdjustmentInput(values.extraMode, values.extraValue) : ""
+  );
+  const [format, setFormat] = useState(values?.format || "");
+  const [material, setMaterial] = useState(values?.material || "");
+  const [finishing, setFinishing] = useState(values?.finishing || "");
+  const [notes, setNotes] = useState(values?.notes || "");
+  const itemUndo = useUndoHistory<OrderItemEditorUndoSnapshot>({
+    limit: 40,
+    debounceMs: 180
+  });
+  const {
+    canUndo: canUndoItem,
+    undo: undoItem,
+    undoCount: undoItemCount,
+    reset: resetItemUndo,
+    record: recordItemUndo
+  } = itemUndo;
   const deferredServiceQuery = useDeferredValue(serviceQuery);
   const action = mode === "create" ? createOrderItemAction : updateOrderItemAction;
   const selectedService = serviceCatalogId ? services.find((entry) => entry.id === serviceCatalogId) || null : null;
@@ -174,6 +219,60 @@ export function OrderItemEditorForm({
     isServiceFocused &&
     normalizedServiceQuery.length > 0 &&
     (!selectedService || normalizeSearchValue(selectedService.name) !== normalizedServiceQuery);
+
+  function captureUndoSnapshot(): OrderItemEditorUndoSnapshot {
+    return {
+      serviceCatalogId,
+      serviceQuery,
+      quantity,
+      catalogBasePrice,
+      priceOverridden,
+      label,
+      discountInput,
+      extraInput,
+      format,
+      material,
+      finishing,
+      notes
+    };
+  }
+
+  function restoreUndoSnapshot(snapshot: OrderItemEditorUndoSnapshot) {
+    setServiceCatalogId(snapshot.serviceCatalogId);
+    setServiceQuery(snapshot.serviceQuery);
+    setQuantity(snapshot.quantity);
+    setCatalogBasePrice(snapshot.catalogBasePrice);
+    setPriceOverridden(snapshot.priceOverridden);
+    setLabel(snapshot.label);
+    setDiscountInput(snapshot.discountInput);
+    setExtraInput(snapshot.extraInput);
+    setFormat(snapshot.format);
+    setMaterial(snapshot.material);
+    setFinishing(snapshot.finishing);
+    setNotes(snapshot.notes);
+  }
+
+  useEffect(() => {
+    resetItemUndo(captureUndoSnapshot());
+  }, [resetItemUndo]);
+
+  useEffect(() => {
+    recordItemUndo(captureUndoSnapshot());
+  }, [
+    catalogBasePrice,
+    discountInput,
+    extraInput,
+    finishing,
+    format,
+    label,
+    material,
+    notes,
+    priceOverridden,
+    quantity,
+    recordItemUndo,
+    serviceCatalogId,
+    serviceQuery
+  ]);
 
   function handleServiceChange(nextServiceCatalogId: string) {
     setServiceCatalogId(nextServiceCatalogId);
@@ -293,7 +392,7 @@ export function OrderItemEditorForm({
       </div>
       <div className="field wide">
         <label htmlFor={`${fieldPrefix}-label`}>Titolo riga</label>
-        <input defaultValue={values?.label || ""} id={`${fieldPrefix}-label`} name="label" required />
+        <input id={`${fieldPrefix}-label`} name="label" onChange={(event) => setLabel(event.target.value)} required value={label} />
       </div>
       <div className="field">
         <label htmlFor={`${fieldPrefix}-qty`}>Qta</label>
@@ -321,74 +420,69 @@ export function OrderItemEditorForm({
         />
       </div>
       <div className="field">
-        <label htmlFor={`${fieldPrefix}-discount-mode`}>Sconto</label>
-        <select defaultValue={values?.discountMode || "NONE"} id={`${fieldPrefix}-discount-mode`} name="discountMode">
-          {discountModeOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor={`${fieldPrefix}-discount-value`}>Valore sconto</label>
+        <label htmlFor={`${fieldPrefix}-discount-value`}>Sconto</label>
         <input
           className="numeric-input"
-          defaultValue={
-            values
-              ? values.discountMode === "PERCENT"
-                ? String(values.discountValue)
-                : formatPriceInput(values.discountValue)
-              : "0"
-          }
           id={`${fieldPrefix}-discount-value`}
           inputMode="decimal"
           name="discountValue"
+          onChange={(event) => setDiscountInput(event.target.value)}
+          placeholder="0,00 o 10%"
+          value={discountInput}
         />
       </div>
       <div className="field">
-        <label htmlFor={`${fieldPrefix}-extra-mode`}>Extra</label>
-        <select defaultValue={values?.extraMode || "NONE"} id={`${fieldPrefix}-extra-mode`} name="extraMode">
-          {discountModeOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor={`${fieldPrefix}-extra-value`}>Valore extra</label>
+        <label htmlFor={`${fieldPrefix}-extra-value`}>Lavorazione extra</label>
         <input
           className="numeric-input"
-          defaultValue={
-            values
-              ? values.extraMode === "PERCENT"
-                ? String(values.extraValue)
-                : formatPriceInput(values.extraValue)
-              : "0"
-          }
           id={`${fieldPrefix}-extra-value`}
           inputMode="decimal"
           name="extraValue"
+          onChange={(event) => setExtraInput(event.target.value)}
+          placeholder="0,00 o 10%"
+          value={extraInput}
         />
       </div>
       <div className="field">
         <label htmlFor={`${fieldPrefix}-format`}>Formato</label>
-        <input defaultValue={values?.format || ""} id={`${fieldPrefix}-format`} name="format" />
+        <input id={`${fieldPrefix}-format`} name="format" onChange={(event) => setFormat(event.target.value)} value={format} />
       </div>
       <div className="field">
         <label htmlFor={`${fieldPrefix}-material`}>Materiale</label>
-        <input defaultValue={values?.material || ""} id={`${fieldPrefix}-material`} name="material" />
+        <input id={`${fieldPrefix}-material`} name="material" onChange={(event) => setMaterial(event.target.value)} value={material} />
       </div>
       <div className="field">
         <label htmlFor={`${fieldPrefix}-finishing`}>Finitura</label>
-        <input defaultValue={values?.finishing || ""} id={`${fieldPrefix}-finishing`} name="finishing" />
+        <input id={`${fieldPrefix}-finishing`} name="finishing" onChange={(event) => setFinishing(event.target.value)} value={finishing} />
       </div>
       <div className="field full">
         <label htmlFor={`${fieldPrefix}-notes`}>Note riga</label>
-        <textarea defaultValue={values?.notes || ""} id={`${fieldPrefix}-notes`} name="notes" />
+        <textarea id={`${fieldPrefix}-notes`} name="notes" onChange={(event) => setNotes(event.target.value)} value={notes} />
       </div>
       <div className="button-row order-detail-submit-row">
+        <input name="discountMode" type="hidden" value={parseFlexibleAdjustmentInput(discountInput, "AMOUNT").mode} />
+        <input name="extraMode" type="hidden" value={parseFlexibleAdjustmentInput(extraInput, "AMOUNT").mode} />
+        <button
+          className="ghost undo-action-button"
+          disabled={!canUndoItem}
+          onClick={(event) => {
+            event.preventDefault();
+            if (!canUndoItem) {
+              return;
+            }
+            if (!window.confirm("Vuoi annullare l'ultima modifica di questa riga?")) {
+              return;
+            }
+            const snapshot = undoItem();
+            if (!snapshot) {
+              return;
+            }
+            restoreUndoSnapshot(snapshot);
+          }}
+          type="button"
+        >
+          <UndoButtonContent count={canUndoItem ? undoItemCount : undefined} label="Indietro" />
+        </button>
         <button className={mode === "create" ? "primary" : "secondary"} type="submit">
           {submitLabel}
         </button>

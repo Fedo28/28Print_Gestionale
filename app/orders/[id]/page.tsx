@@ -7,6 +7,7 @@ import {
   deleteOrderItemAction,
   markReadyAction,
   recordPaymentAction,
+  restoreOrderHistoryAction,
   toggleOrderItemDeliveryAction,
   transitionPhaseAction,
   updateOrderAction,
@@ -17,11 +18,14 @@ import { MarkOrderInvoicedButton } from "@/components/mark-order-invoiced-button
 import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
 import { StatusPills } from "@/components/status-pills";
 import { AttachmentUploadForm } from "@/components/attachment-upload-form";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DeleteOrderForm } from "@/components/delete-order-form";
+import { FormUndoButton } from "@/components/form-undo-button";
 import { OrderPrintBrandMenu } from "@/components/order-print-brand-menu";
 import { OrderItemEditorForm } from "@/components/order-item-editor-form";
 import { OrderEditToggleButton } from "@/components/order-edit-toggle-button";
 import { OrderItemDeleteButton } from "@/components/order-item-delete-button";
+import { UndoButtonContent } from "@/components/undo-button-content";
 import { formatAttachmentSize } from "@/lib/attachment-utils";
 import { requireAuth } from "@/lib/auth";
 import {
@@ -35,6 +39,7 @@ import {
   priorityLabels
 } from "@/lib/constants";
 import { formatCurrency, formatDateTime, formatQuantity, toDateTimeLocalInput } from "@/lib/format";
+import { getDisplayOrderLabel } from "@/lib/order-display";
 import { buildOrdersFilterHref } from "@/lib/order-filters";
 import { getOrderById, getServiceCatalogAdmin } from "@/lib/orders";
 import { usesLineTotalQuantityTiers } from "@/lib/pricing";
@@ -116,7 +121,8 @@ export default async function OrderDetailPage({
   return (
     <div className="stack order-detail-page-shell">
       <PageHeader
-        title={order.orderCode}
+        title={getDisplayOrderLabel(order.orderCode, order.title)}
+        description={`Creato il ${formatDateTime(order.createdAt)}`}
         titleAction={<OrderEditToggleButton targetId="order-edit-panel" />}
         action={
           <div className="order-detail-header-actions order-detail-header-actions-simple">
@@ -206,6 +212,7 @@ export default async function OrderDetailPage({
                 <textarea defaultValue={order.notes || ""} id="notes" name="notes" />
               </div>
               <div className="button-row order-detail-submit-row">
+                <FormUndoButton />
                 <button className="primary" type="submit">
                   Aggiorna ordine
                 </button>
@@ -241,6 +248,7 @@ export default async function OrderDetailPage({
                   : `Motivo corrente: ${order.operationalNote || "non indicato"}`}
               </p>
               <div className="button-row order-status-actions">
+                <FormUndoButton />
                 <button className="secondary" type="submit">
                   Salva stato
                 </button>
@@ -543,6 +551,7 @@ export default async function OrderDetailPage({
               <input id="paymentNote" name="note" placeholder="Acconto, saldo, riferimento cassa" />
             </div>
             <div className="button-row payment-form-actions">
+              <FormUndoButton />
               <button className="primary" type="submit">
                 Registra pagamento
               </button>
@@ -596,6 +605,7 @@ export default async function OrderDetailPage({
                       />
                     </div>
                     <div className="button-row payment-form-actions">
+                      <FormUndoButton />
                       <button className="secondary" type="submit">
                         Correggi pagamento
                       </button>
@@ -652,7 +662,7 @@ export default async function OrderDetailPage({
               </div>
             </details>
 
-            <details className="card card-pad order-detail-disclosure order-detail-history-card">
+            <details className="card card-pad order-detail-disclosure order-detail-history-card" id="order-history-panel">
               <summary className="order-detail-disclosure-summary">
                 <div className="order-detail-disclosure-copy">
                   <h3>Cronologia</h3>
@@ -667,7 +677,21 @@ export default async function OrderDetailPage({
                   <article className="timeline-item" key={entry.id}>
                     <div className="list-header">
                       <strong>{entry.description}</strong>
-                      <span className="subtle">{formatDateTime(entry.createdAt)}</span>
+                      <div className="timeline-item-actions">
+                        <span className="subtle">{formatDateTime(entry.createdAt)}</span>
+                        {entry.snapshotBefore ? (
+                          <form action={restoreOrderHistoryAction} className="timeline-restore-form">
+                            <input name="orderId" type="hidden" value={order.id} />
+                            <input name="historyId" type="hidden" value={entry.id} />
+                            <ConfirmSubmitButton
+                              className="button ghost timeline-restore-button"
+                              confirmMessage="Vuoi ripristinare questo stato precedente?"
+                            >
+                              <UndoButtonContent label="Ripristina" />
+                            </ConfirmSubmitButton>
+                          </form>
+                        ) : null}
+                      </div>
                     </div>
                     {entry.details ? <div className="subtle">{entry.details}</div> : null}
                   </article>

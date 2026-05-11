@@ -1,4 +1,4 @@
-import { InvoiceStatus, MainPhase, OperationalStatus, PaymentStatus, Priority } from "@prisma/client";
+import { CustomerType, InvoiceStatus, MainPhase, OperationalStatus, PaymentStatus, Priority } from "@prisma/client";
 import { normalizeMainPhaseForWorkflow, visibleMainPhases } from "@/lib/constants";
 import type { VisibleMainPhase } from "@/lib/constants";
 
@@ -9,6 +9,7 @@ export type StatusFilter = OperationalStatus | "ALL";
 export type PaymentFilter = PaymentStatus | "ALL";
 export type InvoiceFilter = InvoiceStatus | "ALL";
 export type PriorityFilter = Priority | "ALL";
+export type CustomerTypeFilter = CustomerType | "ALL";
 export type OrderSortField = "order" | "customer" | "delivery" | "priority" | "status" | "amount";
 export type OrderSortDirection = "asc" | "desc";
 export type DashboardPreset =
@@ -23,7 +24,9 @@ export type DashboardPreset =
   | "BLOCKED"
   | "READY"
   | "FINANCE_PAID"
+  | "FINANCE_PARTIAL"
   | "FINANCE_UNPAID"
+  | "FINANCE_UNPAID_ONLY"
   | "BALANCE";
 
 export const dashboardPresetLabels: Record<Exclude<DashboardPreset, "ALL">, string> = {
@@ -37,7 +40,9 @@ export const dashboardPresetLabels: Record<Exclude<DashboardPreset, "ALL">, stri
   BLOCKED: "Sospesi",
   READY: "Pronti",
   FINANCE_PAID: "Pagati da fatturare",
+  FINANCE_PARTIAL: "Parziali da fatturare",
   FINANCE_UNPAID: "Da incassare e fatturare",
+  FINANCE_UNPAID_ONLY: "Non pagati da fatturare",
   BALANCE: "Da fatturare"
 };
 
@@ -49,6 +54,7 @@ export type OrderListFilters = {
   payment?: PaymentFilter;
   invoice?: InvoiceFilter;
   priority?: PriorityFilter;
+  customerType?: CustomerTypeFilter;
   quote?: QuoteFilter;
   preset?: DashboardPreset;
   sort?: OrderSortField;
@@ -60,6 +66,7 @@ const operationalStatuses: OperationalStatus[] = ["ATTIVO", "IN_ATTESA_FILE", "I
 const paymentStatuses: PaymentStatus[] = ["NON_PAGATO", "ACCONTO", "PARZIALE", "PAGATO"];
 const invoiceStatuses: InvoiceStatus[] = ["DA_FATTURARE", "FATTURATO", "NON_RICHIESTO"];
 const priorities: Priority[] = ["BASSA", "MEDIA", "ALTA", "URGENTE"];
+const customerTypes: CustomerType[] = ["PUBBLICO", "AZIENDA"];
 const orderSortFields: OrderSortField[] = ["order", "customer", "delivery", "priority", "status", "amount"];
 
 export function parseOrderListView(raw: string | null): OrderListView {
@@ -89,6 +96,10 @@ export function parseInvoiceFilter(raw: string | null): InvoiceFilter {
 
 export function parsePriorityFilter(raw: string | null): PriorityFilter {
   return raw && priorities.includes(raw as Priority) ? (raw as Priority) : "ALL";
+}
+
+export function parseCustomerTypeFilter(raw: string | null): CustomerTypeFilter {
+  return raw && customerTypes.includes(raw as CustomerType) ? (raw as CustomerType) : "ALL";
 }
 
 export function parseOrderSortField(raw: string | null): OrderSortField | undefined {
@@ -121,7 +132,9 @@ export function parseDashboardPreset(raw: string | null): DashboardPreset {
       "BLOCKED",
       "READY",
       "FINANCE_PAID",
+      "FINANCE_PARTIAL",
       "FINANCE_UNPAID",
+      "FINANCE_UNPAID_ONLY",
       "BALANCE"
     ].includes(raw)
   ) {
@@ -161,6 +174,10 @@ export function buildOrdersFilterHref(filters: OrderListFilters) {
 
   if (filters.priority && filters.priority !== "ALL") {
     params.set("priority", filters.priority);
+  }
+
+  if (filters.customerType && filters.customerType !== "ALL") {
+    params.set("customerType", filters.customerType);
   }
 
   if (filters.quote && filters.quote !== "ALL") {

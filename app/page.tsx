@@ -11,6 +11,7 @@ type Props = {
     dayFocus?: string;
     readyMode?: string;
     financeMode?: string;
+    financeBucket?: string;
     financeSort?: string;
     pulse?: string;
   };
@@ -22,6 +23,7 @@ export default async function Page({ searchParams }: Props) {
     <DashboardPage
       day={searchParams?.day}
       dayFocus={searchParams?.dayFocus}
+      financeBucket={searchParams?.financeBucket}
       financeMode={searchParams?.financeMode}
       financeSort={searchParams?.financeSort}
       focus={searchParams?.focus}

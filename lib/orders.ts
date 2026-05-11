@@ -36,9 +36,10 @@ import {
   usesLineTotalQuantityTiers
 } from "@/lib/pricing";
 import type {
-  OrderListView,
+  CustomerTypeFilter,
   DashboardPreset,
   InvoiceFilter,
+  OrderListView,
   OrderSortDirection,
   OrderSortField,
   PaymentFilter,
@@ -158,6 +159,81 @@ export type DeleteOrderItemInput = {
   orderId: string;
   itemId: string;
 };
+
+type OrderDetailsHistorySnapshot = {
+  kind: "order-details";
+  title: string;
+  deliveryAt: string;
+  appointmentAt: string | null;
+  appointmentNote: string | null;
+  notes: string | null;
+  invoiceStatus: InvoiceStatus;
+  isQuote: boolean;
+  schedulePending: boolean;
+  priority: Priority;
+  mainPhase: MainPhase;
+  operationalStatus: OperationalStatus;
+  operationalNote: string | null;
+};
+
+type OrderStatusHistorySnapshot = {
+  kind: "order-status";
+  operationalStatus: OperationalStatus;
+  operationalNote: string | null;
+};
+
+type OrderInvoiceStatusHistorySnapshot = {
+  kind: "order-invoice-status";
+  invoiceStatus: InvoiceStatus;
+};
+
+type OrderItemHistorySnapshot = {
+  kind: "order-item";
+  itemId: string;
+  serviceCatalogId: string | null;
+  label: string;
+  description: string | null;
+  quantity: number;
+  catalogBasePriceCents: number | null;
+  discountMode: DiscountMode;
+  discountValue: number;
+  extraMode: DiscountMode;
+  extraValue: number;
+  unitPriceCents: number;
+  lineTotalCents: number;
+  format: string | null;
+  material: string | null;
+  finishing: string | null;
+  notes: string | null;
+  deliveredAt: string | null;
+};
+
+type OrderPaymentHistoryEntrySnapshot = {
+  id: string;
+  amountCents: number;
+  method: PaymentMethod;
+  note: string | null;
+  status: PaymentEntryStatus;
+  effectiveAt: string;
+  createdAt: string;
+  correctedPaymentId: string | null;
+};
+
+type OrderPaymentsHistorySnapshot = {
+  kind: "order-payments";
+  paidCents: number;
+  balanceDueCents: number;
+  paymentStatus: PaymentStatus;
+  depositCents: number;
+  payments: OrderPaymentHistoryEntrySnapshot[];
+};
+
+type RestorableOrderHistorySnapshot =
+  | OrderDetailsHistorySnapshot
+  | OrderStatusHistorySnapshot
+  | OrderInvoiceStatusHistorySnapshot
+  | OrderItemHistorySnapshot
+  | OrderPaymentsHistorySnapshot;
 
 function usesLineTotalCatalogPricing(options: {
   format?: string | null;
@@ -901,6 +977,218 @@ function getQuoteTransitionPatch(currentIsQuote: boolean, nextIsQuote: boolean) 
   };
 }
 
+function toSnapshotDateValue(value: Date | string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  return new Date(value).toISOString();
+}
+
+function toSnapshotDate(value: string | null) {
+  return value ? new Date(value) : null;
+}
+
+function buildOrderDetailsHistorySnapshot(order: {
+  title: string;
+  deliveryAt: Date | string;
+  appointmentAt: Date | string | null;
+  appointmentNote: string | null;
+  notes: string | null;
+  invoiceStatus: InvoiceStatus;
+  isQuote: boolean;
+  schedulePending: boolean;
+  priority: Priority;
+  mainPhase: MainPhase;
+  operationalStatus: OperationalStatus;
+  operationalNote: string | null;
+}): OrderDetailsHistorySnapshot {
+  return {
+    kind: "order-details",
+    title: order.title,
+    deliveryAt: new Date(order.deliveryAt).toISOString(),
+    appointmentAt: toSnapshotDateValue(order.appointmentAt),
+    appointmentNote: order.appointmentNote || null,
+    notes: order.notes || null,
+    invoiceStatus: order.invoiceStatus,
+    isQuote: order.isQuote,
+    schedulePending: order.schedulePending,
+    priority: order.priority,
+    mainPhase: order.mainPhase,
+    operationalStatus: order.operationalStatus,
+    operationalNote: order.operationalNote || null
+  };
+}
+
+function buildOrderStatusHistorySnapshot(order: {
+  operationalStatus: OperationalStatus;
+  operationalNote: string | null;
+}): OrderStatusHistorySnapshot {
+  return {
+    kind: "order-status",
+    operationalStatus: order.operationalStatus,
+    operationalNote: order.operationalNote || null
+  };
+}
+
+function buildOrderInvoiceStatusHistorySnapshot(order: {
+  invoiceStatus: InvoiceStatus;
+}): OrderInvoiceStatusHistorySnapshot {
+  return {
+    kind: "order-invoice-status",
+    invoiceStatus: order.invoiceStatus
+  };
+}
+
+function buildOrderItemHistorySnapshot(item: {
+  id: string;
+  serviceCatalogId: string | null;
+  label: string;
+  description: string | null;
+  quantity: number;
+  catalogBasePriceCents: number | null;
+  discountMode: DiscountMode;
+  discountValue: number;
+  extraMode: DiscountMode;
+  extraValue: number;
+  unitPriceCents: number;
+  lineTotalCents: number;
+  format: string | null;
+  material: string | null;
+  finishing: string | null;
+  notes: string | null;
+  deliveredAt: Date | string | null;
+}): OrderItemHistorySnapshot {
+  return {
+    kind: "order-item",
+    itemId: item.id,
+    serviceCatalogId: item.serviceCatalogId || null,
+    label: item.label,
+    description: item.description || null,
+    quantity: item.quantity,
+    catalogBasePriceCents: item.catalogBasePriceCents ?? null,
+    discountMode: item.discountMode,
+    discountValue: item.discountValue,
+    extraMode: item.extraMode,
+    extraValue: item.extraValue,
+    unitPriceCents: item.unitPriceCents,
+    lineTotalCents: item.lineTotalCents,
+    format: item.format || null,
+    material: item.material || null,
+    finishing: item.finishing || null,
+    notes: item.notes || null,
+    deliveredAt: toSnapshotDateValue(item.deliveredAt)
+  };
+}
+
+function normalizePaymentHistorySnapshotEntries(
+  payments: Array<{
+    id: string;
+    amountCents: number;
+    method: PaymentMethod;
+    note: string | null;
+    status: PaymentEntryStatus;
+    effectiveAt: Date | string;
+    createdAt: Date | string;
+    correctedPaymentId?: string | null;
+  }>
+): OrderPaymentHistoryEntrySnapshot[] {
+  return [...payments]
+    .sort((left, right) => {
+      const byCreatedAt = new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+      if (byCreatedAt !== 0) {
+        return byCreatedAt;
+      }
+
+      return left.id.localeCompare(right.id);
+    })
+    .map((payment) => ({
+      id: payment.id,
+      amountCents: payment.amountCents,
+      method: payment.method,
+      note: payment.note || null,
+      status: payment.status,
+      effectiveAt: new Date(payment.effectiveAt).toISOString(),
+      createdAt: new Date(payment.createdAt).toISOString(),
+      correctedPaymentId: payment.correctedPaymentId || null
+    }));
+}
+
+function buildOrderPaymentsHistorySnapshot(order: {
+  paidCents: number;
+  balanceDueCents: number;
+  paymentStatus: PaymentStatus;
+  depositCents: number;
+  payments: Array<{
+    id: string;
+    amountCents: number;
+    method: PaymentMethod;
+    note: string | null;
+    status: PaymentEntryStatus;
+    effectiveAt: Date | string;
+    createdAt: Date | string;
+    correctedPaymentId?: string | null;
+  }>;
+}): OrderPaymentsHistorySnapshot {
+  return {
+    kind: "order-payments",
+    paidCents: order.paidCents,
+    balanceDueCents: order.balanceDueCents,
+    paymentStatus: order.paymentStatus,
+    depositCents: order.depositCents,
+    payments: normalizePaymentHistorySnapshotEntries(order.payments)
+  };
+}
+
+function parseRestorableOrderHistorySnapshot(value: Prisma.JsonValue | null): RestorableOrderHistorySnapshot | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const kind = (value as { kind?: unknown }).kind;
+
+  if (
+    kind === "order-details" ||
+    kind === "order-status" ||
+    kind === "order-invoice-status" ||
+    kind === "order-item" ||
+    kind === "order-payments"
+  ) {
+    return value as unknown as RestorableOrderHistorySnapshot;
+  }
+
+  return null;
+}
+
+function getRestoreDetailsLabel(description: string, createdAt: Date | string) {
+  return `Ripristino da "${description}" del ${formatCompactDate(createdAt)}`;
+}
+
+async function syncOrderFinancialsFromItems(
+  tx: Prisma.TransactionClient,
+  orderId: string,
+  payments: PaymentSnapshot[]
+) {
+  const updatedItems = await tx.orderItem.findMany({
+    where: { orderId },
+    orderBy: { createdAt: "asc" }
+  });
+
+  const totalCents = updatedItems.reduce((sum, entry) => sum + entry.lineTotalCents, 0);
+  const paymentSummary = computePaymentSummary(totalCents, payments);
+
+  await tx.order.update({
+    where: { id: orderId },
+    data: {
+      totalCents,
+      paidCents: paymentSummary.paidCents,
+      balanceDueCents: paymentSummary.balanceDueCents,
+      paymentStatus: paymentSummary.paymentStatus,
+      depositCents: paymentSummary.depositCents
+    }
+  });
+}
+
 async function ensureCustomer(tx: Prisma.TransactionClient, input: CreateOrderInput) {
   if (input.customerId) {
     const customer = await tx.customer.findUnique({ where: { id: input.customerId } });
@@ -1086,6 +1374,7 @@ export async function updateOrder(input: UpdateOrderInput) {
   const titleNormalized = normalizeForUniqueness(title);
 
   return prisma.$transaction(async (tx) => {
+    const snapshotBefore = buildOrderDetailsHistorySnapshot(order);
     if (titleNormalized !== order.titleNormalized) {
       const duplicate = await tx.order.findFirst({
         where: {
@@ -1128,6 +1417,7 @@ export async function updateOrder(input: UpdateOrderInput) {
         ...getQuoteTransitionPatch(order.isQuote, nextIsQuote)
       }
     });
+    const snapshotAfter = buildOrderDetailsHistorySnapshot(updated);
 
     await tx.orderHistory.create({
       data: {
@@ -1135,7 +1425,9 @@ export async function updateOrder(input: UpdateOrderInput) {
         type: "UPDATED",
         description: "Dettagli ordine aggiornati",
         details:
-          order.isQuote !== nextIsQuote ? `Preventivo ${nextIsQuote ? "attivato" : "confermato"}` : undefined
+          order.isQuote !== nextIsQuote ? `Preventivo ${nextIsQuote ? "attivato" : "confermato"}` : undefined,
+        snapshotBefore: snapshotBefore as Prisma.InputJsonValue,
+        snapshotAfter: snapshotAfter as Prisma.InputJsonValue
       }
     });
 
@@ -1170,6 +1462,7 @@ export async function updateOrderInvoiceStatus(orderId: string, nextInvoiceStatu
   }
 
   return prisma.$transaction(async (tx) => {
+    const snapshotBefore = buildOrderInvoiceStatusHistorySnapshot(order);
     const updated = await tx.order.update({
       where: { id: orderId },
       data: {
@@ -1181,13 +1474,16 @@ export async function updateOrderInvoiceStatus(orderId: string, nextInvoiceStatu
         invoiceStatus: true
       }
     });
+    const snapshotAfter = buildOrderInvoiceStatusHistorySnapshot(updated);
 
     await tx.orderHistory.create({
       data: {
         orderId,
         type: "UPDATED",
         description: "Stato fatturazione aggiornato",
-        details: `${invoiceStatusLabels[order.invoiceStatus]} -> ${invoiceStatusLabels[nextInvoiceStatus]}`
+        details: `${invoiceStatusLabels[order.invoiceStatus]} -> ${invoiceStatusLabels[nextInvoiceStatus]}`,
+        snapshotBefore: snapshotBefore as Prisma.InputJsonValue,
+        snapshotAfter: snapshotAfter as Prisma.InputJsonValue
       }
     });
 
@@ -1254,6 +1550,7 @@ export async function updateOperationalStatus(orderId: string, status: Operation
   const cleanNote = note?.trim() || undefined;
 
   return prisma.$transaction(async (tx) => {
+    const snapshotBefore = buildOrderStatusHistorySnapshot(order);
     const updated = await tx.order.update({
       where: { id: orderId },
       data: {
@@ -1261,13 +1558,16 @@ export async function updateOperationalStatus(orderId: string, status: Operation
         operationalNote: status === "ATTIVO" ? undefined : cleanNote
       }
     });
+    const snapshotAfter = buildOrderStatusHistorySnapshot(updated);
 
     await tx.orderHistory.create({
       data: {
         orderId,
         type: "STATUS_CHANGED",
         description: `Stato operativo impostato su ${operationalStatusLabels[status]}`,
-        details: cleanNote
+        details: cleanNote,
+        snapshotBefore: snapshotBefore as Prisma.InputJsonValue,
+        snapshotAfter: snapshotAfter as Prisma.InputJsonValue
       }
     });
 
@@ -1344,7 +1644,8 @@ export async function updateOrderItem(input: UpdateOrderItemInput) {
   }
 
   return prisma.$transaction(async (tx) => {
-    await tx.orderItem.update({
+    const snapshotBefore = buildOrderItemHistorySnapshot(item);
+    const updatedItem = await tx.orderItem.update({
       where: { id: input.itemId },
       data: {
         label: normalized.label,
@@ -1363,34 +1664,365 @@ export async function updateOrderItem(input: UpdateOrderItemInput) {
         notes: normalized.notes?.trim() || null
       }
     });
-
-    const updatedItems = await tx.orderItem.findMany({
-      where: { orderId: input.orderId },
-      orderBy: { createdAt: "asc" }
-    });
-
-    const totalCents = updatedItems.reduce((sum, entry) => sum + entry.lineTotalCents, 0);
-    const paymentSummary = computePaymentSummary(totalCents, item.order.payments);
-
-    await tx.order.update({
-      where: { id: input.orderId },
-      data: {
-        totalCents,
-        paidCents: paymentSummary.paidCents,
-        balanceDueCents: paymentSummary.balanceDueCents,
-        paymentStatus: paymentSummary.paymentStatus,
-        depositCents: paymentSummary.depositCents
-      }
-    });
+    await syncOrderFinancialsFromItems(tx, input.orderId, item.order.payments);
+    const snapshotAfter = buildOrderItemHistorySnapshot(updatedItem);
 
     await tx.orderHistory.create({
       data: {
         orderId: input.orderId,
         type: "UPDATED",
         description: `Riga ordine aggiornata: ${normalized.label}`,
-        details: `${formatQuantity(normalized.quantity)} • ${(normalized.lineTotalCents / 100).toFixed(2)} EUR`
+        details: `${formatQuantity(normalized.quantity)} • ${(normalized.lineTotalCents / 100).toFixed(2)} EUR`,
+        snapshotBefore: snapshotBefore as Prisma.InputJsonValue,
+        snapshotAfter: snapshotAfter as Prisma.InputJsonValue
       }
     });
+  });
+}
+
+export async function restoreOrderHistoryEntry(orderId: string, historyId: string) {
+  const historyEntry = await prisma.orderHistory.findFirst({
+    where: {
+      id: historyId,
+      orderId
+    }
+  });
+
+  if (!historyEntry) {
+    throw new Error("Voce cronologia non trovata.");
+  }
+
+  const snapshotBefore = parseRestorableOrderHistorySnapshot(historyEntry.snapshotBefore);
+  if (!snapshotBefore) {
+    throw new Error("Questa voce cronologia non e ripristinabile.");
+  }
+
+  if (snapshotBefore.kind === "order-details") {
+    return prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId }
+      });
+
+      if (!order) {
+        throw new Error("Ordine non trovato.");
+      }
+
+      const currentSnapshot = buildOrderDetailsHistorySnapshot(order);
+      const restoredTitle = normalizeOrderTitle(snapshotBefore.title);
+      const restoredTitleNormalized = normalizeForUniqueness(restoredTitle);
+
+      if (restoredTitleNormalized !== order.titleNormalized) {
+        const duplicate = await tx.order.findFirst({
+          where: {
+            createdOn: order.createdOn,
+            titleNormalized: restoredTitleNormalized,
+            id: { not: order.id }
+          }
+        });
+
+        if (duplicate) {
+          throw new Error("Il titolo salvato nello storico e oggi gia usato da un altro ordine.");
+        }
+      }
+
+      const updated = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          title: restoredTitle,
+          titleNormalized: restoredTitleNormalized,
+          deliveryAt: new Date(snapshotBefore.deliveryAt),
+          appointmentAt: toSnapshotDate(snapshotBefore.appointmentAt),
+          appointmentNote: snapshotBefore.appointmentNote,
+          notes: snapshotBefore.notes,
+          invoiceStatus: snapshotBefore.invoiceStatus,
+          isQuote: snapshotBefore.isQuote,
+          schedulePending: snapshotBefore.schedulePending,
+          priority: snapshotBefore.priority,
+          mainPhase: snapshotBefore.mainPhase,
+          operationalStatus: snapshotBefore.operationalStatus,
+          operationalNote: snapshotBefore.operationalNote
+        }
+      });
+
+      const restoredSnapshot = buildOrderDetailsHistorySnapshot(updated);
+
+      await tx.orderHistory.create({
+        data: {
+          orderId,
+          type: "UPDATED",
+          description: "Dettagli ordine ripristinati",
+          details: getRestoreDetailsLabel(historyEntry.description, historyEntry.createdAt),
+          snapshotBefore: currentSnapshot as Prisma.InputJsonValue,
+          snapshotAfter: restoredSnapshot as Prisma.InputJsonValue
+        }
+      });
+
+      return updated;
+    });
+  }
+
+  if (snapshotBefore.kind === "order-status") {
+    return prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        select: {
+          id: true,
+          operationalStatus: true,
+          operationalNote: true
+        }
+      });
+
+      if (!order) {
+        throw new Error("Ordine non trovato.");
+      }
+
+      const currentSnapshot = buildOrderStatusHistorySnapshot(order);
+      const updated = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          operationalStatus: snapshotBefore.operationalStatus,
+          operationalNote:
+            snapshotBefore.operationalStatus === "ATTIVO" ? null : snapshotBefore.operationalNote
+        },
+        select: {
+          operationalStatus: true,
+          operationalNote: true
+        }
+      });
+
+      const restoredSnapshot = buildOrderStatusHistorySnapshot(updated);
+
+      await tx.orderHistory.create({
+        data: {
+          orderId,
+          type: "STATUS_CHANGED",
+          description: "Stato operativo ripristinato",
+          details: getRestoreDetailsLabel(historyEntry.description, historyEntry.createdAt),
+          snapshotBefore: currentSnapshot as Prisma.InputJsonValue,
+          snapshotAfter: restoredSnapshot as Prisma.InputJsonValue
+        }
+      });
+
+      return updated;
+    });
+  }
+
+  if (snapshotBefore.kind === "order-invoice-status") {
+    return prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        select: {
+          id: true,
+          isQuote: true,
+          invoiceStatus: true
+        }
+      });
+
+      if (!order) {
+        throw new Error("Ordine non trovato.");
+      }
+
+      if (order.isQuote) {
+        throw new Error("I preventivi non possono essere ripristinati sulla fatturazione.");
+      }
+
+      const currentSnapshot = buildOrderInvoiceStatusHistorySnapshot(order);
+      const updated = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          invoiceStatus: snapshotBefore.invoiceStatus
+        },
+        select: {
+          id: true,
+          isQuote: true,
+          invoiceStatus: true
+        }
+      });
+      const restoredSnapshot = buildOrderInvoiceStatusHistorySnapshot(updated);
+
+      await tx.orderHistory.create({
+        data: {
+          orderId,
+          type: "UPDATED",
+          description: "Stato fatturazione ripristinato",
+          details: getRestoreDetailsLabel(historyEntry.description, historyEntry.createdAt),
+          snapshotBefore: currentSnapshot as Prisma.InputJsonValue,
+          snapshotAfter: restoredSnapshot as Prisma.InputJsonValue
+        }
+      });
+
+      return updated;
+    });
+  }
+
+  if (snapshotBefore.kind === "order-payments") {
+    return prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: {
+          payments: true
+        }
+      });
+
+      if (!order) {
+        throw new Error("Ordine non trovato.");
+      }
+
+      const currentSnapshot = buildOrderPaymentsHistorySnapshot({
+        paidCents: order.paidCents,
+        balanceDueCents: order.balanceDueCents,
+        paymentStatus: order.paymentStatus,
+        depositCents: order.depositCents,
+        payments: order.payments
+      });
+      const targetPayments = snapshotBefore.payments;
+      const targetIds = new Set(targetPayments.map((payment) => payment.id));
+
+      await tx.payment.updateMany({
+        where: { orderId },
+        data: {
+          correctedPaymentId: null
+        }
+      });
+
+      for (const payment of targetPayments) {
+        const baseData = {
+          amountCents: payment.amountCents,
+          method: payment.method,
+          note: payment.note,
+          status: payment.status,
+          effectiveAt: new Date(payment.effectiveAt),
+          createdAt: new Date(payment.createdAt)
+        };
+
+        if (order.payments.some((entry) => entry.id === payment.id)) {
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: baseData
+          });
+        } else {
+          await tx.payment.create({
+            data: {
+              id: payment.id,
+              orderId,
+              correctedPaymentId: null,
+              ...baseData
+            }
+          });
+        }
+      }
+
+      const removableIds = order.payments.filter((payment) => !targetIds.has(payment.id)).map((payment) => payment.id);
+      if (removableIds.length > 0) {
+        await tx.payment.deleteMany({
+          where: {
+            orderId,
+            id: { in: removableIds }
+          }
+        });
+      }
+
+      for (const payment of targetPayments) {
+        if (!payment.correctedPaymentId) {
+          continue;
+        }
+
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: {
+            correctedPaymentId: payment.correctedPaymentId
+          }
+        });
+      }
+
+      const paymentSummary = computePaymentSummary(order.totalCents, targetPayments);
+      const updated = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          paidCents: paymentSummary.paidCents,
+          balanceDueCents: paymentSummary.balanceDueCents,
+          paymentStatus: paymentSummary.paymentStatus,
+          depositCents: paymentSummary.depositCents
+        }
+      });
+
+      const restoredSnapshot = buildOrderPaymentsHistorySnapshot({
+        paidCents: updated.paidCents,
+        balanceDueCents: updated.balanceDueCents,
+        paymentStatus: updated.paymentStatus,
+        depositCents: updated.depositCents,
+        payments: targetPayments
+      });
+
+      await tx.orderHistory.create({
+        data: {
+          orderId,
+          type: "PAYMENT_RECORDED",
+          description: "Movimenti contabili ripristinati",
+          details: getRestoreDetailsLabel(historyEntry.description, historyEntry.createdAt),
+          snapshotBefore: currentSnapshot as Prisma.InputJsonValue,
+          snapshotAfter: restoredSnapshot as Prisma.InputJsonValue
+        }
+      });
+
+      return updated;
+    });
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const item = await tx.orderItem.findUnique({
+      where: { id: snapshotBefore.itemId },
+      include: {
+        order: {
+          include: {
+            payments: true
+          }
+        }
+      }
+    });
+
+    if (!item || item.orderId !== orderId) {
+      throw new Error("La riga storica non e piu disponibile per il ripristino.");
+    }
+
+    const currentSnapshot = buildOrderItemHistorySnapshot(item);
+    const updatedItem = await tx.orderItem.update({
+      where: { id: snapshotBefore.itemId },
+      data: {
+        serviceCatalogId: snapshotBefore.serviceCatalogId,
+        label: snapshotBefore.label,
+        description: snapshotBefore.description,
+        quantity: snapshotBefore.quantity,
+        catalogBasePriceCents: snapshotBefore.catalogBasePriceCents,
+        discountMode: snapshotBefore.discountMode,
+        discountValue: snapshotBefore.discountValue,
+        extraMode: snapshotBefore.extraMode,
+        extraValue: snapshotBefore.extraValue,
+        unitPriceCents: snapshotBefore.unitPriceCents,
+        lineTotalCents: snapshotBefore.lineTotalCents,
+        format: snapshotBefore.format,
+        material: snapshotBefore.material,
+        finishing: snapshotBefore.finishing,
+        notes: snapshotBefore.notes,
+        deliveredAt: toSnapshotDate(snapshotBefore.deliveredAt)
+      }
+    });
+
+    await syncOrderFinancialsFromItems(tx, orderId, item.order.payments);
+    const restoredSnapshot = buildOrderItemHistorySnapshot(updatedItem);
+
+    await tx.orderHistory.create({
+      data: {
+        orderId,
+        type: "UPDATED",
+        description: `Riga ordine ripristinata: ${updatedItem.label}`,
+        details: getRestoreDetailsLabel(historyEntry.description, historyEntry.createdAt),
+        snapshotBefore: currentSnapshot as Prisma.InputJsonValue,
+        snapshotAfter: restoredSnapshot as Prisma.InputJsonValue
+      }
+    });
+
+    return updatedItem;
   });
 }
 
@@ -1709,6 +2341,13 @@ export async function recordPayment(orderId: string, amountCents: number, method
     const existingPayments = await tx.payment.findMany({
       where: { orderId }
     });
+    const snapshotBefore = buildOrderPaymentsHistorySnapshot({
+      paidCents: order.paidCents,
+      balanceDueCents: order.balanceDueCents,
+      paymentStatus: order.paymentStatus,
+      depositCents: order.depositCents,
+      payments: existingPayments
+    });
 
     const payment = await tx.payment.create({
       data: {
@@ -1730,13 +2369,22 @@ export async function recordPayment(orderId: string, amountCents: number, method
         depositCents: summary.depositCents
       }
     });
+    const snapshotAfter = buildOrderPaymentsHistorySnapshot({
+      paidCents: updated.paidCents,
+      balanceDueCents: updated.balanceDueCents,
+      paymentStatus: updated.paymentStatus,
+      depositCents: updated.depositCents,
+      payments: [...existingPayments, payment]
+    });
 
     await tx.orderHistory.create({
       data: {
         orderId,
         type: "PAYMENT_RECORDED",
         description: `Pagamento registrato: ${(amountCents / 100).toFixed(2)} EUR`,
-        details: note?.trim() || undefined
+        details: note?.trim() || undefined,
+        snapshotBefore: snapshotBefore as Prisma.InputJsonValue,
+        snapshotAfter: snapshotAfter as Prisma.InputJsonValue
       }
     });
 
@@ -1778,6 +2426,14 @@ export async function correctPayment(
       throw new Error("Questo pagamento e gia stato corretto.");
     }
 
+    const snapshotBefore = buildOrderPaymentsHistorySnapshot({
+      paidCents: order.paidCents,
+      balanceDueCents: order.balanceDueCents,
+      paymentStatus: order.paymentStatus,
+      depositCents: order.depositCents,
+      payments: existingPayments
+    });
+
     await tx.payment.update({
       where: { id: paymentId },
       data: { status: "SOSTITUITO" }
@@ -1814,6 +2470,13 @@ export async function correctPayment(
         depositCents: summary.depositCents
       }
     });
+    const snapshotAfter = buildOrderPaymentsHistorySnapshot({
+      paidCents: updated.paidCents,
+      balanceDueCents: updated.balanceDueCents,
+      paymentStatus: updated.paymentStatus,
+      depositCents: updated.depositCents,
+      payments: correction ? [...correctedPayments, correction] : correctedPayments
+    });
 
     await tx.orderHistory.create({
       data: {
@@ -1826,7 +2489,9 @@ export async function correctPayment(
         details:
           amountCents > 0
             ? `Rettifica del pagamento ${paymentId}${note?.trim() ? ` - ${note.trim()}` : ""}`
-            : `Annullato il pagamento ${paymentId}${note?.trim() ? ` - ${note.trim()}` : ""}`
+            : `Annullato il pagamento ${paymentId}${note?.trim() ? ` - ${note.trim()}` : ""}`,
+        snapshotBefore: snapshotBefore as Prisma.InputJsonValue,
+        snapshotAfter: snapshotAfter as Prisma.InputJsonValue
       }
     });
 
@@ -2271,6 +2936,9 @@ export async function getDashboardData() {
   const tomorrowStart = addDays(todayStart, 1);
   const dayAfterTomorrowStart = addDays(todayStart, 2);
   const weekEnd = addDays(todayStart, 7);
+  const financeOperationalWhere = {
+    mainPhase: { in: ["SVILUPPO_COMPLETATO", "CONSEGNATO"] as MainPhase[] }
+  };
   const [todayOrdersRaw, todayAppointments, overdueOrders, blockedOrders, readyOrders, invoiceOrders, toStartOrdersRaw, workingOrdersRaw, weekLoadOrders, weekDetailOrdersRaw] = await Promise.all([
     prisma.order.findMany({
       where: {
@@ -2325,11 +2993,11 @@ export async function getDashboardData() {
     prisma.order.findMany({
       where: {
         ...operationalOrderWhere(),
-        invoiceStatus: "DA_FATTURARE",
-        mainPhase: { not: "CONSEGNATO" }
+        ...financeOperationalWhere,
+        invoiceStatus: "DA_FATTURARE"
       },
       include: { customer: true },
-      orderBy: [{ deliveryAt: "asc" }, { createdAt: "asc" }]
+      orderBy: [{ deliveredAt: "asc" }, { deliveryAt: "asc" }, { createdAt: "asc" }]
     }),
     prisma.order.findMany({
       where: {
@@ -2460,6 +3128,7 @@ export async function getOrdersList(filters: {
   payment?: PaymentFilter;
   invoice?: InvoiceFilter;
   priority?: PriorityFilter;
+  customerType?: CustomerTypeFilter;
   quote?: QuoteFilter;
   preset?: DashboardPreset;
   sort?: OrderSortField;
@@ -2543,30 +3212,51 @@ export async function getOrdersList(filters: {
                       mainPhase: { not: "CONSEGNATO" as MainPhase },
                       operationalStatus: { not: "ATTIVO" as OperationalStatus }
                     }
-                  : filters.preset === "READY"
+                : filters.preset === "READY"
                     ? {
                         mainPhase: "SVILUPPO_COMPLETATO" as MainPhase
                       }
                     : filters.preset === "FINANCE_PAID"
                       ? {
-                        mainPhase: { not: "CONSEGNATO" as MainPhase },
+                        mainPhase: { in: ["SVILUPPO_COMPLETATO", "CONSEGNATO"] as MainPhase[] },
                         invoiceStatus: "DA_FATTURARE" as InvoiceStatus,
                         paymentStatus: "PAGATO" as PaymentStatus
                       }
+                    : filters.preset === "FINANCE_PARTIAL"
+                      ? {
+                        mainPhase: { in: ["SVILUPPO_COMPLETATO", "CONSEGNATO"] as MainPhase[] },
+                        invoiceStatus: "DA_FATTURARE" as InvoiceStatus,
+                        paymentStatus: { in: ["ACCONTO", "PARZIALE"] as PaymentStatus[] }
+                      }
                     : filters.preset === "FINANCE_UNPAID"
                       ? {
-                        mainPhase: { not: "CONSEGNATO" as MainPhase },
+                        mainPhase: { in: ["SVILUPPO_COMPLETATO", "CONSEGNATO"] as MainPhase[] },
                         invoiceStatus: "DA_FATTURARE" as InvoiceStatus,
                         paymentStatus: { not: "PAGATO" as PaymentStatus }
                       }
+                    : filters.preset === "FINANCE_UNPAID_ONLY"
+                      ? {
+                        mainPhase: { in: ["SVILUPPO_COMPLETATO", "CONSEGNATO"] as MainPhase[] },
+                        invoiceStatus: "DA_FATTURARE" as InvoiceStatus,
+                        paymentStatus: "NON_PAGATO" as PaymentStatus
+                      }
                     : filters.preset === "BALANCE"
                       ? {
-                        mainPhase: { not: "CONSEGNATO" as MainPhase },
+                        mainPhase: { in: ["SVILUPPO_COMPLETATO", "CONSEGNATO"] as MainPhase[] },
                         invoiceStatus: "DA_FATTURARE" as InvoiceStatus
                       }
                       : {};
 
-  const viewWhere = isDeliveredView
+  const financePresetActive =
+    filters.preset === "FINANCE_PAID" ||
+    filters.preset === "FINANCE_PARTIAL" ||
+    filters.preset === "FINANCE_UNPAID" ||
+    filters.preset === "FINANCE_UNPAID_ONLY" ||
+    filters.preset === "BALANCE";
+
+  const viewWhere = financePresetActive
+    ? {}
+    : isDeliveredView
     ? {
         mainPhase: "CONSEGNATO" as MainPhase
       }
@@ -2591,6 +3281,7 @@ export async function getOrdersList(filters: {
       ...(filters.payment && filters.payment !== "ALL" ? { paymentStatus: filters.payment } : {}),
       ...(filters.invoice && filters.invoice !== "ALL" ? { invoiceStatus: filters.invoice } : {}),
       ...(isDeliveredView && filters.priority && filters.priority !== "ALL" ? { priority: filters.priority } : {}),
+      ...(filters.customerType && filters.customerType !== "ALL" ? { customer: { type: filters.customerType } } : {}),
       ...(filters.quote === "QUOTE" ? { isQuote: true } : {}),
       ...(filters.quote === "ORDER" ? { isQuote: false } : {})
     },
@@ -2617,6 +3308,49 @@ export async function getOrdersList(filters: {
     direction: sortDirection,
     view: filters.view || "ACTIVE"
   });
+}
+
+export async function getOrdersTabCounts(filters: {
+  query?: string;
+  status?: StatusFilter;
+  payment?: PaymentFilter;
+  invoice?: InvoiceFilter;
+  priority?: PriorityFilter;
+  customerType?: CustomerTypeFilter;
+  quote?: QuoteFilter;
+}) {
+  const tabDefinitions = [
+    { key: "ACTIVE_ALL", view: "ACTIVE" as OrderListView, preset: "ALL" as DashboardPreset },
+    { key: "TODAY", view: "ACTIVE" as OrderListView, preset: "PRIORITY_TODAY" as DashboardPreset },
+    { key: "TO_START", view: "ACTIVE" as OrderListView, preset: "TO_START" as DashboardPreset },
+    { key: "WORKING", view: "ACTIVE" as OrderListView, preset: "WORKING" as DashboardPreset },
+    { key: "BLOCKED", view: "ACTIVE" as OrderListView, preset: "BLOCKED" as DashboardPreset },
+    { key: "READY", view: "ACTIVE" as OrderListView, preset: "READY" as DashboardPreset },
+    { key: "DELIVERED", view: "DELIVERED" as OrderListView, preset: "ALL" as DashboardPreset }
+  ] as const;
+
+  const counts = await Promise.all(
+    tabDefinitions.map(async (tab) => {
+      const orders = await getOrdersList({
+        view: tab.view,
+        query: filters.query,
+        phase: "ALL",
+        status: filters.status,
+        payment: filters.payment,
+        invoice: filters.invoice,
+        priority: filters.priority,
+        customerType: filters.customerType,
+        quote: filters.quote,
+        preset: tab.preset,
+        sort: "delivery",
+        direction: tab.view === "DELIVERED" ? "desc" : "asc"
+      });
+
+      return [tab.key, orders.length] as const;
+    })
+  );
+
+  return Object.fromEntries(counts) as Record<(typeof tabDefinitions)[number]["key"], number>;
 }
 
 export async function getOrderById(id: string) {

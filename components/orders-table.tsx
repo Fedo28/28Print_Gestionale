@@ -7,6 +7,7 @@ import { MarkOrderInvoicedButton } from "@/components/mark-order-invoiced-button
 import { QuickOrderControlForms, QuickOrderTriggerButton } from "@/components/quick-order-controls";
 import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
 import { StatusPills } from "@/components/status-pills";
+import { getDisplayOrderLabel } from "@/lib/order-display";
 import { priorityLabels } from "@/lib/constants";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import { buildOrdersFilterHref, type OrderListFilters, type OrderListView, type OrderSortDirection, type OrderSortField } from "@/lib/order-filters";
@@ -129,6 +130,9 @@ export function OrdersTable({
           orders.map((order) => {
             const isOpen = openOrderId === order.id;
             const panelId = `order-row-panel-${order.id}`;
+            const displayLabel = getDisplayOrderLabel(order.orderCode, order.title);
+            const secondaryLabel = order.title?.trim() && order.title.trim() !== displayLabel ? order.title.trim() : null;
+            const entryMeta = [secondaryLabel, order.isQuote ? "Preventivo" : null].filter(Boolean).join(" • ");
             const priorityToneClass = view === "ACTIVE" ? getPriorityToneClass(order.priority) : "";
             const deliveredLabel = order.deliveredAt ? formatDateTime(order.deliveredAt) : formatDateTime(order.deliveryAt);
             const whatsappNotified = order.mainPhase === "SVILUPPO_COMPLETATO" && Boolean(order.readyWhatsappSentAt);
@@ -150,21 +154,18 @@ export function OrdersTable({
                   <td data-label="Ordine">
                     <div className="order-mobile-card">
                       <div className="order-mobile-card-head">
-                        <div className="order-inline-head">
+                        <div className="order-inline-head order-inline-head-spread">
+                          <div className="order-mobile-card-copy">
+                            <Link href={`/orders/${order.id}`}>
+                              <div className="order-code order-display-title">{displayLabel}</div>
+                            </Link>
+                            {entryMeta ? <div className="subtle order-entry-meta">{entryMeta}</div> : null}
+                          </div>
                           <QuickOrderTriggerButton
                             ariaControls={panelId}
                             isOpen={isOpen}
                             onClick={() => setOpenOrderId((current) => (current === order.id ? null : order.id))}
                           />
-                          <div className="order-mobile-card-copy">
-                            <Link href={`/orders/${order.id}`}>
-                              <div className="order-code">{order.orderCode}</div>
-                            </Link>
-                            <div className="subtle">
-                              {order.title}
-                              {order.isQuote ? " • Preventivo" : ""}
-                            </div>
-                          </div>
                         </div>
                         <div className="order-mobile-card-total">
                           <strong>{formatCurrency(order.totalCents)}</strong>
@@ -216,20 +217,17 @@ export function OrdersTable({
                     </div>
 
                     <div className="order-desktop-cell">
-                      <div className="order-inline-head">
+                      <div className="order-inline-head order-inline-head-spread">
+                        <Link href={`/orders/${order.id}`}>
+                          <div className="order-code order-display-title">{displayLabel}</div>
+                        </Link>
                         <QuickOrderTriggerButton
                           ariaControls={panelId}
                           isOpen={isOpen}
                           onClick={() => setOpenOrderId((current) => (current === order.id ? null : order.id))}
                         />
-                        <Link href={`/orders/${order.id}`}>
-                          <div className="order-code">{order.orderCode}</div>
-                        </Link>
                       </div>
-                      <div className="subtle">
-                        {order.title}
-                        {order.isQuote ? " • Preventivo" : ""}
-                      </div>
+                      {entryMeta ? <div className="subtle order-entry-meta">{entryMeta}</div> : null}
                     </div>
                   </td>
                   <td data-label="Cliente">

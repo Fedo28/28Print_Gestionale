@@ -4,6 +4,7 @@ import { QuickOrderControls } from "@/components/quick-order-controls";
 import { StatusPills } from "@/components/status-pills";
 import { requireAuth } from "@/lib/auth";
 import { formatCompactDate } from "@/lib/format";
+import { getDisplayOrderLabel } from "@/lib/order-display";
 import { getProductionQueues } from "@/lib/orders";
 import { getWorkdayHighlight } from "@/lib/workday-highlights";
 
@@ -52,7 +53,7 @@ function QueueColumn({
                       status={order.operationalStatus}
                     />
                     <Link className="order-code" href={`/orders/${order.id}`}>
-                      {order.orderCode}
+                      {getDisplayOrderLabel(order.orderCode, order.title)}
                     </Link>
                   </div>
                   <div className="subtle compact-order-customer">{order.customer.name}</div>

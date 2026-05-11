@@ -10,7 +10,9 @@ export type BillboardPdfUpload = {
 };
 
 export type CreateBillboardBookingInput = {
-  billboardAssetId: string;
+  billboardAssetId?: string;
+  billboardAssetIds?: string[];
+  monitorSlotsByAssetId?: Record<string, number | null | undefined>;
   customerId: string;
   status?: BillboardBookingStatus;
   startsAt: Date;
@@ -228,6 +230,10 @@ export function reservesBillboardAsset(status: BillboardBookingStatus) {
   return status !== "SCADUTO";
 }
 
+export function getBillboardAssetCapacity(kind: BillboardAssetKind) {
+  return kind === "MONITOR" ? 6 : 1;
+}
+
 export function buildBillboardAssetSeed() {
   return DEFAULT_BILLBOARD_ASSET_DEFINITIONS.map((asset) => ({
     code: asset.code,
@@ -332,13 +338,21 @@ function endOfMonth(date: Date) {
 }
 
 export async function getBillboardSurface(referenceDate: Date) {
-  await ensureBillboardAssets();
+  const activeAssetsCount = await prisma.billboardAsset.count({
+    where: {
+      active: true
+    }
+  });
+
+  if (activeAssetsCount === 0) {
+    await ensureBillboardAssets();
+  }
 
   const today = startOfDay(new Date());
   const monthStart = startOfMonth(referenceDate);
   const monthEnd = endOfMonth(referenceDate);
 
-  const [assets, monthBookings, upcomingBookings, historyBookings] = await Promise.all([
+  const [assets, monthBookings] = await Promise.all([
     prisma.billboardAsset.findMany({
       where: { active: true },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
@@ -355,8 +369,7 @@ export async function getBillboardSurface(referenceDate: Date) {
           include: {
             customer: true
           },
-          orderBy: [{ startsAt: "asc" }, { createdAt: "asc" }],
-          take: 3
+          orderBy: [{ startsAt: "asc" }, { createdAt: "asc" }]
         }
       }
     }),
@@ -377,95 +390,21 @@ export async function getBillboardSurface(referenceDate: Date) {
         billboardAsset: true
       },
       orderBy: [{ startsAt: "asc" }, { createdAt: "asc" }]
-    }),
-    prisma.billboardBooking.findMany({
-      where: {
-        status: {
-          not: "SCADUTO"
-        },
-        endsAt: {
-          gte: today
-        }
-      },
-      include: {
-        customer: true,
-        billboardAsset: true
-      },
-      orderBy: [{ startsAt: "asc" }, { createdAt: "asc" }],
-      take: 18
-    }),
-    prisma.billboardBooking.findMany({
-      include: {
-        customer: true,
-        billboardAsset: true
-      },
-      orderBy: [{ startsAt: "desc" }, { createdAt: "desc" }]
     })
   ]);
 
-  const customerHistoryMap = new Map<
-    string,
-    {
-      customer: (typeof historyBookings)[number]["customer"];
-      bookingCount: number;
-      confirmedCount: number;
-      optionCount: number;
-      totalValueCents: number;
-      totalPaidCents: number;
-      totalBalanceDueCents: number;
-      latestStartsAt: Date;
-      latestEndsAt: Date;
-      latestAssets: string[];
-    }
-  >();
-
-  for (const booking of historyBookings) {
-    const current = customerHistoryMap.get(booking.customerId);
-    if (!current) {
-      customerHistoryMap.set(booking.customerId, {
-        customer: booking.customer,
-        bookingCount: 1,
-        confirmedCount: booking.status === "CONFERMATO" ? 1 : 0,
-        optionCount: booking.status === "OPZIONATO" ? 1 : 0,
-        totalValueCents: booking.priceCents,
-        totalPaidCents: booking.paidCents,
-        totalBalanceDueCents: booking.balanceDueCents,
-        latestStartsAt: booking.startsAt,
-        latestEndsAt: booking.endsAt,
-        latestAssets: [booking.billboardAsset.name]
-      });
-      continue;
-    }
-
-    current.bookingCount += 1;
-    current.confirmedCount += booking.status === "CONFERMATO" ? 1 : 0;
-    current.optionCount += booking.status === "OPZIONATO" ? 1 : 0;
-    current.totalValueCents += booking.priceCents;
-    current.totalPaidCents += booking.paidCents;
-    current.totalBalanceDueCents += booking.balanceDueCents;
-
-    if (!current.latestAssets.includes(booking.billboardAsset.name) && current.latestAssets.length < 3) {
-      current.latestAssets.push(booking.billboardAsset.name);
-    }
-  }
-
-  const customerHistory = Array.from(customerHistoryMap.values()).sort(
-    (left, right) =>
-      right.latestStartsAt.getTime() - left.latestStartsAt.getTime() ||
-      right.totalValueCents - left.totalValueCents ||
-      left.customer.name.localeCompare(right.customer.name, "it")
-  );
-
   return {
     assets,
-    monthBookings,
-    upcomingBookings,
-    historyBookings,
-    customerHistory
+    monthBookings
   };
 }
 
 export async function createBillboardBooking(input: CreateBillboardBookingInput) {
+  const bookings = await createBillboardBookings(input);
+  return bookings[0];
+}
+
+export async function createBillboardBookings(input: CreateBillboardBookingInput) {
   if (input.endsAt.getTime() < input.startsAt.getTime()) {
     throw new Error("La data fine non puo essere precedente alla data inizio.");
   }
@@ -474,17 +413,33 @@ export async function createBillboardBooking(input: CreateBillboardBookingInput)
   const priceCents = Math.round(input.priceCents ?? 0);
   const paidCents = Math.round(input.paidCents ?? 0);
   const balanceDueCents = calculateBillboardBookingBalanceCents(priceCents, paidCents);
+  const monitorSlotsByAssetId = input.monitorSlotsByAssetId || {};
+  const assetIds = Array.from(
+    new Set(
+      (input.billboardAssetIds && input.billboardAssetIds.length > 0 ? input.billboardAssetIds : [input.billboardAssetId || ""])
+        .map((value) => value.trim())
+        .filter(Boolean)
+    )
+  );
 
   if (priceCents < 0 || paidCents < 0) {
     throw new Error("Prezzo e incassato devono essere valori positivi.");
   }
 
+  if (assetIds.length === 0) {
+    throw new Error("Impianto pubblicitario non trovato.");
+  }
+
   return prisma.$transaction(async (tx) => {
-    const asset = await tx.billboardAsset.findUnique({
-      where: { id: input.billboardAssetId }
+    const assets = await tx.billboardAsset.findMany({
+      where: {
+        id: {
+          in: assetIds
+        }
+      }
     });
 
-    if (!asset || !asset.active) {
+    if (assets.length !== assetIds.length || assets.some((asset) => !asset.active)) {
       throw new Error("Impianto pubblicitario non trovato.");
     }
 
@@ -496,48 +451,88 @@ export async function createBillboardBooking(input: CreateBillboardBookingInput)
       throw new Error("Cliente non trovato.");
     }
 
-    if (reservesBillboardAsset(status)) {
-      const overlappingBooking = await tx.billboardBooking.findFirst({
-        where: {
-          billboardAssetId: input.billboardAssetId,
-          status: {
-            not: "SCADUTO"
-          },
-          startsAt: {
-            lte: input.endsAt
-          },
-          endsAt: {
-            gte: input.startsAt
+    const createdBookings = [];
+
+    for (const assetId of assetIds) {
+      const asset = assets.find((entry) => entry.id === assetId);
+      if (!asset) {
+        throw new Error("Impianto pubblicitario non trovato.");
+      }
+
+      if (reservesBillboardAsset(status)) {
+        const overlappingBookings = await tx.billboardBooking.findMany({
+          where: {
+            billboardAssetId: assetId,
+            status: {
+              not: "SCADUTO"
+            },
+            startsAt: {
+              lte: input.endsAt
+            },
+            endsAt: {
+              gte: input.startsAt
+            }
           }
+        });
+
+        const capacity = getBillboardAssetCapacity(asset.kind);
+        if (asset.kind === "MONITOR") {
+          const requestedSlot = monitorSlotsByAssetId[assetId] ?? null;
+          const occupiedSlots = new Set(
+            overlappingBookings
+              .map((booking) => booking.monitorSlot)
+              .filter((slot): slot is number => typeof slot === "number" && slot >= 1 && slot <= 6)
+          );
+          const firstFreeSlot = [1, 2, 3, 4, 5, 6].find((slot) => !occupiedSlots.has(slot)) ?? null;
+
+          if (requestedSlot !== null) {
+            if (requestedSlot < 1 || requestedSlot > 6) {
+              throw new Error("Lo slot del monitor non e valido.");
+            }
+
+            if (occupiedSlots.has(requestedSlot)) {
+              throw new Error(`Lo slot ${requestedSlot} di questo monitor e gia occupato nel periodo indicato.`);
+            }
+          } else if (overlappingBookings.length >= capacity) {
+            throw new Error("Questo monitor ha gia occupato tutti e 6 gli spazi nel periodo indicato.");
+          }
+
+          monitorSlotsByAssetId[assetId] = requestedSlot ?? firstFreeSlot;
+        } else if (overlappingBookings.length >= capacity) {
+          throw new Error("Questo impianto e gia prenotato nel periodo indicato.");
+        }
+      }
+
+      const resolvedMonitorSlot =
+        asset.kind === "MONITOR" ? Math.max(1, Math.min(6, monitorSlotsByAssetId[assetId] ?? 1)) : null;
+
+      const created = await tx.billboardBooking.create({
+        data: {
+          billboardAssetId: assetId,
+          customerId: input.customerId,
+          status,
+          monitorSlot: resolvedMonitorSlot,
+          startsAt: input.startsAt,
+          endsAt: input.endsAt,
+          priceCents,
+          paidCents,
+          balanceDueCents,
+          note: input.note?.trim() || undefined,
+          pdfFileName: input.pdf?.fileName,
+          pdfFilePath: input.pdf?.filePath,
+          pdfMimeType: input.pdf?.mimeType,
+          pdfSizeBytes: input.pdf?.sizeBytes
+        },
+        include: {
+          customer: true,
+          billboardAsset: true
         }
       });
 
-      if (overlappingBooking) {
-        throw new Error("Questo impianto e gia prenotato nel periodo indicato.");
-      }
+      createdBookings.push(created);
     }
 
-    return tx.billboardBooking.create({
-      data: {
-        billboardAssetId: input.billboardAssetId,
-        customerId: input.customerId,
-        status,
-        startsAt: input.startsAt,
-        endsAt: input.endsAt,
-        priceCents,
-        paidCents,
-        balanceDueCents,
-        note: input.note?.trim() || undefined,
-        pdfFileName: input.pdf?.fileName,
-        pdfFilePath: input.pdf?.filePath,
-        pdfMimeType: input.pdf?.mimeType,
-        pdfSizeBytes: input.pdf?.sizeBytes
-      },
-      include: {
-        customer: true,
-        billboardAsset: true
-      }
-    });
+    return createdBookings;
   });
 }
 

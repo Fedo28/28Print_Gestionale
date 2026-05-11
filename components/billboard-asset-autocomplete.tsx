@@ -19,11 +19,12 @@ type BillboardAssetAutocompleteProps = {
   onQueryChange: (value: string) => void;
   onSelect: (asset: BillboardAssetAutocompleteOption) => void;
   label: string;
-  placeholder: string;
+  placeholder?: string;
   helperText?: string;
   selectedAssetId?: string | null;
   emptyMessage?: string;
   maxSuggestions?: number;
+  showMeta?: boolean;
 };
 
 export function BillboardAssetAutocomplete({
@@ -32,11 +33,12 @@ export function BillboardAssetAutocomplete({
   onQueryChange,
   onSelect,
   label,
-  placeholder,
+  placeholder = "",
   helperText,
   selectedAssetId,
   emptyMessage = "Nessun impianto trovato. Prova con nome, codice o luogo.",
-  maxSuggestions = 6
+  maxSuggestions = 6,
+  showMeta = true
 }: BillboardAssetAutocompleteProps) {
   const [isFocused, setIsFocused] = useState(false);
   const deferredQuery = useDeferredValue(query);
@@ -61,10 +63,12 @@ export function BillboardAssetAutocomplete({
         spellCheck={false}
         value={query}
       />
-      <div className="asset-autocomplete-meta">
-        <span className="subtle">{assets.length} impianti disponibili</span>
-        {deferredQuery.trim() ? <span className="subtle">{rankedResults.length} risultati trovati</span> : null}
-      </div>
+      {showMeta ? (
+        <div className="asset-autocomplete-meta">
+          <span className="subtle">{assets.length} impianti disponibili</span>
+          {deferredQuery.trim() ? <span className="subtle">{rankedResults.length} risultati trovati</span> : null}
+        </div>
+      ) : null}
       {helperText ? <p className="hint asset-autocomplete-hint">{helperText}</p> : null}
 
       {showSuggestions ? (

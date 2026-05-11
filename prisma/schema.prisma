@@ -256,6 +256,8 @@ model OrderHistory {
   type        HistoryType
   description String
   details     String?
+  snapshotBefore Json?
+  snapshotAfter  Json?
   createdAt   DateTime    @default(now())
   order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
@@ -291,6 +293,7 @@ model BillboardBooking {
   billboardAssetId String
   customerId       String
   status           BillboardBookingStatus @default(CONFERMATO)
+  monitorSlot      Int?
   startsAt         DateTime
   endsAt           DateTime
   priceCents       Int            @default(0)
@@ -307,6 +310,7 @@ model BillboardBooking {
   customer         Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict)
 
   @@index([billboardAssetId, startsAt, endsAt])
+  @@index([billboardAssetId, monitorSlot, startsAt, endsAt])
   @@index([customerId, startsAt])
   @@index([startsAt])
   @@index([endsAt])

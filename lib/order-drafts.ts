@@ -21,6 +21,7 @@ export type OrderDraftFieldValues = {
 };
 
 export type OrderDraftItemSnapshot = {
+  bodyMode: boolean;
   serviceQuery: string;
   photoMode: boolean;
   photoFormat: string;
@@ -129,6 +130,7 @@ export function parseOrderDraftSnapshot(raw: string | null | undefined): OrderDr
       fields,
       items: Array.isArray(parsed.items)
         ? parsed.items.map((item) => ({
+            bodyMode: Boolean(item?.bodyMode),
             serviceQuery: typeof item?.serviceQuery === "string" ? item.serviceQuery : "",
             photoMode: Boolean(item?.photoMode),
             photoFormat: typeof item?.photoFormat === "string" ? item.photoFormat : "",

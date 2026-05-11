@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Priority } from "@prisma/client";
 import { priorityLabels } from "@/lib/constants";
 import { formatCurrency, formatDateTime } from "@/lib/format";
+import { getDisplayOrderLabel } from "@/lib/order-display";
 import { getPriorityToneClass } from "@/lib/priorities";
 
 type QuoteRow = {
@@ -42,11 +43,12 @@ export function QuotesTable({ quotes }: { quotes: QuoteRow[] }) {
         ) : (
           quotes.map((quote) => {
             const priorityToneClass = getPriorityToneClass(quote.priority);
+            const displayLabel = getDisplayOrderLabel(quote.orderCode, quote.title);
             return (
             <tr className={`quote-row ${priorityToneClass}`} key={quote.id}>
               <td data-label="Preventivo">
-                <div className="order-code">{quote.orderCode}</div>
-                <div className="subtle">{quote.title}</div>
+                <div className="order-code">{displayLabel}</div>
+                {quote.title && quote.title !== displayLabel ? <div className="subtle">{quote.title}</div> : null}
               </td>
               <td data-label="Cliente">
                 <strong>{quote.customer.name}</strong>

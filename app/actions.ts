@@ -2,10 +2,8 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { ATTACHMENT_MAX_SIZE_BYTES, formatAttachmentMaxSize } from "@/lib/attachment-utils";
-import { createBillboardBooking, parseBillboardBookingDate } from "@/lib/billboards";
+import { createBillboardBookings, parseBillboardBookingDate } from "@/lib/billboards";
 import {
-  parseBillboardBookingStatus,
   parseCustomerType,
   parseBooleanFlag,
   parseCurrencyToCents,
@@ -33,6 +31,7 @@ import {
   markOrderReady,
   updateOrderInvoiceStatus,
   recordPayment,
+  restoreOrderHistoryEntry,
   toggleOrderItemDelivery,
   transitionOrderPhase,
   updateCustomer,
@@ -45,7 +44,7 @@ import { authenticateUser, createSessionForUser, describeLoginFailure, requireAd
 import { prisma } from "@/lib/prisma";
 import { getRequestBaseUrl } from "@/lib/request-url";
 import { saveSetting } from "@/lib/settings";
-import { cleanupOrderAttachments, deleteStoredAttachment, uploadBillboardBookingPdf } from "@/lib/storage";
+import { cleanupOrderAttachments } from "@/lib/storage";
 import {
   createStaffUser,
   getStaffInviteConfig,
@@ -249,10 +248,8 @@ export async function updateOrderItemAction(formData: FormData) {
   await requireAuth();
   const orderId = String(formData.get("orderId") || "");
   const itemId = String(formData.get("itemId") || "");
-  const discountModeRaw = String(formData.get("discountMode") || "NONE");
-  const extraModeRaw = String(formData.get("extraMode") || "NONE");
-  const discountMode = (["NONE", "AMOUNT", "PERCENT"].includes(discountModeRaw) ? discountModeRaw : "NONE") as DiscountMode;
-  const extraMode = (["NONE", "AMOUNT", "PERCENT"].includes(extraModeRaw) ? extraModeRaw : "NONE") as DiscountMode;
+  const discount = parseFlexibleAdjustmentInput(formData.get("discountValue")?.toString() || null);
+  const extra = parseFlexibleAdjustmentInput(formData.get("extraValue")?.toString() || null);
   const quantityRaw = String(formData.get("quantity") || "").trim().replace(",", ".");
   const quantity = Number.parseFloat(quantityRaw || "1");
 
@@ -263,14 +260,10 @@ export async function updateOrderItemAction(formData: FormData) {
     serviceCatalogId: String(formData.get("serviceCatalogId") || "").trim() || undefined,
     quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
     catalogBasePriceCents: parseCurrencyToCents(formData.get("catalogBasePrice")?.toString() || null),
-    discountMode,
-    discountValue: parseCurrencyToCents(
-      discountMode === "PERCENT" ? null : formData.get("discountValue")?.toString() || null
-    ) || Math.max(0, Number.parseInt(String(formData.get("discountValue") || "0"), 10) || 0),
-    extraMode,
-    extraValue: parseCurrencyToCents(
-      extraMode === "PERCENT" ? null : formData.get("extraValue")?.toString() || null
-    ) || Math.max(0, Number.parseInt(String(formData.get("extraValue") || "0"), 10) || 0),
+    discountMode: discount.mode,
+    discountValue: discount.value,
+    extraMode: extra.mode,
+    extraValue: extra.value,
     format: String(formData.get("format") || ""),
     material: String(formData.get("material") || ""),
     finishing: String(formData.get("finishing") || ""),
@@ -281,13 +274,21 @@ export async function updateOrderItemAction(formData: FormData) {
   redirect(`/orders/${orderId}`);
 }
 
+export async function restoreOrderHistoryAction(formData: FormData) {
+  await requireAuth();
+  const orderId = String(formData.get("orderId") || "");
+  const historyId = String(formData.get("historyId") || "");
+
+  await restoreOrderHistoryEntry(orderId, historyId);
+  revalidateOperationalSurfaces(orderId);
+  redirect(`/orders/${orderId}#order-history-panel`);
+}
+
 export async function createOrderItemAction(formData: FormData) {
   await requireAuth();
   const orderId = String(formData.get("orderId") || "");
-  const discountModeRaw = String(formData.get("discountMode") || "NONE");
-  const extraModeRaw = String(formData.get("extraMode") || "NONE");
-  const discountMode = (["NONE", "AMOUNT", "PERCENT"].includes(discountModeRaw) ? discountModeRaw : "NONE") as DiscountMode;
-  const extraMode = (["NONE", "AMOUNT", "PERCENT"].includes(extraModeRaw) ? extraModeRaw : "NONE") as DiscountMode;
+  const discount = parseFlexibleAdjustmentInput(formData.get("discountValue")?.toString() || null);
+  const extra = parseFlexibleAdjustmentInput(formData.get("extraValue")?.toString() || null);
   const quantityRaw = String(formData.get("quantity") || "").trim().replace(",", ".");
   const quantity = Number.parseFloat(quantityRaw || "1");
 
@@ -297,14 +298,10 @@ export async function createOrderItemAction(formData: FormData) {
     serviceCatalogId: String(formData.get("serviceCatalogId") || "").trim() || undefined,
     quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
     catalogBasePriceCents: parseCurrencyToCents(formData.get("catalogBasePrice")?.toString() || null),
-    discountMode,
-    discountValue: parseCurrencyToCents(
-      discountMode === "PERCENT" ? null : formData.get("discountValue")?.toString() || null
-    ) || Math.max(0, Number.parseInt(String(formData.get("discountValue") || "0"), 10) || 0),
-    extraMode,
-    extraValue: parseCurrencyToCents(
-      extraMode === "PERCENT" ? null : formData.get("extraValue")?.toString() || null
-    ) || Math.max(0, Number.parseInt(String(formData.get("extraValue") || "0"), 10) || 0),
+    discountMode: discount.mode,
+    discountValue: discount.value,
+    extraMode: extra.mode,
+    extraValue: extra.value,
     format: String(formData.get("format") || ""),
     material: String(formData.get("material") || ""),
     finishing: String(formData.get("finishing") || ""),
@@ -443,11 +440,15 @@ export async function markReadyAction(formData: FormData) {
 export async function createBillboardBookingAction(formData: FormData) {
   await requireAuth();
 
-  const billboardAssetId = String(formData.get("billboardAssetId") || "").trim();
+  const billboardAssetIds = formData
+    .getAll("billboardAssetIds")
+    .map((entry) => String(entry || "").trim())
+    .filter(Boolean);
+  const monitorSlotsByAssetId = parseBillboardMonitorSlots(formData.get("monitorSlotsPayload")?.toString() || null);
   const customerId = String(formData.get("customerId") || "").trim();
 
-  if (!billboardAssetId) {
-    throw new Error("Seleziona un impianto pubblicitario.");
+  if (billboardAssetIds.length === 0) {
+    throw new Error("Seleziona almeno un impianto pubblicitario.");
   }
 
   if (!customerId) {
@@ -456,67 +457,50 @@ export async function createBillboardBookingAction(formData: FormData) {
 
   const startsAt = parseBillboardBookingDate(formData.get("startsAt")?.toString() || null, "Data inizio");
   const endsAt = parseBillboardBookingDate(formData.get("endsAt")?.toString() || null, "Data fine");
-  const status = parseBillboardBookingStatus(formData.get("status")?.toString() || null);
   const priceCents = parseCurrencyToCents(formData.get("price")?.toString() || null);
   const paidCents = parseCurrencyToCents(formData.get("paid")?.toString() || null);
   const note = String(formData.get("note") || "");
-  const pdfEntry = formData.get("pdf");
-  let storedPdf:
-    | {
-        fileName: string;
-        filePath: string;
-        mimeType: string;
-        sizeBytes: number;
-      }
-    | null = null;
-
-  if (pdfEntry instanceof File && pdfEntry.size > 0) {
-    if (pdfEntry.size > ATTACHMENT_MAX_SIZE_BYTES) {
-      throw new Error(`PDF troppo grande. Limite ${formatAttachmentMaxSize()}.`);
-    }
-
-    const mimeType = pdfEntry.type || "application/pdf";
-    if (mimeType !== "application/pdf" && !pdfEntry.name.toLowerCase().endsWith(".pdf")) {
-      throw new Error("Puoi allegare solo file PDF.");
-    }
-
-    const buffer = Buffer.from(await pdfEntry.arrayBuffer());
-    const stored = await uploadBillboardBookingPdf({
-      entityId: billboardAssetId,
-      fileName: pdfEntry.name,
-      mimeType,
-      buffer
-    });
-
-    storedPdf = {
-      fileName: pdfEntry.name,
-      filePath: stored.filePath,
-      mimeType,
-      sizeBytes: pdfEntry.size
-    };
-  }
 
   try {
-    const booking = await createBillboardBooking({
-      billboardAssetId,
+    const bookings = await createBillboardBookings({
+      billboardAssetIds,
+      monitorSlotsByAssetId,
       customerId,
-      status,
       startsAt,
       endsAt,
       priceCents,
       paidCents,
-      note,
-      pdf: storedPdf
+      note
     });
 
     revalidateBillboardSurfaces();
-    redirect(`/billboards?date=${formatDateKey(booking.startsAt)}`);
+    redirect(`/billboards?date=${formatDateKey(bookings[0].startsAt)}`);
   } catch (error) {
-    if (storedPdf) {
-      await deleteStoredAttachment(storedPdf.filePath).catch(() => undefined);
+    throw error;
+  }
+}
+
+function parseBillboardMonitorSlots(raw: string | null) {
+  if (!raw || !raw.trim()) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const next: Record<string, number> = {};
+
+    for (const [assetId, value] of Object.entries(parsed)) {
+      const numeric = Number(value);
+      if (!assetId.trim() || !Number.isInteger(numeric)) {
+        continue;
+      }
+
+      next[assetId] = numeric;
     }
 
-    throw error;
+    return next;
+  } catch {
+    return {};
   }
 }
 

@@ -51,11 +51,6 @@
       "static/chunks/main-app.js",
       "static/chunks/app/calendar/page.js"
     ],
-    "/billboards/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/billboards/page.js"
-    ],
     "/production/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -75,6 +70,16 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/orders/[id]/page.js"
+    ],
+    "/_not-found/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/_not-found/page.js"
+    ],
+    "/billboards/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/billboards/page.js"
     ]
   }
 }

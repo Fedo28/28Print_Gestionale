@@ -6,6 +6,7 @@ import { StatusPills } from "@/components/status-pills";
 import { requireAuth } from "@/lib/auth";
 import { customerTypeLabels } from "@/lib/constants";
 import { formatCurrency, formatDateTime } from "@/lib/format";
+import { getDisplayOrderLabel } from "@/lib/order-display";
 import { getCustomerById } from "@/lib/orders";
 
 export const dynamic = "force-dynamic";
@@ -118,14 +119,18 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
               <article className="mini-item" key={order.id}>
                 <div className="list-header">
                   <Link href={`/orders/${order.id}`} prefetch={false}>
-                    <strong>{order.orderCode}</strong>
+                    <strong>{getDisplayOrderLabel(order.orderCode, order.title)}</strong>
                   </Link>
                   <span>{formatCurrency(order.totalCents)}</span>
                 </div>
-                <div className="subtle">
-                  {order.title}
-                  {order.isQuote ? " • Preventivo" : ""}
-                </div>
+                {order.title && order.title !== getDisplayOrderLabel(order.orderCode, order.title) ? (
+                  <div className="subtle">
+                    {order.title}
+                    {order.isQuote ? " • Preventivo" : ""}
+                  </div>
+                ) : order.isQuote ? (
+                  <div className="subtle">Preventivo</div>
+                ) : null}
                 <div className="subtle">{formatDateTime(order.deliveryAt)}</div>
                 <StatusPills
                   isQuote={order.isQuote}

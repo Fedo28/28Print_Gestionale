@@ -1,9 +1,10 @@
-import { InvoiceStatus, MainPhase, OperationalStatus, PaymentStatus, Priority } from "@prisma/client";
+import { CustomerType, InvoiceStatus, MainPhase, OperationalStatus, PaymentStatus, Priority } from "@prisma/client";
 import Link from "next/link";
 import { OrdersTable } from "@/components/orders-table";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
 import {
+  customerTypeLabels,
   invoiceStatusLabels,
   mainPhaseLabels,
   operationalStatusLabels,
@@ -13,7 +14,9 @@ import {
 } from "@/lib/constants";
 import {
   buildOrdersFilterHref,
+  type CustomerTypeFilter,
   type DashboardPreset,
+  type OrderListFilters,
   type OrderListView,
   type OrderSortDirection,
   type OrderSortField,
@@ -25,9 +28,10 @@ import {
   parsePaymentFilter,
   parsePhaseFilter,
   parsePriorityFilter,
-  parseStatusFilter
+  parseStatusFilter,
+  parseCustomerTypeFilter
 } from "@/lib/order-filters";
-import { getOrdersList } from "@/lib/orders";
+import { getOrdersList, getOrdersTabCounts } from "@/lib/orders";
 import { automaticPriorityValues } from "@/lib/priorities";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +44,7 @@ type Props = {
     payment?: PaymentStatus | "ALL" | string;
     invoice?: InvoiceStatus | "ALL" | string;
     priority?: Priority | "ALL" | string;
+    customerType?: CustomerType | "ALL" | string;
     view?: string;
     preset?: string;
     sort?: string;
@@ -62,24 +67,37 @@ export default async function OrdersPage({ searchParams }: Props) {
     payment: parsePaymentFilter(searchParams?.payment || null),
     invoice: parseInvoiceFilter(searchParams?.invoice || null),
     priority: parsePriorityFilter(searchParams?.priority || null),
+    customerType: parseCustomerTypeFilter(searchParams?.customerType || null),
     preset: view === "DELIVERED" ? "ALL" : parseDashboardPreset(searchParams?.preset || null),
     sort,
     dir
   };
   const activeTab = getOrdersTab(filters.view, filters.preset);
-  const orders = await getOrdersList({
-    view: filters.view,
-    query: filters.q,
-    phase: filters.phase,
-    status: filters.status,
-    payment: filters.payment,
-    invoice: filters.invoice,
-    priority: filters.priority,
-    quote: "ORDER",
-    preset: filters.preset,
-    sort: filters.sort,
-    direction: filters.dir
-  });
+  const [orders, tabCounts] = await Promise.all([
+    getOrdersList({
+      view: filters.view,
+      query: filters.q,
+      phase: filters.phase,
+      status: filters.status,
+      payment: filters.payment,
+      invoice: filters.invoice,
+      priority: filters.priority,
+      customerType: filters.customerType,
+      quote: "ORDER",
+      preset: filters.preset,
+      sort: filters.sort,
+      direction: filters.dir
+    }),
+    getOrdersTabCounts({
+      query: filters.q,
+      status: filters.status,
+      payment: filters.payment,
+      invoice: filters.invoice,
+      priority: filters.priority,
+      customerType: filters.customerType,
+      quote: "ORDER"
+    })
+  ]);
   const activeFilters = [
     filters.q
       ? {
@@ -123,17 +141,29 @@ export default async function OrdersPage({ searchParams }: Props) {
           href: buildOrdersFilterHref({ ...filters, priority: "ALL" })
         }
       : null,
+    filters.customerType !== "ALL"
+      ? {
+          key: "customerType",
+          label: `Cliente: ${customerTypeLabels[filters.customerType]}`,
+          href: buildOrdersFilterHref({ ...filters, customerType: "ALL" })
+        }
+      : null,
   ].filter((entry): entry is { key: string; label: string; href: string } => Boolean(entry));
   const hasAdvancedFilters =
-    filters.phase !== "ALL" || filters.status !== "ALL" || filters.payment !== "ALL" || filters.invoice !== "ALL" || filters.priority !== "ALL";
+    filters.phase !== "ALL" ||
+    filters.status !== "ALL" ||
+    filters.payment !== "ALL" ||
+    filters.invoice !== "ALL" ||
+    filters.priority !== "ALL" ||
+    filters.customerType !== "ALL";
   const tabLinks = [
-    { key: "ACTIVE_ALL", label: "Attivi", href: buildOrdersTabHref("ACTIVE_ALL", filters.q, filters.sort, filters.dir) },
-    { key: "TODAY", label: "Priorita", href: buildOrdersTabHref("TODAY", filters.q, filters.sort, filters.dir) },
-    { key: "TO_START", label: "Da avviare", href: buildOrdersTabHref("TO_START", filters.q, filters.sort, filters.dir) },
-    { key: "WORKING", label: "In lavorazione", href: buildOrdersTabHref("WORKING", filters.q, filters.sort, filters.dir) },
-    { key: "BLOCKED", label: "Sospesi", href: buildOrdersTabHref("BLOCKED", filters.q, filters.sort, filters.dir) },
-    { key: "READY", label: "Pronti", href: buildOrdersTabHref("READY", filters.q, filters.sort, filters.dir) },
-    { key: "DELIVERED", label: "Consegnati", href: buildOrdersTabHref("DELIVERED", filters.q, filters.sort, filters.dir) }
+    { key: "ACTIVE_ALL", label: "Attivi", count: tabCounts.ACTIVE_ALL, href: buildOrdersTabHref("ACTIVE_ALL", filters) },
+    { key: "TODAY", label: "Priorita", count: tabCounts.TODAY, href: buildOrdersTabHref("TODAY", filters) },
+    { key: "TO_START", label: "Da avviare", count: tabCounts.TO_START, href: buildOrdersTabHref("TO_START", filters) },
+    { key: "WORKING", label: "In lavorazione", count: tabCounts.WORKING, href: buildOrdersTabHref("WORKING", filters) },
+    { key: "BLOCKED", label: "Sospesi", count: tabCounts.BLOCKED, href: buildOrdersTabHref("BLOCKED", filters) },
+    { key: "READY", label: "Pronti", count: tabCounts.READY, href: buildOrdersTabHref("READY", filters) },
+    { key: "DELIVERED", label: "Consegnati", count: tabCounts.DELIVERED, href: buildOrdersTabHref("DELIVERED", filters) }
   ] as const;
 
   return (
@@ -157,7 +187,8 @@ export default async function OrdersPage({ searchParams }: Props) {
               replace
               scroll={false}
             >
-              {tab.label}
+              <span>{tab.label}</span>
+              <strong className="orders-tab-count">{tab.count}</strong>
             </Link>
           ))}
         </nav>
@@ -234,11 +265,21 @@ export default async function OrdersPage({ searchParams }: Props) {
                   ))}
                 </select>
               </div>
+              <div className="filters-field">
+                <select aria-label="Tipo cliente" defaultValue={filters.customerType} name="customerType">
+                  <option value="ALL">Tutti i clienti</option>
+                  {Object.entries(customerTypeLabels).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="advanced-filters-actions">
                 <button className="secondary" type="submit">
                   Applica filtri
                 </button>
-                <Link className="compact-link" href={buildOrdersTabHref(activeTab, filters.q, filters.sort, filters.dir)} prefetch={false}>
+                <Link className="compact-link" href={buildOrdersTabHref(activeTab, getOrdersTabResetFilters(filters))} prefetch={false}>
                   Pulisci avanzati
                 </Link>
               </div>
@@ -263,6 +304,14 @@ export default async function OrdersPage({ searchParams }: Props) {
       </section>
 
       <section className="card card-pad table-wrap orders-table-wrap orders-page-results-card">
+        <div className="list-header orders-results-head">
+          <div>
+            <h3>Risultati</h3>
+            <span className="subtle">
+              {orders.length} {orders.length === 1 ? "ordine nella lista" : "ordini nella lista"}
+            </span>
+          </div>
+        </div>
         <OrdersTable
           filters={filters}
           sortDirection={filters.dir}
@@ -308,16 +357,20 @@ function getOrdersTab(view: OrderListView, preset: DashboardPreset): OrdersTabKe
   return "ACTIVE_ALL";
 }
 
-function buildOrdersTabHref(tab: OrdersTabKey, q?: string, sort?: OrderSortField, dir?: OrderSortDirection) {
+function buildOrdersTabHref(
+  tab: OrdersTabKey,
+  filters: Pick<OrderListFilters, "q" | "status" | "payment" | "invoice" | "priority" | "customerType" | "sort" | "dir">
+) {
   const base = {
-    q,
+    q: filters.q,
     phase: "ALL" as const,
-    status: "ALL" as const,
-    payment: "ALL" as const,
-    invoice: "ALL" as const,
-    priority: "ALL" as const,
-    sort,
-    dir
+    status: filters.status,
+    payment: filters.payment,
+    invoice: filters.invoice,
+    priority: filters.priority,
+    customerType: filters.customerType as CustomerTypeFilter | undefined,
+    sort: filters.sort,
+    dir: filters.dir
   };
 
   switch (tab) {
@@ -336,4 +389,19 @@ function buildOrdersTabHref(tab: OrdersTabKey, q?: string, sort?: OrderSortField
     default:
       return buildOrdersFilterHref({ ...base, view: "ACTIVE", preset: "ALL" });
   }
+}
+
+function getOrdersTabResetFilters(
+  filters: Pick<OrderListFilters, "q" | "sort" | "dir">
+): Pick<OrderListFilters, "q" | "status" | "payment" | "invoice" | "priority" | "customerType" | "sort" | "dir"> {
+  return {
+    q: filters.q,
+    status: "ALL",
+    payment: "ALL",
+    invoice: "ALL",
+    priority: "ALL",
+    customerType: "ALL",
+    sort: filters.sort,
+    dir: filters.dir
+  };
 }

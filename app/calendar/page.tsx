@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { normalizeMainPhaseForWorkflow } from "@/lib/constants";
 import { requireAuth } from "@/lib/auth";
 import { formatCompactDate, formatDate, formatDateKey, formatWeekdayLabel } from "@/lib/format";
+import { getDisplayOrderLabel } from "@/lib/order-display";
 import { buildOrdersFilterHref } from "@/lib/order-filters";
 import { getCalendarOrders, getMonthlyAgendaOrders } from "@/lib/orders";
 
@@ -395,7 +396,7 @@ function MonthCalendar({
                     href={`/orders/${order.id}`}
                     key={order.id}
                     prefetch={false}
-                    title={`${order.orderCode} • ${order.customer.name}`}
+                    title={`${getDisplayOrderLabel(order.orderCode, order.title)} • ${order.customer.name}`}
                   >
                     <span className="calendar-entry-title">{getCalendarEntryTitle(order)}</span>
                   </Link>
@@ -589,7 +590,7 @@ function CalendarOrderCard({
       className={`calendar-entry-link calendar-entry-link-day calendar-entry-link-${tone}${variant === "appointment" ? " calendar-entry-link-accent" : ""}`}
       href={`/orders/${order.id}`}
       prefetch={false}
-      title={`${order.orderCode} • ${order.customer.name}`}
+      title={`${getDisplayOrderLabel(order.orderCode, order.title)} • ${order.customer.name}`}
     >
       <span className="calendar-entry-title">{title}</span>
     </Link>
@@ -608,7 +609,7 @@ function CalendarWeekItem({
       className={`calendar-entry-link calendar-entry-link-compact calendar-entry-link-uniform${variant === "appointment" ? " calendar-entry-link-uniform-appointment" : ""}`}
       href={`/orders/${order.id}`}
       prefetch={false}
-      title={`${order.orderCode} • ${order.customer.name}`}
+      title={`${getDisplayOrderLabel(order.orderCode, order.title)} • ${order.customer.name}`}
     >
       <span className="calendar-entry-title">{getCalendarEntryTitle(order)}</span>
     </Link>
