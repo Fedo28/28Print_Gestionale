@@ -111,6 +111,7 @@ export function BillboardsWorkspace({
   const [dayView, setDayView] = useState<BillboardDayView>(initialDayView);
   const [bookingOpen, setBookingOpen] = useState(initialBookingOpen);
   const [selectedAssetCode, setSelectedAssetCode] = useState<string | null>(initialAssetCode);
+  const [bookingSeedDayKey, setBookingSeedDayKey] = useState<string>(initialDayKey || defaultDateKeyFromMonth(todayKey, monthDateKey));
   const [calendarHeight, setCalendarHeight] = useState<number | null>(null);
   const calendarRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
@@ -140,6 +141,13 @@ export function BillboardsWorkspace({
     () => (kind === "ALL" ? assets : assets.filter((asset) => asset.kind === kind)),
     [assets, kind]
   );
+  const isImplicitSingleAssetView = !selectedAssetCode && filteredAssets.length === 1;
+  const calendarAsset =
+    selectedAsset && filteredAssets.some((asset) => asset.id === selectedAsset.id)
+      ? selectedAsset
+      : isImplicitSingleAssetView
+        ? filteredAssets[0]
+        : null;
   const filteredAssetIds = useMemo(() => new Set(filteredAssets.map((asset) => asset.id)), [filteredAssets]);
   const filteredMonthBookings = useMemo(
     () =>
@@ -151,6 +159,17 @@ export function BillboardsWorkspace({
             left.billboardAsset.sortOrder - right.billboardAsset.sortOrder
         ),
     [filteredAssetIds, monthBookings]
+  );
+  const calendarAssets = useMemo(
+    () => (calendarAsset ? filteredAssets.filter((asset) => asset.id === calendarAsset.id) : filteredAssets),
+    [calendarAsset, filteredAssets]
+  );
+  const calendarMonthBookings = useMemo(
+    () =>
+      calendarAsset
+        ? filteredMonthBookings.filter((booking) => booking.billboardAssetId === calendarAsset.id)
+        : filteredMonthBookings,
+    [calendarAsset, filteredMonthBookings]
   );
   const occupiedAssetsToday = useMemo(
     () => filteredAssets.filter((asset) => asset.bookings.some((booking) => bookingIncludesDay(booking, todayKey))),
@@ -165,27 +184,39 @@ export function BillboardsWorkspace({
     [filteredAssets, todayKey]
   );
   const monthMatrix = useMemo(
-    () => buildMonthMatrix(filteredMonthBookings, monthDate, filteredAssets, todayKey),
-    [filteredAssets, filteredMonthBookings, monthDate, todayKey]
+    () => buildMonthMatrix(calendarMonthBookings, monthDate, calendarAssets, todayKey, calendarAsset),
+    [calendarAsset, calendarAssets, calendarMonthBookings, monthDate, todayKey]
   );
   const focusContent = useMemo(
     () =>
       getFocusContent(focus, {
-    assets: filteredAssets,
+        assets: filteredAssets,
         freeAssetsToday,
         monthBookings: filteredMonthBookings,
         occupiedAssetsToday,
+        selectedAsset: calendarAsset,
         selectedDayKey: dayKey,
         todayKey,
         dayView
       }),
-    [dayKey, dayView, filteredAssets, filteredMonthBookings, focus, freeAssetsToday, monthDate, occupiedAssetsToday, todayKey]
+    [calendarAsset, dayKey, dayView, filteredAssets, filteredMonthBookings, focus, freeAssetsToday, occupiedAssetsToday, todayKey]
   );
   const monitorBoardDate = dayKey ? parseDateKey(dayKey) : today;
   const monitorBoardAssets = useMemo(
-    () => (kind === "MONITOR" ? buildMonitorBoardAssets(filteredAssets, formatDateKey(monitorBoardDate)) : []),
-    [filteredAssets, kind, monitorBoardDate]
+    () => (kind === "MONITOR" ? buildMonitorBoardAssets(calendarAssets, formatDateKey(monitorBoardDate)) : []),
+    [calendarAssets, kind, monitorBoardDate]
   );
+
+  useEffect(() => {
+    if (!selectedAssetCode) {
+      return;
+    }
+
+    const matchingAsset = assets.find((asset) => asset.code === selectedAssetCode) || null;
+    if (!matchingAsset || (kind !== "ALL" && matchingAsset.kind !== kind)) {
+      setSelectedAssetCode(null);
+    }
+  }, [assets, kind, selectedAssetCode]);
   useEffect(() => {
     const element = calendarRef.current;
     if (!element || typeof ResizeObserver === "undefined") {
@@ -230,8 +261,8 @@ export function BillboardsWorkspace({
     window.history.replaceState({}, "", `/billboards?${searchParams.toString()}${anchor}`);
   }, [bookingOpen, dayKey, dayView, focus, kind, monthDateKey, selectedAssetCode]);
 
-  function scrollToTarget(target: "panel" | "booking") {
-    const element = target === "panel" ? panelRef.current : bookingRef.current;
+  function scrollToTarget(target: "panel" | "booking" | "calendar") {
+    const element = target === "panel" ? panelRef.current : target === "booking" ? bookingRef.current : calendarRef.current;
     if (!element) {
       return;
     }
@@ -258,20 +289,42 @@ export function BillboardsWorkspace({
     openFocus(nextFocus);
   }
 
-  function openAssetBooking(assetCode: string) {
+  function openAssetCalendar(assetCode: string) {
     setSelectedAssetCode(assetCode);
+    setBookingOpen(false);
+    setFocus(null);
+    setDayKey(null);
+    setDayView("bookings");
+    scrollToTarget("calendar");
+  }
+
+  function openAssetBooking(assetCode: string, targetDayKey?: string) {
+    setSelectedAssetCode(assetCode);
+    setBookingSeedDayKey(targetDayKey || defaultBookingDateKey);
+    setDayKey(targetDayKey || null);
+    setFocus(null);
     setBookingOpen(true);
     scrollToTarget("booking");
   }
 
   function closeBooking() {
     setBookingOpen(false);
+    setBookingSeedDayKey(defaultBookingDateKey);
   }
 
   function closeFocus() {
     setFocus(null);
     setDayKey(null);
     setDayView("bookings");
+  }
+
+  function clearSelectedAsset() {
+    setSelectedAssetCode(null);
+    setDayKey(null);
+    setDayView("bookings");
+    if (isImplicitSingleAssetView) {
+      setKind("ALL");
+    }
   }
 
   function monthHref(targetMonth: Date) {
@@ -313,6 +366,7 @@ export function BillboardsWorkspace({
               className="button primary"
               onClick={() => {
                 setSelectedAssetCode(null);
+                setBookingSeedDayKey(defaultBookingDateKey);
                 setBookingOpen(true);
                 scrollToTarget("booking");
               }}
@@ -341,6 +395,21 @@ export function BillboardsWorkspace({
           </button>
         ))}
       </section>
+
+      {calendarAsset ? (
+        <section className="mini-item billboards-selected-asset-banner">
+          <div>
+            <strong>{calendarAsset.name}</strong>
+            <div className="subtle">{calendarAsset.code} • Stai guardando la disponibilita di questo impianto. Clicca un giorno con spazio libero per prenotarlo.</div>
+          </div>
+          <div className="billboards-selected-asset-banner-actions">
+            <span className="pill status">{billboardAssetKindLabels[calendarAsset.kind]}</span>
+            <button className="button ghost" onClick={clearSelectedAsset} type="button">
+              Torna a tutti
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       <section className="grid billboards-summary-grid-v3">
         <SummaryActionCard
@@ -404,10 +473,10 @@ export function BillboardsWorkspace({
                   }
                 : null
             }
-            defaultEndDate={defaultBookingDateKey}
-            defaultStartDate={defaultBookingDateKey}
+            defaultEndDate={bookingSeedDayKey}
+            defaultStartDate={bookingSeedDayKey}
             existingBookings={existingBookings}
-            key={`${selectedAsset?.id || "none"}-${monthDateKey}`}
+            key={`${selectedAsset?.id || "none"}-${bookingSeedDayKey}-${monthDateKey}`}
           />
         </section>
       ) : null}
@@ -434,15 +503,20 @@ export function BillboardsWorkspace({
                 <div className="billboard-monitor-slot-grid">
                   {asset.slots.map((slot) =>
                     slot.booking ? (
-                      <div className="billboard-monitor-slot is-occupied" key={`${asset.id}-board-${slot.index}`}>
+                      <button
+                        className="billboard-monitor-slot is-occupied"
+                        key={`${asset.id}-board-${slot.index}`}
+                        onClick={() => openAssetCalendar(asset.code)}
+                        type="button"
+                      >
                         <span className="billboard-monitor-slot-index">Slot {slot.index}</span>
                         <strong>{slot.booking.customer.name}</strong>
-                      </div>
+                      </button>
                     ) : (
                       <button
                         className="billboard-monitor-slot is-free"
                         key={`${asset.id}-board-${slot.index}`}
-                        onClick={() => openAssetBooking(asset.code)}
+                        onClick={() => openAssetCalendar(asset.code)}
                         type="button"
                       >
                         <span className="billboard-monitor-slot-index">Slot {slot.index}</span>
@@ -464,10 +538,16 @@ export function BillboardsWorkspace({
         >
           <div className="calendar-nav">
             <div>
-              <span className="compact-kicker">Disponibilita</span>
+              <span className="compact-kicker">{calendarAsset ? "Disponibilita impianto" : "Disponibilita"}</span>
               <h3>{monthLabel}</h3>
+              {calendarAsset ? <div className="subtle">{calendarAsset.code} • {calendarAsset.name}</div> : null}
             </div>
             <div className="calendar-nav-actions">
+              {calendarAsset ? (
+                <button className="button ghost" onClick={clearSelectedAsset} type="button">
+                  Tutti gli impianti
+                </button>
+              ) : null}
               <Link className="button secondary" href={monthHref(new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1))}>
                 Precedente
               </Link>
@@ -489,15 +569,23 @@ export function BillboardsWorkspace({
             <div className="calendar-month-grid">
               {monthMatrix.flat().map((day) => {
                 const isFocusMonth = day.date.getMonth() === monthDate.getMonth();
+                const canBookSelectedAssetDay = Boolean(calendarAsset && day.freeCount > 0);
                 return (
                   <div
-                    className={`calendar-month-cell billboard-day-cell-v2${isFocusMonth ? "" : " muted"}${day.isToday ? " today" : ""}`}
+                    className={`calendar-month-cell billboard-day-cell-v2${isFocusMonth ? "" : " muted"}${day.isToday ? " today" : ""}${day.isFullyOccupied ? " is-fully-occupied" : ""}`}
                     key={day.key}
                   >
                     <div className="calendar-month-head">
                       <button
                         className="billboard-day-head-link"
-                        onClick={() => openFocus("day", day.key, "bookings")}
+                        onClick={() => {
+                          if (calendarAsset && day.freeCount > 0) {
+                            openAssetBooking(calendarAsset.code, day.key);
+                            return;
+                          }
+
+                          openFocus("day", day.key, "bookings");
+                        }}
                         type="button"
                       >
                         <strong>{day.date.getDate()}</strong>
@@ -507,7 +595,7 @@ export function BillboardsWorkspace({
                     <div className="billboard-day-stats">
                       <button
                         className="billboard-day-stat billboard-day-stat-occupied"
-                        onClick={() => openFocus("day", day.key, "occupied")}
+                        onClick={() => openFocus("day", day.key, calendarAsset ? "bookings" : "occupied")}
                         type="button"
                       >
                         <em>Occ.</em>
@@ -515,14 +603,21 @@ export function BillboardsWorkspace({
                       </button>
                       <button
                         className="billboard-day-stat billboard-day-stat-free"
-                        onClick={() => openFocus("day", day.key, "free")}
+                        onClick={() => {
+                          if (calendarAsset && day.freeCount > 0) {
+                            openAssetBooking(calendarAsset.code, day.key);
+                            return;
+                          }
+
+                          openFocus("day", day.key, "free");
+                        }}
                         type="button"
                       >
-                        <em>Lib.</em>
+                        <em>{canBookSelectedAssetDay ? "Pren." : "Lib."}</em>
                         <strong>{day.freeCount}</strong>
                       </button>
                     </div>
-                    {day.topAssets.length > 0 ? (
+                    {!calendarAsset && day.topAssets.length > 0 ? (
                       <div className="billboard-day-assets">
                         {day.topAssets.map((assetCode) => (
                           <span className="pill" key={assetCode}>
@@ -561,9 +656,9 @@ export function BillboardsWorkspace({
                   ) : (
                     focusContent.assets.map((asset) => (
                       <button
-                        className={`billboard-asset-card-v2${asset.isOccupied ? " is-occupied" : ""}`}
+                        className={`billboard-asset-card-v2${asset.isOccupied ? " is-occupied" : ""}${selectedAssetCode === asset.code ? " is-selected" : ""}`}
                         key={asset.id}
-                        onClick={() => openAssetBooking(asset.code)}
+                        onClick={() => openAssetCalendar(asset.code)}
                         type="button"
                       >
                         <div className="list-header">
@@ -661,6 +756,7 @@ function getFocusContent(
     occupiedAssetsToday: PlainAsset[];
     freeAssetsToday: PlainAsset[];
     monthBookings: PlainMonthBooking[];
+    selectedAsset: PlainAsset | null;
     todayKey: string;
     selectedDayKey: string | null;
     dayView: BillboardDayView;
@@ -695,12 +791,19 @@ function getFocusContent(
   if (focus === "day") {
     const dayKey = input.selectedDayKey || input.todayKey;
     const dayDate = parseDateKey(dayKey);
-    const dayBookings = input.monthBookings.filter((booking) => bookingIncludesDay(booking, dayKey));
-    const dayFreeAssets = input.assets.filter((asset) => {
+    const scopedAssets = input.selectedAsset ? input.assets.filter((asset) => asset.id === input.selectedAsset?.id) : input.assets;
+    const dayBookings = input.monthBookings.filter((booking) => {
+      if (!bookingIncludesDay(booking, dayKey)) {
+        return false;
+      }
+
+      return input.selectedAsset ? booking.billboardAssetId === input.selectedAsset.id : true;
+    });
+    const dayFreeAssets = scopedAssets.filter((asset) => {
       const occupancy = asset.bookings.filter((booking) => bookingIncludesDay(booking, dayKey)).length;
       return occupancy < getBillboardAssetCapacity(asset.kind);
     });
-    const dayOccupiedAssets = input.assets.filter((asset) =>
+    const dayOccupiedAssets = scopedAssets.filter((asset) =>
       asset.bookings.some((booking) => bookingIncludesDay(booking, dayKey))
     );
 
@@ -783,7 +886,13 @@ function simplifyBillboardLocation(location: string | null) {
   return location.replace(/\s*-\s*-?\d+\.\d+\s*,\s*-?\d+\.\d+\s*$/, "").trim();
 }
 
-function buildMonthMatrix(bookings: PlainMonthBooking[], focusDate: Date, assets: PlainAsset[], todayKey: string) {
+function buildMonthMatrix(
+  bookings: PlainMonthBooking[],
+  focusDate: Date,
+  assets: PlainAsset[],
+  todayKey: string,
+  selectedAsset: PlainAsset | null
+) {
   const first = startOfMonth(focusDate);
   const last = endOfMonth(focusDate);
   const gridStart = startOfWeek(first);
@@ -794,6 +903,7 @@ function buildMonthMatrix(bookings: PlainMonthBooking[], focusDate: Date, assets
     entries: PlainMonthBooking[];
     occupiedCount: number;
     freeCount: number;
+    isFullyOccupied: boolean;
     topAssets: string[];
     hiddenAssetsCount: number;
     isToday: boolean;
@@ -816,10 +926,12 @@ function buildMonthMatrix(bookings: PlainMonthBooking[], focusDate: Date, assets
     }
 
     const occupiedAssetCodes = Array.from(new Set(entries.map((booking) => booking.billboardAsset.code)));
-    const occupiedCount = assets.filter((asset) => (occupancyByAssetId.get(asset.id) || 0) > 0).length;
-    const freeCount = assets.filter(
-      (asset) => (occupancyByAssetId.get(asset.id) || 0) < getBillboardAssetCapacity(asset.kind)
-    ).length;
+    const occupiedCount = selectedAsset
+      ? occupancyByAssetId.get(selectedAsset.id) || 0
+      : assets.filter((asset) => (occupancyByAssetId.get(asset.id) || 0) > 0).length;
+    const freeCount = selectedAsset
+      ? Math.max(0, getBillboardAssetCapacity(selectedAsset.kind) - (occupancyByAssetId.get(selectedAsset.id) || 0))
+      : assets.filter((asset) => (occupancyByAssetId.get(asset.id) || 0) < getBillboardAssetCapacity(asset.kind)).length;
 
     days.push({
       key: dayKey,
@@ -827,6 +939,7 @@ function buildMonthMatrix(bookings: PlainMonthBooking[], focusDate: Date, assets
       entries,
       occupiedCount,
       freeCount,
+      isFullyOccupied: Boolean(selectedAsset && freeCount === 0),
       topAssets: occupiedAssetCodes.slice(0, 2),
       hiddenAssetsCount: Math.max(0, occupiedAssetCodes.length - 2),
       isToday: dayKey === todayKey
@@ -839,6 +952,12 @@ function buildMonthMatrix(bookings: PlainMonthBooking[], focusDate: Date, assets
   }
 
   return weeks;
+}
+
+function defaultDateKeyFromMonth(todayKey: string, monthDateKey: string) {
+  const monthDate = parseDateKey(monthDateKey);
+  const todayDate = parseDateKey(todayKey);
+  return formatDateKey(isSameMonth(monthDate, todayDate) ? todayDate : monthDate);
 }
 
 function buildMonitorBoardAssets(assets: PlainAsset[], dayKey: string): MonitorBoardAsset[] {

@@ -13,6 +13,7 @@ type Props = {
     financeMode?: string;
     financeBucket?: string;
     financeSort?: string;
+    materials?: string;
     pulse?: string;
   };
 };
@@ -27,6 +28,7 @@ export default async function Page({ searchParams }: Props) {
       financeMode={searchParams?.financeMode}
       financeSort={searchParams?.financeSort}
       focus={searchParams?.focus}
+      materials={searchParams?.materials}
       panel={searchParams?.panel}
       pulse={searchParams?.pulse}
       readyMode={searchParams?.readyMode}

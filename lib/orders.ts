@@ -36,6 +36,7 @@ import {
   normalizeQuantityValue,
   usesLineTotalQuantityTiers
 } from "@/lib/pricing";
+import { sortPendingPurchaseNotes } from "@/lib/purchase-note-utils";
 import type {
   CustomerTypeFilter,
   DashboardPreset,
@@ -172,6 +173,22 @@ export type DeleteOrderItemInput = {
   orderId: string;
   itemId: string;
 };
+
+const dashboardPurchaseNoteSelect = {
+  id: true,
+  customerName: true,
+  content: true,
+  urgency: true,
+  createdAt: true,
+  order: {
+    select: {
+      id: true,
+      orderCode: true,
+      title: true,
+      operationalStatus: true
+    }
+  }
+} satisfies Prisma.PurchaseNoteSelect;
 
 type OrderDetailsHistorySnapshot = {
   kind: "order-details";
@@ -3036,7 +3053,19 @@ export async function getDashboardData() {
   const financeOperationalWhere = {
     mainPhase: { in: ["SVILUPPO_COMPLETATO", "CONSEGNATO"] as MainPhase[] }
   };
-  const [todayOrdersRaw, todayAppointments, overdueOrders, blockedOrders, readyOrders, invoiceOrders, toStartOrdersRaw, workingOrdersRaw, weekLoadOrders, weekDetailOrdersRaw] = await Promise.all([
+  const [
+    todayOrdersRaw,
+    todayAppointments,
+    overdueOrders,
+    blockedOrders,
+    readyOrders,
+    invoiceOrders,
+    toStartOrdersRaw,
+    workingOrdersRaw,
+    weekLoadOrders,
+    weekDetailOrdersRaw,
+    pendingPurchaseNotesRaw
+  ] = await Promise.all([
     prisma.order.findMany({
       where: {
         ...operationalOrderWhere(),
@@ -3162,16 +3191,26 @@ export async function getDashboardData() {
       },
       include: { customer: true },
       orderBy: [{ appointmentAt: "asc" }, { deliveryAt: "asc" }]
+    }),
+    prisma.purchaseNote.findMany({
+      where: { completedAt: null },
+      select: dashboardPurchaseNoteSelect,
+      orderBy: [{ createdAt: "desc" }]
     })
   ]);
 
   const todayOrders = sortByPriorityThenDelivery(todayOrdersRaw.map((order) => withEffectiveOrderPriority(order, now)));
   const toStartOrders = sortByPriorityThenDelivery(toStartOrdersRaw.map((order) => withEffectiveOrderPriority(order, now)));
   const workingOrders = sortByPriorityThenDelivery(workingOrdersRaw.map((order) => withEffectiveOrderPriority(order, now)));
+  const pendingPurchaseNotes = sortPendingPurchaseNotes(pendingPurchaseNotesRaw);
   const priorityOrders = workingOrders.filter((order) => {
     const deliveryTime = new Date(order.deliveryAt).getTime();
     return order.mainPhase === "IN_LAVORAZIONE" && deliveryTime >= todayStart.getTime() && deliveryTime < dayAfterTomorrowStart.getTime();
   });
+  const blockingPurchaseNotes = pendingPurchaseNotes.filter((note) => note.urgency === "BLOCCANTE");
+  const linkedPurchaseNotes = pendingPurchaseNotes.filter((note) => Boolean(note.order));
+  const waitingMaterialPurchaseNotes = linkedPurchaseNotes.filter((note) => note.order?.operationalStatus === "IN_ATTESA_MATERIALE");
+  const unlinkedPurchaseNotes = pendingPurchaseNotes.filter((note) => !note.order);
 
   return {
     todayOrders,
@@ -3184,7 +3223,17 @@ export async function getDashboardData() {
     toStartOrders,
     workingOrders,
     weekOrders: weekDetailOrdersRaw,
-    weekLoad: buildDashboardWeekLoad(weekLoadOrders, now)
+    weekLoad: buildDashboardWeekLoad(weekLoadOrders, now),
+    purchaseNotes: {
+      pending: pendingPurchaseNotes,
+      stats: {
+        open: pendingPurchaseNotes.length,
+        blocking: blockingPurchaseNotes.length,
+        linked: linkedPurchaseNotes.length,
+        waitingMaterial: waitingMaterialPurchaseNotes.length,
+        unlinked: unlinkedPurchaseNotes.length
+      }
+    }
   };
 }
 

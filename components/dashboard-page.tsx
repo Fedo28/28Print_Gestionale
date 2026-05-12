@@ -4,7 +4,7 @@ import type { MainPhase, PaymentStatus } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { QuickOrderControls } from "@/components/quick-order-controls";
 import { StatusPills } from "@/components/status-pills";
-import { invoiceStatusLabels, operationalStatusLabels, paymentStatusLabels } from "@/lib/constants";
+import { invoiceStatusLabels, operationalStatusLabels, paymentStatusLabels, purchaseNoteUrgencyLabels } from "@/lib/constants";
 import { formatCompactDate, formatCurrency, formatDateKey, formatDateTime, formatWeekdayLabel } from "@/lib/format";
 import { getDisplayOrderLabel } from "@/lib/order-display";
 import { buildOrdersFilterHref } from "@/lib/order-filters";
@@ -13,6 +13,7 @@ import { getWorkdayHighlight } from "@/lib/workday-highlights";
 
 type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
 type DashboardOrder = DashboardData["todayOrders"][number];
+type DashboardPurchaseNote = DashboardData["purchaseNotes"]["pending"][number];
 type DashboardPanel = "PRIORITY" | "PRODUCTION" | "APPOINTMENTS" | "FINANCE";
 type DashboardFocus = "PRIORITY" | "TOMORROW" | "TO_START" | "BLOCKED" | "READY";
 type DashboardDayFocus = "ALL" | "WORKLOAD" | "APPOINTMENTS";
@@ -20,6 +21,7 @@ type DashboardReadyMode = "TO_NOTIFY" | "NOTIFIED";
 type DashboardFinanceMode = "PAID" | "UNPAID";
 type DashboardFinanceBucket = "ALL" | "PARTIAL" | "UNPAID";
 type DashboardFinanceSort = "AGE" | "AMOUNT";
+type DashboardMaterialsFilter = "ALL" | "BLOCKING" | "LINKED" | "UNLINKED";
 type DashboardPulse = "CALENDAR" | "DAY" | "PRIORITY" | "TO_START" | "LATE_START" | "BLOCKED" | "READY" | "FINANCE" | "FINANCE_AGED" | "TOMORROW";
 type DashboardAccent = "today" | "agenda" | "overdue" | "to-start" | "working" | "blocked" | "ready" | "balance";
 const DASHBOARD_FOCUS_DOMINANT_THRESHOLD = 6;
@@ -33,6 +35,7 @@ export async function DashboardPage({
   financeMode,
   financeBucket,
   financeSort,
+  materials,
   pulse
 }: {
   panel?: string;
@@ -43,6 +46,7 @@ export async function DashboardPage({
   financeMode?: string;
   financeBucket?: string;
   financeSort?: string;
+  materials?: string;
   pulse?: string;
 }) {
   const {
@@ -56,7 +60,8 @@ export async function DashboardPage({
     toStartOrders,
     workingOrders,
     weekOrders,
-    weekLoad
+    weekLoad,
+    purchaseNotes
   } = await getDashboardData();
 
   const nextDelivery = getSoonestDeliveryOrder(mergeUniqueOrders(overdueOrders, todayOrders, toStartOrders, workingOrders));
@@ -100,6 +105,9 @@ export async function DashboardPage({
   const currentFinanceBucket = isFinancePanelOpen ? activeFinanceBucket : undefined;
   const activeFinanceSort = getDashboardFinanceSort(financeSort);
   const currentFinanceSort = isFinancePanelOpen && activeFinanceMode === "UNPAID" ? activeFinanceSort : undefined;
+  const activeMaterialsFilter = getDashboardMaterialsFilter(materials);
+  const filteredPurchaseNotes = getDashboardPurchaseNotesVisible(purchaseNotes.pending, activeMaterialsFilter);
+  const visiblePurchaseNotes = filteredPurchaseNotes.slice(0, 5);
   const financeOrdersVisible = getFinanceOrdersVisible(
     activeFinanceMode,
     activeFinanceBucket,
@@ -133,6 +141,10 @@ export async function DashboardPage({
   const financePaidTotalCents = financePaidOrders.reduce((sum, order) => sum + order.totalCents, 0);
   const financePartialTotalCents = financePartialOrders.reduce((sum, order) => sum + order.totalCents, 0);
   const financeUnpaidTotalCents = financeUnpaidOrders.reduce((sum, order) => sum + order.totalCents, 0);
+  const materialsOpenCount = purchaseNotes.stats.open;
+  const materialsBlockingCount = purchaseNotes.stats.blocking;
+  const materialsWaitingCount = purchaseNotes.stats.waitingMaterial;
+  const materialsUnlinkedCount = purchaseNotes.stats.unlinked;
   const activeFocusOrderCount = selectedDay
     ? selectedDayOrders.length
     : activeFocus === "PRIORITY"
@@ -163,7 +175,9 @@ export async function DashboardPage({
     financeUnpaidOnly: buildOrdersFilterHref({ preset: "FINANCE_UNPAID_ONLY" }),
     financeUnpaid: buildOrdersFilterHref({ preset: "FINANCE_UNPAID" }),
     financeDelivered: buildOrdersFilterHref({ view: "DELIVERED", invoice: "DA_FATTURARE" }),
-    tomorrow: buildOrdersFilterHref({ preset: "TOMORROW", sort: "delivery" })
+    tomorrow: buildOrdersFilterHref({ preset: "TOMORROW", sort: "delivery" }),
+    materialsWaiting: buildOrdersFilterHref({ status: "IN_ATTESA_MATERIALE" }),
+    purchaseNotes: "/purchase-notes"
   };
   const dashboardPanelLinks = {
     today: buildDashboardStateHref({
@@ -241,6 +255,14 @@ export async function DashboardPage({
       currentFinanceBucket,
       currentFinanceSort,
       "FINANCE"
+    ),
+    materials: buildDashboardMaterialsHref(
+      activeFocus,
+      currentReadyMode,
+      currentFinanceMode,
+      currentFinanceBucket,
+      currentFinanceSort,
+      activeMaterialsFilter
     )
   };
   const nextDeliveryDetail = nextDelivery
@@ -406,8 +428,21 @@ export async function DashboardPage({
         />
       </section>
 
-      {lateStartOrders.length > 0 || tomorrowToStartOrders.length > 0 || stalePaidInvoiceOrders.length > 0 ? (
+      {lateStartOrders.length > 0 || tomorrowToStartOrders.length > 0 || stalePaidInvoiceOrders.length > 0 || materialsOpenCount > 0 ? (
         <section className="dashboard-alert-strip" aria-label="Attenzioni rapide dashboard">
+          {materialsOpenCount > 0 ? (
+            <Link className="dashboard-alert-chip dashboard-alert-chip-materials compact-card-link" href={dashboardPanelLinks.materials} replace scroll={false}>
+              <span className="dashboard-alert-chip-label">Materiali da ordinare</span>
+              <strong>{materialsBlockingCount > 0 ? materialsBlockingCount : materialsOpenCount}</strong>
+              <span className="dashboard-alert-chip-detail">
+                {materialsBlockingCount > 0
+                  ? `${materialsBlockingCount} bloccanti • ${materialsOpenCount} note aperte`
+                  : materialsOpenCount === 1
+                    ? "1 nota aperta"
+                    : `${materialsOpenCount} note aperte`}
+              </span>
+            </Link>
+          ) : null}
           {lateStartOrders.length > 0 ? (
             <Link
               className="dashboard-alert-chip dashboard-alert-chip-warning compact-card-link"
@@ -576,6 +611,54 @@ export async function DashboardPage({
               }
             />
           </div>
+
+          <DashboardMaterialsCard
+            activeFilter={activeMaterialsFilter}
+            filterLinks={{
+              all: buildDashboardMaterialsHref(
+                activeFocus,
+                currentReadyMode,
+                currentFinanceMode,
+                currentFinanceBucket,
+                currentFinanceSort,
+                "ALL"
+              ),
+              blocking: buildDashboardMaterialsHref(
+                activeFocus,
+                currentReadyMode,
+                currentFinanceMode,
+                currentFinanceBucket,
+                currentFinanceSort,
+                "BLOCKING"
+              ),
+              linked: buildDashboardMaterialsHref(
+                activeFocus,
+                currentReadyMode,
+                currentFinanceMode,
+                currentFinanceBucket,
+                currentFinanceSort,
+                "LINKED"
+              ),
+              unlinked: buildDashboardMaterialsHref(
+                activeFocus,
+                currentReadyMode,
+                currentFinanceMode,
+                currentFinanceBucket,
+                currentFinanceSort,
+                "UNLINKED"
+              )
+            }}
+            metrics={{
+              open: materialsOpenCount,
+              blocking: materialsBlockingCount,
+              waitingMaterial: materialsWaitingCount,
+              unlinked: materialsUnlinkedCount
+            }}
+            notes={visiblePurchaseNotes}
+            notesTotal={filteredPurchaseNotes.length}
+            viewHref={links.purchaseNotes}
+            waitingOrdersHref={links.materialsWaiting}
+          />
 
           <section
             className={`card card-pad dashboard-finance-shell dashboard-soft-slab${pulseClass(activePulse, "FINANCE", "FINANCE_AGED")}`}
@@ -1387,6 +1470,156 @@ function CompactSignal({
   );
 }
 
+function DashboardMaterialsCard({
+  activeFilter,
+  filterLinks,
+  metrics,
+  notes,
+  notesTotal,
+  viewHref,
+  waitingOrdersHref
+}: {
+  activeFilter: DashboardMaterialsFilter;
+  filterLinks: {
+    all: string;
+    blocking: string;
+    linked: string;
+    unlinked: string;
+  };
+  metrics: {
+    open: number;
+    blocking: number;
+    waitingMaterial: number;
+    unlinked: number;
+  };
+  notes: DashboardPurchaseNote[];
+  notesTotal: number;
+  viewHref: string;
+  waitingOrdersHref: string;
+}) {
+  return (
+    <section className="card card-pad dashboard-materials-shell dashboard-soft-slab" id="dashboard-materials">
+      <div className="list-header compact-section-head">
+        <div>
+          <span className="compact-kicker">Da ordinare</span>
+          <h3>Materiali aperti</h3>
+        </div>
+        <Link className="compact-link" href={viewHref}>
+          Apri Da ordinare
+        </Link>
+      </div>
+
+      <div className="dashboard-materials-metrics" aria-label="Metriche materiali da ordinare">
+        <Link className={`dashboard-materials-metric compact-card-link${activeFilter === "ALL" ? " active" : ""}`} href={filterLinks.all} replace scroll={false}>
+          <span>Aperte</span>
+          <strong>{metrics.open}</strong>
+        </Link>
+        <Link
+          className={`dashboard-materials-metric dashboard-materials-metric-alert compact-card-link${activeFilter === "BLOCKING" ? " active" : ""}`}
+          href={filterLinks.blocking}
+          replace
+          scroll={false}
+        >
+          <span>Bloccanti</span>
+          <strong>{metrics.blocking}</strong>
+        </Link>
+        <Link className="dashboard-materials-metric dashboard-materials-metric-orders compact-card-link" href={waitingOrdersHref} prefetch={false}>
+          <span>In attesa materiale</span>
+          <strong>{metrics.waitingMaterial}</strong>
+        </Link>
+        <Link
+          className={`dashboard-materials-metric compact-card-link${activeFilter === "UNLINKED" ? " active" : ""}`}
+          href={filterLinks.unlinked}
+          replace
+          scroll={false}
+        >
+          <span>Senza ordine</span>
+          <strong>{metrics.unlinked}</strong>
+        </Link>
+      </div>
+
+      <div className="dashboard-materials-filter-row" aria-label="Filtro note materiali">
+        <Link className={`dashboard-materials-filter compact-card-link${activeFilter === "ALL" ? " active" : ""}`} href={filterLinks.all} replace scroll={false}>
+          Tutti
+        </Link>
+        <Link
+          className={`dashboard-materials-filter compact-card-link${activeFilter === "BLOCKING" ? " active" : ""}`}
+          href={filterLinks.blocking}
+          replace
+          scroll={false}
+        >
+          Bloccanti
+        </Link>
+        <Link
+          className={`dashboard-materials-filter compact-card-link${activeFilter === "LINKED" ? " active" : ""}`}
+          href={filterLinks.linked}
+          replace
+          scroll={false}
+        >
+          Con ordine
+        </Link>
+        <Link
+          className={`dashboard-materials-filter compact-card-link${activeFilter === "UNLINKED" ? " active" : ""}`}
+          href={filterLinks.unlinked}
+          replace
+          scroll={false}
+        >
+          Senza ordine
+        </Link>
+      </div>
+
+      <div className="dashboard-materials-list">
+        {notesTotal === 0 ? (
+          <div className="empty">{getDashboardMaterialsEmptyMessage(activeFilter)}</div>
+        ) : (
+          <>
+            {notes.map((note) => (
+              <article className={`dashboard-materials-item ${getDashboardMaterialsUrgencyClassName(note.urgency)}`} key={note.id}>
+                <div className="dashboard-materials-item-head">
+                  <div className="dashboard-materials-item-copy">
+                    <strong>{note.customerName}</strong>
+                    <span className="dashboard-materials-item-meta">
+                      {note.order
+                        ? `Ordine ${getDisplayOrderLabel(note.order.orderCode, note.order.title)} • ${operationalStatusLabels[note.order.operationalStatus]}`
+                        : "Nota libera"}
+                    </span>
+                  </div>
+                  <span className={`dashboard-materials-urgency ${getDashboardMaterialsUrgencyPillClassName(note.urgency)}`}>
+                    {purchaseNoteUrgencyLabels[note.urgency]}
+                  </span>
+                </div>
+
+                <p className="dashboard-materials-item-note">{note.content}</p>
+
+                <div className="dashboard-materials-item-foot">
+                  <span>{getDashboardPurchaseNoteAgeLabel(note.createdAt)}</span>
+                  <div className="dashboard-materials-item-actions">
+                    {note.order ? (
+                      <Link className="compact-link" href={`/orders/${note.order.id}`}>
+                        Apri ordine
+                      </Link>
+                    ) : null}
+                    <Link className="compact-link" href={viewHref}>
+                      Apri Da ordinare
+                    </Link>
+                  </div>
+                </div>
+              </article>
+            ))}
+
+            <div className="dashboard-materials-footer">
+              <span>{notesTotal > notes.length ? `Mostrate ${notes.length} su ${notesTotal}` : `${notesTotal} note visibili`}</span>
+              <Link className="compact-link" href={viewHref}>
+                Vai alla lista completa
+              </Link>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function CompactOrderItem({
   hasWhatsapp,
   orderId,
@@ -1673,6 +1906,46 @@ function getDashboardFinanceSort(raw?: string): DashboardFinanceSort {
   return parseDashboardFinanceSort(raw) || "AGE";
 }
 
+function parseDashboardMaterialsFilter(raw?: string): DashboardMaterialsFilter | null {
+  if (raw === "blocking") {
+    return "BLOCKING";
+  }
+
+  if (raw === "linked") {
+    return "LINKED";
+  }
+
+  if (raw === "unlinked") {
+    return "UNLINKED";
+  }
+
+  if (raw === "all") {
+    return "ALL";
+  }
+
+  return null;
+}
+
+function getDashboardMaterialsFilter(raw?: string): DashboardMaterialsFilter {
+  return parseDashboardMaterialsFilter(raw) || "ALL";
+}
+
+function getDashboardPurchaseNotesVisible(notes: DashboardPurchaseNote[], filter: DashboardMaterialsFilter) {
+  if (filter === "BLOCKING") {
+    return notes.filter((note) => note.urgency === "BLOCCANTE");
+  }
+
+  if (filter === "LINKED") {
+    return notes.filter((note) => Boolean(note.order));
+  }
+
+  if (filter === "UNLINKED") {
+    return notes.filter((note) => !note.order);
+  }
+
+  return notes;
+}
+
 function getFinanceOrdersVisible(
   mode: DashboardFinanceMode,
   bucket: DashboardFinanceBucket | undefined,
@@ -1721,6 +1994,7 @@ function buildDashboardStateHref({
   financeSort,
   financeOpen = false,
   focus = "PRIORITY",
+  materialsFilter,
   readyMode,
   pulse
 }: {
@@ -1732,6 +2006,7 @@ function buildDashboardStateHref({
   financeSort?: DashboardFinanceSort;
   financeOpen?: boolean;
   focus?: DashboardFocus;
+  materialsFilter?: DashboardMaterialsFilter;
   readyMode?: DashboardReadyMode;
   pulse?: DashboardPulse;
 }) {
@@ -1791,6 +2066,14 @@ function buildDashboardStateHref({
     params.set("pulse", pulse.toLowerCase().replace(/_/g, "-"));
   }
 
+  if (materialsFilter === "BLOCKING") {
+    params.set("materials", "blocking");
+  } else if (materialsFilter === "LINKED") {
+    params.set("materials", "linked");
+  } else if (materialsFilter === "UNLINKED") {
+    params.set("materials", "unlinked");
+  }
+
   const query = params.toString();
   return `/${query ? `?${query}` : ""}${anchor ? `#${anchor}` : ""}`;
 }
@@ -1831,6 +2114,60 @@ function getInvoiceAgeLabel(value: Date | string) {
   }
 
   return `Da fatturare da ${age} giorni`;
+}
+
+function getDashboardPurchaseNoteAgeLabel(value: Date | string) {
+  const age = getDashboardDateAgeInDays(value);
+
+  if (age === 0) {
+    return "Inserita oggi";
+  }
+
+  if (age === 1) {
+    return "Inserita ieri";
+  }
+
+  return `Inserita da ${age} giorni`;
+}
+
+function getDashboardMaterialsEmptyMessage(filter: DashboardMaterialsFilter) {
+  if (filter === "BLOCKING") {
+    return "Nessuna nota bloccante aperta.";
+  }
+
+  if (filter === "LINKED") {
+    return "Nessuna nota collegata a un ordine.";
+  }
+
+  if (filter === "UNLINKED") {
+    return "Nessuna nota libera da ordine.";
+  }
+
+  return "Nessun materiale da ordinare aperto.";
+}
+
+function getDashboardMaterialsUrgencyClassName(urgency: DashboardPurchaseNote["urgency"]) {
+  if (urgency === "BLOCCANTE") {
+    return "is-blocking";
+  }
+
+  if (urgency === "URGENTE") {
+    return "is-urgent";
+  }
+
+  return "is-normal";
+}
+
+function getDashboardMaterialsUrgencyPillClassName(urgency: DashboardPurchaseNote["urgency"]) {
+  if (urgency === "BLOCCANTE") {
+    return "is-blocking";
+  }
+
+  if (urgency === "URGENTE") {
+    return "is-urgent";
+  }
+
+  return "is-normal";
 }
 
 function getDashboardFinanceReferenceDate(order: DashboardOrder) {
@@ -1889,6 +2226,26 @@ function buildDashboardFinanceHref(
     focus,
     readyMode,
     pulse
+  });
+}
+
+function buildDashboardMaterialsHref(
+  focus: DashboardFocus,
+  readyMode: DashboardReadyMode | undefined,
+  financeMode: DashboardFinanceMode | undefined,
+  financeBucket: DashboardFinanceBucket | undefined,
+  financeSort: DashboardFinanceSort | undefined,
+  materialsFilter: DashboardMaterialsFilter
+) {
+  return buildDashboardStateHref({
+    anchor: "dashboard-materials",
+    financeMode,
+    financeBucket,
+    financeSort,
+    financeOpen: Boolean(financeMode),
+    focus,
+    materialsFilter,
+    readyMode
   });
 }
 
