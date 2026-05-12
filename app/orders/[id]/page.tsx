@@ -8,6 +8,7 @@ import {
   markReadyAction,
   recordPaymentAction,
   restoreOrderHistoryAction,
+  saveOrderMaterialNoteAction,
   toggleOrderItemDeliveryAction,
   transitionPhaseAction,
   updateOrderAction,
@@ -21,6 +22,7 @@ import { AttachmentUploadForm } from "@/components/attachment-upload-form";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DeleteOrderForm } from "@/components/delete-order-form";
 import { FormUndoButton } from "@/components/form-undo-button";
+import { MaterialCategorySelectorField } from "@/components/material-category-selector-field";
 import { OrderPrintBrandMenu } from "@/components/order-print-brand-menu";
 import { OrderItemEditorForm } from "@/components/order-item-editor-form";
 import { OrderEditToggleButton } from "@/components/order-edit-toggle-button";
@@ -36,11 +38,13 @@ import {
   operationalStatusLabels,
   paymentStatusLabels,
   paymentMethodLabels,
-  priorityLabels
+  priorityLabels,
+  purchaseNoteUrgencyLabels
 } from "@/lib/constants";
 import { formatCurrency, formatDateTime, formatQuantity, toDateTimeLocalInput } from "@/lib/format";
 import { getDisplayOrderLabel } from "@/lib/order-display";
 import { buildOrdersFilterHref } from "@/lib/order-filters";
+import { parseOrderMaterialNoteContent } from "@/lib/order-material-note";
 import { getOrderById, getServiceCatalogAdmin } from "@/lib/orders";
 import { usesLineTotalQuantityTiers } from "@/lib/pricing";
 import { resolveAttachmentStorageMode } from "@/lib/storage";
@@ -66,6 +70,14 @@ export default async function OrderDetailPage({
   }
 
   const activePayments = order.payments.filter((payment) => payment.status === "ATTIVO");
+  const activeMaterialNote = order.purchaseNotes.find((note) => !note.completedAt) || null;
+  const latestMaterialNote =
+    activeMaterialNote ||
+    [...order.purchaseNotes].sort(
+      (left, right) =>
+        new Date(right.completedAt || right.updatedAt).getTime() - new Date(left.completedAt || left.updatedAt).getTime()
+    )[0] ||
+    null;
   const guidedAction = getGuidedPhaseAction(order.mainPhase);
   const hasWhatsapp = Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""));
   const useDirectUpload = resolveAttachmentStorageMode() === "blob";
@@ -117,6 +129,12 @@ export default async function OrderDetailPage({
       ? `${invoiceStatusLabels[order.invoiceStatus]} • Residuo ${formatCurrency(order.balanceDueCents)}`
       : `${invoiceStatusLabels[order.invoiceStatus]} • Saldo chiuso`;
   const totalSummary = `Pagato ${formatCurrency(order.paidCents)} • Acconto ${formatCurrency(order.depositCents)}`;
+  const materialSummary = activeMaterialNote
+    ? "Nota materiale attiva"
+    : latestMaterialNote?.completedAt
+      ? `Ultima nota chiusa il ${formatDateTime(latestMaterialNote.completedAt)}`
+      : "Nessuna nota collegata";
+  const activeMaterialNoteFormState = parseOrderMaterialNoteContent(activeMaterialNote?.content || "");
 
   return (
     <div className="stack order-detail-page-shell">
@@ -254,6 +272,59 @@ export default async function OrderDetailPage({
                 </button>
               </div>
             </form>
+
+            {!order.isQuote ? (
+              <form action={saveOrderMaterialNoteAction} className="form-grid order-status-form order-material-form">
+                <input name="orderId" type="hidden" value={order.id} />
+                <div className="order-material-form-head">
+                  <strong>Materiale da ordinare</strong>
+                  <span className="subtle">{materialSummary}</span>
+                </div>
+                <MaterialCategorySelectorField
+                  defaultValue={activeMaterialNoteFormState.categoryCounts}
+                  idPrefix={`order-detail-material-${order.id}`}
+                  inputNamePrefix="materialCategoryCount"
+                />
+                <div className="field full order-status-note">
+                  <label htmlFor="materialNoteContent">Note</label>
+                  <textarea
+                    defaultValue={activeMaterialNoteFormState.content}
+                    id="materialNoteContent"
+                    name="materialNoteContent"
+                    rows={4}
+                  />
+                </div>
+                <div className="field order-status-field">
+                  <label htmlFor="materialNoteUrgency">Urgenza</label>
+                  <select defaultValue={activeMaterialNote?.urgency || "NORMALE"} id="materialNoteUrgency" name="materialNoteUrgency">
+                    {Object.entries(purchaseNoteUrgencyLabels).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field wide">
+                  <label className="toggle-field" htmlFor="materialNoteBlockOrder">
+                    <input
+                      defaultChecked={order.operationalStatus === "IN_ATTESA_MATERIALE"}
+                      id="materialNoteBlockOrder"
+                      name="materialNoteBlockOrder"
+                      type="checkbox"
+                    />
+                    <span>Metti o lascia l'ordine in attesa materiale</span>
+                  </label>
+                </div>
+                <div className="button-row order-status-actions">
+                  <Link className="button ghost" href="/purchase-notes" prefetch={false}>
+                    Apri Da ordinare
+                  </Link>
+                  <button className="secondary" type="submit">
+                    {activeMaterialNote ? "Aggiorna nota materiale" : "Crea nota materiale"}
+                  </button>
+                </div>
+              </form>
+            ) : null}
           </div>
         </div>
       </details>
@@ -632,6 +703,22 @@ export default async function OrderDetailPage({
           <div className={`order-detail-note-panel${order.notes?.trim() ? "" : " is-empty"}`}>
             {order.notes?.trim() ? <p>{order.notes}</p> : <span>Nessuna nota disponibile per questo ordine.</span>}
           </div>
+          {latestMaterialNote ? (
+            <div className={`order-detail-note-panel order-detail-material-note${activeMaterialNote ? " is-linked" : ""}`}>
+              <div className="list-header">
+                <strong>{activeMaterialNote ? "Da ordinare attivo" : "Ultima nota materiale"}</strong>
+                <Link className="button ghost" href="/purchase-notes" prefetch={false}>
+                  Apri lista
+                </Link>
+              </div>
+              <p>{latestMaterialNote.content}</p>
+              <span className="subtle">
+                {activeMaterialNote
+                  ? `Creata il ${formatDateTime(activeMaterialNote.createdAt)}`
+                  : `Archiviata il ${formatDateTime(latestMaterialNote.completedAt || latestMaterialNote.updatedAt)}`}
+              </span>
+            </div>
+          ) : null}
           </section>
 
           <div className="order-detail-side-bottom-grid">

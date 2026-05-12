@@ -7,6 +7,7 @@ import {
   OperationalStatus,
   PaymentMethod,
   PaymentStatus,
+  PurchaseNoteUrgency,
   UserRole
 } from "@prisma/client";
 import { normalizeOrderTitle, OrderItemInput } from "@/lib/orders";
@@ -81,9 +82,18 @@ export function parseInvoiceStatus(raw: string | null): InvoiceStatus {
   return value;
 }
 
+export function parsePurchaseNoteUrgency(raw: string | null): PurchaseNoteUrgency {
+  const value = raw as PurchaseNoteUrgency | null;
+  if (!value || !["NORMALE", "URGENTE", "BLOCCANTE"].includes(value)) {
+    return "NORMALE";
+  }
+
+  return value;
+}
+
 export function parseOperationalStatus(raw: string | null): OperationalStatus {
   const value = raw as OperationalStatus | null;
-  if (!value || !["ATTIVO", "IN_ATTESA_FILE", "IN_ATTESA_APPROVAZIONE"].includes(value)) {
+  if (!value || !["ATTIVO", "IN_ATTESA_FILE", "IN_ATTESA_MATERIALE", "IN_ATTESA_APPROVAZIONE"].includes(value)) {
     return "ATTIVO";
   }
 

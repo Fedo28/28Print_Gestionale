@@ -62,7 +62,7 @@ export type OrderListFilters = {
 };
 
 const mainPhases = visibleMainPhases as PhaseFilter[];
-const operationalStatuses: OperationalStatus[] = ["ATTIVO", "IN_ATTESA_FILE", "IN_ATTESA_APPROVAZIONE"];
+const operationalStatuses: OperationalStatus[] = ["ATTIVO", "IN_ATTESA_FILE", "IN_ATTESA_MATERIALE", "IN_ATTESA_APPROVAZIONE"];
 const paymentStatuses: PaymentStatus[] = ["NON_PAGATO", "ACCONTO", "PARZIALE", "PAGATO"];
 const invoiceStatuses: InvoiceStatus[] = ["DA_FATTURARE", "FATTURATO", "NON_RICHIESTO"];
 const priorities: Priority[] = ["BASSA", "MEDIA", "ALTA", "URGENTE"];

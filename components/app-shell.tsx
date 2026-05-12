@@ -16,6 +16,7 @@ type NavIcon =
   | "quotes"
   | "calendar"
   | "billboards"
+  | "purchases"
   | "production"
   | "stats"
   | "settings"
@@ -29,6 +30,7 @@ const navItems = [
   { href: "/customers", label: "Clienti", icon: "customers", tone: "rose" },
   { href: "/calendar", label: "Calendario", icon: "calendar", tone: "amber" },
   { href: "/billboards", label: "Cartelloni", icon: "billboards", tone: "teal" },
+  { href: "/purchase-notes", label: "Da ordinare", icon: "purchases", tone: "amber" },
   { href: "/stats", label: "Statistiche", icon: "stats", tone: "sky" }
 ] as const satisfies ReadonlyArray<{
   href: string;
@@ -481,6 +483,14 @@ function ShellGlyph({ kind }: { kind: NavIcon }) {
         <rect x="4.5" y="5" width="15" height="9" rx="2.5" />
         <path d="M9 14v5M15 14v5M7 19h10" />
         <path d="M8 8h8M8 11h5" />
+      </>
+    ),
+    purchases: (
+      <>
+        <rect x="5" y="4.5" width="14" height="15" rx="2.5" />
+        <path d="M8.5 8.5h7" />
+        <path d="M8.5 12h5" />
+        <path d="m13.5 15.5 1.8 1.8 3.2-4.3" />
       </>
     ),
     production: (

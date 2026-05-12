@@ -30,6 +30,7 @@ type CustomerAutocompleteProps = {
   selectedCustomerId?: string | null;
   emptyMessage?: string;
   maxSuggestions?: number;
+  disabled?: boolean;
 };
 
 export function CustomerAutocomplete({
@@ -42,7 +43,8 @@ export function CustomerAutocomplete({
   helperText,
   selectedCustomerId,
   emptyMessage = "Nessun cliente trovato. Continua a scrivere o inseriscilo come nuovo.",
-  maxSuggestions = 6
+  maxSuggestions = 6,
+  disabled = false
 }: CustomerAutocompleteProps) {
   const [isFocused, setIsFocused] = useState(false);
   const deferredQuery = useDeferredValue(query);
@@ -50,19 +52,24 @@ export function CustomerAutocomplete({
   const normalizedResults = rankCustomers(customers, deferredQuery);
   const suggestionResults = normalizedResults.slice(0, maxSuggestions);
   const selectedCustomer = selectedCustomerId ? customers.find((customer) => customer.id === selectedCustomerId) : null;
-  const showSuggestions = isFocused && deferredQuery.trim().length > 0;
+  const showSuggestions = !disabled && isFocused && deferredQuery.trim().length > 0;
 
   return (
     <div className="field full customer-autocomplete-field">
       <label htmlFor={inputId}>{label}</label>
       <input
         autoComplete="off"
+        disabled={disabled}
         id={inputId}
         onBlur={() => {
           window.setTimeout(() => setIsFocused(false), 120);
         }}
         onChange={(event) => onQueryChange(event.target.value)}
-        onFocus={() => setIsFocused(true)}
+        onFocus={() => {
+          if (!disabled) {
+            setIsFocused(true);
+          }
+        }}
         placeholder={placeholder}
         spellCheck={false}
         value={query}

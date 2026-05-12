@@ -9,7 +9,8 @@ import {
   PaymentMethod,
   PaymentStatus,
   Prisma,
-  Priority
+  Priority,
+  PurchaseNoteUrgency
 } from "@prisma/client";
 import {
   APP_TIMEZONE,
@@ -48,6 +49,7 @@ import type {
   QuoteFilter,
   StatusFilter
 } from "@/lib/order-filters";
+import { upsertOrderMaterialPurchaseNote } from "@/lib/purchase-notes";
 import { prisma } from "@/lib/prisma";
 import { getWhatsappTemplate } from "@/lib/settings";
 
@@ -96,6 +98,13 @@ export type CreateOrderInput = {
   globalExtraMode?: DiscountMode;
   globalExtraValue?: number;
   initialDepositCents?: number;
+  materialNote?: OrderMaterialNoteInput | null;
+};
+
+export type OrderMaterialNoteInput = {
+  content: string;
+  urgency: PurchaseNoteUrgency;
+  blockOrder?: boolean;
 };
 
 export type UpdateOrderInput = {
@@ -107,6 +116,10 @@ export type UpdateOrderInput = {
   notes?: string;
   invoiceStatus: InvoiceStatus;
   isQuote?: boolean;
+};
+
+export type SaveOrderMaterialNoteInput = OrderMaterialNoteInput & {
+  orderId: string;
 };
 
 export type UpdateOrderItemInput = {
@@ -1236,6 +1249,7 @@ export async function createOrder(input: CreateOrderInput) {
   const createdOn = formatDateKey(createdAt);
   const titleNormalized = normalizeForUniqueness(title);
   const orderCode = buildOrderCode(createdAt, title);
+  const isQuote = Boolean(input.isQuote);
   const globalDiscountMode = (input.globalDiscountMode || "NONE") as DiscountMode;
   const globalDiscountValue = clampDiscountValue(globalDiscountMode, Number(input.globalDiscountValue ?? 0));
   const globalExtraMode = (input.globalExtraMode || "NONE") as DiscountMode;
@@ -1284,6 +1298,7 @@ export async function createOrder(input: CreateOrderInput) {
     const appointmentNote = appointmentAt ? input.appointmentNote?.trim() || undefined : undefined;
     const effectiveDeliveryAt = input.deliveryAt ?? appointmentAt ?? new Date();
     const priority = computeAutomaticPriority(effectiveDeliveryAt);
+    const shouldBlockForMaterial = Boolean(input.materialNote?.blockOrder) && !isQuote;
 
     const order = await tx.order.create({
       data: {
@@ -1295,9 +1310,10 @@ export async function createOrder(input: CreateOrderInput) {
         deliveryAt: effectiveDeliveryAt,
         appointmentAt,
         appointmentNote,
-        schedulePending: Boolean(input.isQuote) && !hasExplicitScheduling,
+        schedulePending: isQuote && !hasExplicitScheduling,
         priority,
-        isQuote: Boolean(input.isQuote),
+        isQuote,
+        operationalStatus: shouldBlockForMaterial ? "IN_ATTESA_MATERIALE" : "ATTIVO",
         notes: notesWithAdjustments || undefined,
         invoiceStatus: input.invoiceStatus,
         totalCents,
@@ -1328,7 +1344,7 @@ export async function createOrder(input: CreateOrderInput) {
           create: {
             type: "CREATED",
             description: getHistoryDescription("CREATED", ""),
-            details: input.isQuote ? "Creato come preventivo" : undefined
+            details: isQuote ? "Creato come preventivo" : undefined
           }
         }
       },
@@ -1336,6 +1352,17 @@ export async function createOrder(input: CreateOrderInput) {
         customer: true
       }
     });
+
+    if (input.materialNote) {
+      await upsertOrderMaterialPurchaseNote(
+        {
+          orderId: order.id,
+          content: input.materialNote.content,
+          urgency: input.materialNote.urgency
+        },
+        tx
+      );
+    }
 
     if (paidCents > 0) {
       await tx.payment.create({
@@ -1572,6 +1599,76 @@ export async function updateOperationalStatus(orderId: string, status: Operation
     });
 
     return updated;
+  });
+}
+
+export async function saveOrderMaterialNote(input: SaveOrderMaterialNoteInput) {
+  const orderId = input.orderId.trim();
+  if (!orderId) {
+    throw new Error("Ordine non valido.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        isQuote: true,
+        operationalStatus: true,
+        operationalNote: true
+      }
+    });
+
+    if (!order) {
+      throw new Error("Ordine non trovato.");
+    }
+
+    if (order.isQuote) {
+      throw new Error("Aggiungi materiale da ordinare solo dopo aver confermato il preventivo come ordine.");
+    }
+
+    const note = await upsertOrderMaterialPurchaseNote(
+      {
+        orderId,
+        content: input.content,
+        urgency: input.urgency
+      },
+      tx
+    );
+
+    let updatedOrder = order;
+    if (input.blockOrder && order.operationalStatus !== "IN_ATTESA_MATERIALE") {
+      const snapshotBefore = buildOrderStatusHistorySnapshot(order);
+      updatedOrder = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          operationalStatus: "IN_ATTESA_MATERIALE",
+          operationalNote: null
+        },
+        select: {
+          id: true,
+          isQuote: true,
+          operationalStatus: true,
+          operationalNote: true
+        }
+      });
+      const snapshotAfter = buildOrderStatusHistorySnapshot(updatedOrder);
+
+      await tx.orderHistory.create({
+        data: {
+          orderId,
+          type: "STATUS_CHANGED",
+          description: `Stato operativo impostato su ${operationalStatusLabels.IN_ATTESA_MATERIALE}`,
+          snapshotBefore: snapshotBefore as Prisma.InputJsonValue,
+          snapshotAfter: snapshotAfter as Prisma.InputJsonValue
+        }
+      });
+    }
+
+    return {
+      note,
+      order: updatedOrder
+    };
   });
 }
 
@@ -3375,6 +3472,19 @@ export async function getOrderById(id: string) {
       },
       history: {
         orderBy: { createdAt: "desc" }
+      },
+      purchaseNotes: {
+        select: {
+          id: true,
+          customerId: true,
+          customerName: true,
+          content: true,
+          urgency: true,
+          createdAt: true,
+          updatedAt: true,
+          completedAt: true
+        },
+        orderBy: [{ completedAt: "asc" }, { createdAt: "desc" }]
       }
     }
   });

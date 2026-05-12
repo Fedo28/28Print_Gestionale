@@ -3,11 +3,18 @@
 import { Customer, CustomerType, ServiceCatalog } from "@prisma/client";
 import { useEffect, useRef, useState } from "react";
 import { CustomerAutocomplete } from "@/components/customer-autocomplete";
+import { MaterialCategorySelectorField } from "@/components/material-category-selector-field";
 import { UndoButtonContent } from "@/components/undo-button-content";
 import { useUndoHistory } from "@/components/use-undo-history";
 import { normalizeCustomerSearchValue } from "@/lib/customer-search";
 import { isLabelCalculatorMaterialService } from "@/lib/label-calculator";
-import { customerTypeLabels, getAppointmentNoteOptions, invoiceStatusLabels, priorityLabels } from "@/lib/constants";
+import {
+  customerTypeLabels,
+  getAppointmentNoteOptions,
+  invoiceStatusLabels,
+  priorityLabels,
+  purchaseNoteUrgencyLabels
+} from "@/lib/constants";
 import { formatCurrency, formatDateTime, formatQuantity } from "@/lib/format";
 import { computeAutomaticPriority } from "@/lib/priorities";
 import {
@@ -2565,6 +2572,36 @@ export function OrderForm({
                 </div>
                 <textarea id="notes" name="notes" />
               </div>
+              {!isQuoteMode ? (
+                <details className="field full order-material-disclosure">
+                  <summary>
+                    <span>Materiale da ordinare</span>
+                  </summary>
+                  <div className="form-grid order-material-grid">
+                    <MaterialCategorySelectorField idPrefix="order-material" inputNamePrefix="materialCategoryCount" />
+                    <div className="field full">
+                      <label htmlFor="materialNoteContent">Note</label>
+                      <textarea id="materialNoteContent" name="materialNoteContent" rows={4} />
+                    </div>
+                    <div className="field">
+                      <label htmlFor="materialNoteUrgency">Urgenza</label>
+                      <select defaultValue="NORMALE" id="materialNoteUrgency" name="materialNoteUrgency">
+                        {Object.entries(purchaseNoteUrgencyLabels).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="field wide">
+                      <label className="toggle-field" htmlFor="materialNoteBlockOrder">
+                        <input id="materialNoteBlockOrder" name="materialNoteBlockOrder" type="checkbox" />
+                        <span>Metti subito l'ordine in attesa materiale</span>
+                      </label>
+                    </div>
+                  </div>
+                </details>
+              ) : null}
             </div>
           </div>
         </section>

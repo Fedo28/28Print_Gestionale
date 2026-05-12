@@ -8,6 +8,7 @@ import {
   PaymentMethod,
   PaymentStatus,
   Priority,
+  PurchaseNoteUrgency,
   UserRole
 } from "@prisma/client";
 
@@ -39,6 +40,24 @@ export const customerTypeLabels: Record<CustomerType, string> = {
   PUBBLICO: "Pubblico",
   AZIENDA: "Azienda"
 };
+
+export const purchaseNoteUrgencyLabels: Record<PurchaseNoteUrgency, string> = {
+  NORMALE: "Normale",
+  URGENTE: "Urgente",
+  BLOCCANTE: "Bloccante"
+};
+
+export const orderMaterialCategoryOptions = [
+  { key: "abbigliamento", label: "Abbigliamento" },
+  { key: "adesivi", label: "Adesivi" },
+  { key: "carta", label: "Carta" },
+  { key: "cartoleria", label: "Cartoleria" },
+  { key: "materiali_rigidi", label: "Materiali rigidi" },
+  { key: "laser", label: "Laser" },
+  { key: "uv", label: "UV" },
+  { key: "carta_plotter", label: "Carta plotter" },
+  { key: "videoflex", label: "Videoflex" }
+] as const;
 
 export const appointmentNoteOptions = [
   "Installazione vetrina",
@@ -87,6 +106,7 @@ export const mainPhaseLabels: Record<MainPhase, string> = {
 export const operationalStatusLabels: Record<OperationalStatus, string> = {
   ATTIVO: "Operativo",
   IN_ATTESA_FILE: "In attesa file",
+  IN_ATTESA_MATERIALE: "In attesa materiale",
   IN_ATTESA_APPROVAZIONE: "In attesa approvazione"
 };
 

@@ -9,6 +9,7 @@ import {
   parseCurrencyToCents,
   parseDateTime,
   parseInvoiceStatus,
+  parsePurchaseNoteUrgency,
   parseItemsPayload,
   parseMainPhase,
   parseOptionalDateTime,
@@ -38,13 +39,23 @@ import {
   updateOrderItem,
   updateOrderQuoteFlag,
   updateOperationalStatus,
-  updateOrder
+  updateOrder,
+  saveOrderMaterialNote
 } from "@/lib/orders";
 import { authenticateUser, createSessionForUser, describeLoginFailure, requireAdmin, requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getRequestBaseUrl } from "@/lib/request-url";
 import { saveSetting } from "@/lib/settings";
 import { cleanupOrderAttachments } from "@/lib/storage";
+import { buildOrderMaterialNoteContent, getOrderMaterialCategoryEntriesFromFormData } from "@/lib/order-material-note";
+import {
+  completePurchaseNote,
+  createPurchaseNote,
+  deletePurchaseNote,
+  reopenPurchaseNote,
+  updatePurchaseNote
+} from "@/lib/purchase-notes";
+import { serializePurchaseNote } from "@/lib/purchase-note-utils";
 import {
   createStaffUser,
   getStaffInviteConfig,
@@ -68,6 +79,38 @@ function revalidateOperationalSurfaces(orderId?: string) {
 
 function revalidateBillboardSurfaces() {
   revalidatePath("/billboards");
+}
+
+function revalidatePurchaseNoteSurfaces() {
+  revalidatePath("/purchase-notes");
+}
+
+function revalidateLinkedPurchaseNoteSurfaces(orderId?: string | null) {
+  revalidatePurchaseNoteSurfaces();
+  if (orderId) {
+    revalidatePath(`/orders/${orderId}`);
+  }
+}
+
+function parseOrderMaterialNoteInput(formData: FormData) {
+  const content = String(formData.get("materialNoteContent") || "");
+  const blockOrder = parseBooleanFlag(formData.get("materialNoteBlockOrder"));
+  const categoryEntries = getOrderMaterialCategoryEntriesFromFormData(formData);
+  const composedContent = buildOrderMaterialNoteContent({ content, categoryEntries });
+
+  if (!composedContent && !blockOrder) {
+    return null;
+  }
+
+  if (!composedContent) {
+    throw new Error("Inserisci almeno una categoria o una nota prima di sospendere l'ordine.");
+  }
+
+  return {
+    content: composedContent,
+    urgency: parsePurchaseNoteUrgency(formData.get("materialNoteUrgency")?.toString() || null),
+    blockOrder
+  };
 }
 
 function parseOrderFormInput(formData: FormData, options?: { forceQuote?: boolean }) {
@@ -102,7 +145,8 @@ function parseOrderFormInput(formData: FormData, options?: { forceQuote?: boolea
     globalDiscountValue: globalDiscount.value,
     globalExtraMode: globalExtra.mode,
     globalExtraValue: globalExtra.value,
-    initialDepositCents: parseCurrencyToCents(formData.get("initialDeposit")?.toString() || null)
+    initialDepositCents: parseCurrencyToCents(formData.get("initialDeposit")?.toString() || null),
+    materialNote: isQuote ? null : parseOrderMaterialNoteInput(formData)
   };
 }
 
@@ -158,6 +202,54 @@ export async function createCustomerAction(formData: FormData) {
   revalidateBillboardSurfaces();
 }
 
+export async function createPurchaseNoteAction(formData: FormData) {
+  await requireAuth();
+  const note = await createPurchaseNote({
+    customerId: String(formData.get("customerId") || "").trim() || undefined,
+    orderId: String(formData.get("orderId") || "").trim() || undefined,
+    customerName: String(formData.get("customerName") || ""),
+    content: String(formData.get("content") || ""),
+    urgency: parsePurchaseNoteUrgency(formData.get("urgency")?.toString() || null)
+  });
+  revalidateLinkedPurchaseNoteSurfaces(note.order?.id);
+  return serializePurchaseNote(note);
+}
+
+export async function updatePurchaseNoteAction(formData: FormData) {
+  await requireAuth();
+  const note = await updatePurchaseNote({
+    id: String(formData.get("noteId") || ""),
+    customerId: String(formData.get("customerId") || "").trim() || undefined,
+    orderId: String(formData.get("orderId") || "").trim() || undefined,
+    customerName: String(formData.get("customerName") || ""),
+    content: String(formData.get("content") || ""),
+    urgency: parsePurchaseNoteUrgency(formData.get("urgency")?.toString() || null)
+  });
+  revalidateLinkedPurchaseNoteSurfaces(note.order?.id);
+  return serializePurchaseNote(note);
+}
+
+export async function completePurchaseNoteAction(formData: FormData) {
+  await requireAuth();
+  const note = await completePurchaseNote(String(formData.get("noteId") || ""));
+  revalidateLinkedPurchaseNoteSurfaces(note.order?.id);
+  return serializePurchaseNote(note);
+}
+
+export async function reopenPurchaseNoteAction(formData: FormData) {
+  await requireAuth();
+  const note = await reopenPurchaseNote(String(formData.get("noteId") || ""));
+  revalidateLinkedPurchaseNoteSurfaces(note.order?.id);
+  return serializePurchaseNote(note);
+}
+
+export async function deletePurchaseNoteAction(formData: FormData) {
+  await requireAuth();
+  const note = await deletePurchaseNote(String(formData.get("noteId") || ""));
+  revalidateLinkedPurchaseNoteSurfaces(note.orderId);
+  return note;
+}
+
 export async function updateCustomerAction(formData: FormData) {
   await requireAuth();
   const id = String(formData.get("id") || "");
@@ -189,15 +281,20 @@ export async function deleteCustomerAction(formData: FormData) {
 
 export async function createOrderAction(formData: FormData) {
   await requireAuth();
-  const order = await createOrder(parseOrderFormInput(formData));
+  const input = parseOrderFormInput(formData);
+  const order = await createOrder(input);
 
   revalidateOperationalSurfaces(order.id);
+  if (input.materialNote) {
+    revalidateLinkedPurchaseNoteSurfaces(order.id);
+  }
   redirect(`/orders/${order.id}`);
 }
 
 export async function createQuoteAction(formData: FormData) {
   await requireAuth();
-  const order = await createOrder(parseOrderFormInput(formData, { forceQuote: true }));
+  const input = parseOrderFormInput(formData, { forceQuote: true });
+  const order = await createOrder(input);
 
   revalidateOperationalSurfaces(order.id);
   redirect(`/orders/${order.id}`);
@@ -242,6 +339,27 @@ export async function updateOrderStatusDetailAction(formData: FormData) {
   await updateOperationalStatus(orderId, status, note);
   revalidateOperationalSurfaces(orderId);
   redirect(`/orders/${orderId}`);
+}
+
+export async function saveOrderMaterialNoteAction(formData: FormData) {
+  await requireAuth();
+  const orderId = String(formData.get("orderId") || "").trim();
+  const materialNote = parseOrderMaterialNoteInput(formData);
+
+  if (!materialNote) {
+    throw new Error("Inserisci il materiale da ordinare.");
+  }
+
+  await saveOrderMaterialNote({
+    orderId,
+    content: materialNote.content,
+    urgency: materialNote.urgency,
+    blockOrder: materialNote.blockOrder
+  });
+
+  revalidateOperationalSurfaces(orderId);
+  revalidateLinkedPurchaseNoteSurfaces(orderId);
+  redirect(`/orders/${orderId}?edit=1#order-edit-panel`);
 }
 
 export async function updateOrderItemAction(formData: FormData) {
