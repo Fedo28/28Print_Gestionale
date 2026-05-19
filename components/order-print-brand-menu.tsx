@@ -6,7 +6,7 @@ import { useEffect, useId, useRef, useState } from "react";
 type PrintBrand = "28-print" | "pr-adv";
 
 function buildPrintHref(orderId: string, brand: PrintBrand) {
-  return `/orders/${orderId}/print?autoprint=1&brand=${brand}`;
+  return `/orders/${orderId}/print?brand=${brand}`;
 }
 
 export function OrderPrintBrandMenu({ orderId }: { orderId: string }) {

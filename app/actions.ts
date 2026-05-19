@@ -17,8 +17,10 @@ import {
   parsePaymentMethod,
   parseUserRole
 } from "@/lib/forms";
+import { writeAuditLog } from "@/lib/audit-log";
 import { formatDateKey } from "@/lib/format";
-import type { DiscountMode } from "@prisma/client";
+import { getDisplayOrderLabel } from "@/lib/order-display";
+import type { DiscountMode, Prisma } from "@prisma/client";
 import {
   cloneOrderItem,
   correctPayment,
@@ -150,6 +152,205 @@ function parseOrderFormInput(formData: FormData, options?: { forceQuote?: boolea
   };
 }
 
+const purchaseNoteAuditSelect = {
+  id: true,
+  customerId: true,
+  customerName: true,
+  order: {
+    select: {
+      id: true,
+      orderCode: true,
+      title: true,
+      operationalStatus: true
+    }
+  },
+  content: true,
+  urgency: true,
+  createdAt: true,
+  updatedAt: true,
+  completedAt: true
+} satisfies Prisma.PurchaseNoteSelect;
+
+function normalizeAuditCompareValue(value: unknown) {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (Array.isArray(value) || (value && typeof value === "object")) {
+    return JSON.stringify(value);
+  }
+
+  if (value === null || typeof value === "undefined" || value === "") {
+    return "";
+  }
+
+  return String(value);
+}
+
+function describeChangedFields(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  labels: Record<string, string>
+) {
+  return Object.entries(labels)
+    .filter(([key]) => normalizeAuditCompareValue(before[key]) !== normalizeAuditCompareValue(after[key]))
+    .map(([, label]) => label);
+}
+
+function formatChangedFields(changedFields: string[]) {
+  if (changedFields.length === 0) {
+    return null;
+  }
+
+  return `Campi: ${changedFields.join(", ")}`;
+}
+
+function buildCustomerAuditSnapshot(customer: {
+  id: string;
+  name: string;
+  type: string;
+  phone?: string | null;
+  whatsapp?: string | null;
+  email?: string | null;
+  pec?: string | null;
+  taxCode?: string | null;
+  vatNumber?: string | null;
+  uniqueCode?: string | null;
+  notes?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}) {
+  return {
+    id: customer.id,
+    name: customer.name,
+    type: customer.type,
+    phone: customer.phone || null,
+    whatsapp: customer.whatsapp || null,
+    email: customer.email || null,
+    pec: customer.pec || null,
+    taxCode: customer.taxCode || null,
+    vatNumber: customer.vatNumber || null,
+    uniqueCode: customer.uniqueCode || null,
+    notes: customer.notes || null,
+    createdAt: customer.createdAt,
+    updatedAt: customer.updatedAt
+  };
+}
+
+function buildServiceAuditSnapshot(service: {
+  id: string;
+  code?: string | null;
+  name: string;
+  description?: string | null;
+  basePriceCents: number;
+  unit: string;
+  quantityTiers?: string | null;
+  active: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}) {
+  return {
+    id: service.id,
+    code: service.code || null,
+    name: service.name,
+    description: service.description || null,
+    basePriceCents: service.basePriceCents,
+    unit: service.unit,
+    quantityTiers: service.quantityTiers || null,
+    active: service.active,
+    createdAt: service.createdAt,
+    updatedAt: service.updatedAt
+  };
+}
+
+function buildBillboardBookingAuditSnapshot(booking: {
+  id: string;
+  status: string;
+  startsAt: Date;
+  endsAt: Date;
+  priceCents: number;
+  paidCents: number;
+  balanceDueCents: number;
+  monitorSlot?: number | null;
+  note?: string | null;
+  customer: {
+    id: string;
+    name: string;
+  };
+  billboardAsset: {
+    id: string;
+    code: string;
+    name: string;
+    kind: string;
+  };
+}) {
+  return {
+    id: booking.id,
+    status: booking.status,
+    startsAt: booking.startsAt,
+    endsAt: booking.endsAt,
+    priceCents: booking.priceCents,
+    paidCents: booking.paidCents,
+    balanceDueCents: booking.balanceDueCents,
+    monitorSlot: booking.monitorSlot ?? null,
+    note: booking.note || null,
+    customer: {
+      id: booking.customer.id,
+      name: booking.customer.name
+    },
+    billboardAsset: {
+      id: booking.billboardAsset.id,
+      code: booking.billboardAsset.code,
+      name: booking.billboardAsset.name,
+      kind: booking.billboardAsset.kind
+    }
+  };
+}
+
+function buildStaffUserAuditSnapshot(user: {
+  id: string;
+  name: string;
+  nickname: string;
+  email: string;
+  role?: string;
+  active?: boolean;
+  invitePreparedAt?: Date | null;
+  inviteSentAt?: Date | null;
+  createdAt?: Date;
+}) {
+  return {
+    id: user.id,
+    name: user.name,
+    nickname: user.nickname,
+    email: user.email,
+    role: user.role || null,
+    active: typeof user.active === "boolean" ? user.active : null,
+    invitePreparedAt: user.invitePreparedAt || null,
+    inviteSentAt: user.inviteSentAt || null,
+    createdAt: user.createdAt
+  };
+}
+
+async function getPurchaseNoteAuditRecord(noteId: string) {
+  return prisma.purchaseNote.findUnique({
+    where: { id: noteId },
+    select: purchaseNoteAuditSelect
+  });
+}
+
+async function getOpenPurchaseNoteByOrderId(orderId: string) {
+  return prisma.purchaseNote.findFirst({
+    where: {
+      orderId,
+      completedAt: null
+    },
+    orderBy: {
+      createdAt: "desc"
+    },
+    select: purchaseNoteAuditSelect
+  });
+}
+
 export type LoginActionState = {
   error: string | null;
 };
@@ -173,7 +374,7 @@ export type StaffInviteSettingsActionState = {
 };
 
 export async function createCustomerAction(formData: FormData) {
-  await requireAuth();
+  const session = await requireAuth();
   const name = String(formData.get("name") || "").trim();
   const phone = String(formData.get("phone") || "").trim();
 
@@ -181,7 +382,7 @@ export async function createCustomerAction(formData: FormData) {
     throw new Error("Il nome cliente e obbligatorio.");
   }
 
-  await prisma.customer.create({
+  const customer = await prisma.customer.create({
     data: {
       name,
       type: parseCustomerType(formData.get("type")?.toString() || null),
@@ -196,6 +397,17 @@ export async function createCustomerAction(formData: FormData) {
     }
   });
 
+  await writeAuditLog({
+    actionType: "CREATED",
+    actorUserId: session.userId,
+    entityId: customer.id,
+    entityLabel: customer.name,
+    entityType: "CUSTOMER",
+    title: "Cliente creato",
+    details: [customer.phone?.trim() || null, customer.email?.trim() || null].filter(Boolean).join(" • ") || null,
+    snapshotAfter: buildCustomerAuditSnapshot(customer)
+  });
+
   revalidatePath("/customers");
   revalidatePath("/orders/new");
   revalidatePath("/quotes/new");
@@ -203,7 +415,7 @@ export async function createCustomerAction(formData: FormData) {
 }
 
 export async function createPurchaseNoteAction(formData: FormData) {
-  await requireAuth();
+  const session = await requireAuth();
   const note = await createPurchaseNote({
     customerId: String(formData.get("customerId") || "").trim() || undefined,
     orderId: String(formData.get("orderId") || "").trim() || undefined,
@@ -211,49 +423,118 @@ export async function createPurchaseNoteAction(formData: FormData) {
     content: String(formData.get("content") || ""),
     urgency: parsePurchaseNoteUrgency(formData.get("urgency")?.toString() || null)
   });
+  await writeAuditLog({
+    actionType: "CREATED",
+    actorUserId: session.userId,
+    entityId: note.id,
+    entityLabel: note.customerName,
+    entityType: "PURCHASE_NOTE",
+    title: "Voce da ordinare creata",
+    details: note.content,
+    snapshotAfter: serializePurchaseNote(note)
+  });
   revalidateLinkedPurchaseNoteSurfaces(note.order?.id);
   return serializePurchaseNote(note);
 }
 
 export async function updatePurchaseNoteAction(formData: FormData) {
-  await requireAuth();
+  const session = await requireAuth();
+  const noteId = String(formData.get("noteId") || "");
+  const previous = await getPurchaseNoteAuditRecord(noteId);
   const note = await updatePurchaseNote({
-    id: String(formData.get("noteId") || ""),
+    id: noteId,
     customerId: String(formData.get("customerId") || "").trim() || undefined,
     orderId: String(formData.get("orderId") || "").trim() || undefined,
     customerName: String(formData.get("customerName") || ""),
     content: String(formData.get("content") || ""),
     urgency: parsePurchaseNoteUrgency(formData.get("urgency")?.toString() || null)
   });
+  await writeAuditLog({
+    actionType: "UPDATED",
+    actorUserId: session.userId,
+    entityId: note.id,
+    entityLabel: note.customerName,
+    entityType: "PURCHASE_NOTE",
+    title: "Voce da ordinare aggiornata",
+    details: previous ? formatChangedFields(describeChangedFields(previous, note, {
+      customerName: "Cliente",
+      content: "Contenuto",
+      urgency: "Urgenza",
+      order: "Ordine collegato"
+    })) : note.content,
+    snapshotBefore: previous ? serializePurchaseNote(previous) : undefined,
+    snapshotAfter: serializePurchaseNote(note)
+  });
   revalidateLinkedPurchaseNoteSurfaces(note.order?.id);
   return serializePurchaseNote(note);
 }
 
 export async function completePurchaseNoteAction(formData: FormData) {
-  await requireAuth();
-  const note = await completePurchaseNote(String(formData.get("noteId") || ""));
+  const session = await requireAuth();
+  const noteId = String(formData.get("noteId") || "");
+  const previous = await getPurchaseNoteAuditRecord(noteId);
+  const note = await completePurchaseNote(noteId);
+  await writeAuditLog({
+    actionType: "COMPLETED",
+    actorUserId: session.userId,
+    entityId: note.id,
+    entityLabel: note.customerName,
+    entityType: "PURCHASE_NOTE",
+    title: "Voce da ordinare chiusa",
+    details: note.content,
+    snapshotBefore: previous ? serializePurchaseNote(previous) : undefined,
+    snapshotAfter: serializePurchaseNote(note)
+  });
   revalidateLinkedPurchaseNoteSurfaces(note.order?.id);
   return serializePurchaseNote(note);
 }
 
 export async function reopenPurchaseNoteAction(formData: FormData) {
-  await requireAuth();
-  const note = await reopenPurchaseNote(String(formData.get("noteId") || ""));
+  const session = await requireAuth();
+  const noteId = String(formData.get("noteId") || "");
+  const previous = await getPurchaseNoteAuditRecord(noteId);
+  const note = await reopenPurchaseNote(noteId);
+  await writeAuditLog({
+    actionType: "REOPENED",
+    actorUserId: session.userId,
+    entityId: note.id,
+    entityLabel: note.customerName,
+    entityType: "PURCHASE_NOTE",
+    title: "Voce da ordinare riaperta",
+    details: note.content,
+    snapshotBefore: previous ? serializePurchaseNote(previous) : undefined,
+    snapshotAfter: serializePurchaseNote(note)
+  });
   revalidateLinkedPurchaseNoteSurfaces(note.order?.id);
   return serializePurchaseNote(note);
 }
 
 export async function deletePurchaseNoteAction(formData: FormData) {
-  await requireAuth();
-  const note = await deletePurchaseNote(String(formData.get("noteId") || ""));
+  const session = await requireAuth();
+  const noteId = String(formData.get("noteId") || "");
+  const previous = await getPurchaseNoteAuditRecord(noteId);
+  const note = await deletePurchaseNote(noteId);
+  if (previous) {
+    await writeAuditLog({
+      actionType: "DELETED",
+      actorUserId: session.userId,
+      entityId: previous.id,
+      entityLabel: previous.customerName,
+      entityType: "PURCHASE_NOTE",
+      title: "Voce da ordinare eliminata",
+      details: previous.content,
+      snapshotBefore: serializePurchaseNote(previous)
+    });
+  }
   revalidateLinkedPurchaseNoteSurfaces(note.orderId);
   return note;
 }
 
 export async function updateCustomerAction(formData: FormData) {
-  await requireAuth();
+  const session = await requireAuth();
   const id = String(formData.get("id") || "");
-  await updateCustomer({
+  const previous = await prisma.customer.findUnique({ where: { id } });
+  const updated = await updateCustomer({
     id,
     type: parseCustomerType(formData.get("type")?.toString() || null),
     name: String(formData.get("name") || ""),
@@ -266,15 +547,50 @@ export async function updateCustomerAction(formData: FormData) {
     uniqueCode: String(formData.get("uniqueCode") || ""),
     notes: String(formData.get("notes") || "")
   });
+  await writeAuditLog({
+    actionType: "UPDATED",
+    actorUserId: session.userId,
+    entityId: updated.id,
+    entityLabel: updated.name,
+    entityType: "CUSTOMER",
+    title: "Cliente aggiornato",
+    details: previous ? formatChangedFields(describeChangedFields(previous, updated, {
+      name: "Nome",
+      type: "Tipo",
+      phone: "Telefono",
+      whatsapp: "WhatsApp",
+      email: "Email",
+      pec: "PEC",
+      taxCode: "Codice fiscale",
+      vatNumber: "P. IVA",
+      uniqueCode: "Codice univoco",
+      notes: "Note"
+    })) : null,
+    snapshotBefore: previous ? buildCustomerAuditSnapshot(previous) : undefined,
+    snapshotAfter: buildCustomerAuditSnapshot(updated)
+  });
 
   revalidatePath("/customers");
   revalidatePath(`/customers/${id}`);
 }
 
 export async function deleteCustomerAction(formData: FormData) {
-  await requireAuth();
+  const session = await requireAuth();
   const id = String(formData.get("id") || "");
+  const previous = await prisma.customer.findUnique({ where: { id } });
   await deleteCustomer(id);
+  if (previous) {
+    await writeAuditLog({
+      actionType: "DELETED",
+      actorUserId: session.userId,
+      entityId: previous.id,
+      entityLabel: previous.name,
+      entityType: "CUSTOMER",
+      title: "Cliente eliminato",
+      details: [previous.phone?.trim() || null, previous.email?.trim() || null].filter(Boolean).join(" • ") || null,
+      snapshotBefore: buildCustomerAuditSnapshot(previous)
+    });
+  }
   revalidatePath("/customers");
   redirect("/customers");
 }
@@ -342,7 +658,7 @@ export async function updateOrderStatusDetailAction(formData: FormData) {
 }
 
 export async function saveOrderMaterialNoteAction(formData: FormData) {
-  await requireAuth();
+  const session = await requireAuth();
   const orderId = String(formData.get("orderId") || "").trim();
   const materialNote = parseOrderMaterialNoteInput(formData);
 
@@ -350,11 +666,23 @@ export async function saveOrderMaterialNoteAction(formData: FormData) {
     throw new Error("Inserisci il materiale da ordinare.");
   }
 
-  await saveOrderMaterialNote({
+  const previous = await getOpenPurchaseNoteByOrderId(orderId);
+  const result = await saveOrderMaterialNote({
     orderId,
     content: materialNote.content,
     urgency: materialNote.urgency,
     blockOrder: materialNote.blockOrder
+  });
+  await writeAuditLog({
+    actionType: previous ? "UPDATED" : "CREATED",
+    actorUserId: session.userId,
+    entityId: result.note.id,
+    entityLabel: result.note.customerName,
+    entityType: "PURCHASE_NOTE",
+    title: previous ? "Nota materiale aggiornata" : "Nota materiale creata",
+    details: result.note.content,
+    snapshotBefore: previous ? serializePurchaseNote(previous) : undefined,
+    snapshotAfter: serializePurchaseNote(result.note)
   });
 
   revalidateOperationalSurfaces(orderId);
@@ -396,10 +724,11 @@ export async function restoreOrderHistoryAction(formData: FormData) {
   await requireAuth();
   const orderId = String(formData.get("orderId") || "");
   const historyId = String(formData.get("historyId") || "");
+  const returnTo = String(formData.get("returnTo") || "").trim();
 
   await restoreOrderHistoryEntry(orderId, historyId);
   revalidateOperationalSurfaces(orderId);
-  redirect(`/orders/${orderId}#order-history-panel`);
+  redirect(returnTo || `/orders/${orderId}#order-history-panel`);
 }
 
 export async function createOrderItemAction(formData: FormData) {
@@ -556,7 +885,7 @@ export async function markReadyAction(formData: FormData) {
 }
 
 export async function createBillboardBookingAction(formData: FormData) {
-  await requireAuth();
+  const session = await requireAuth();
 
   const billboardAssetIds = formData
     .getAll("billboardAssetIds")
@@ -591,6 +920,21 @@ export async function createBillboardBookingAction(formData: FormData) {
       note
     });
 
+    await Promise.all(
+      bookings.map((booking) =>
+        writeAuditLog({
+          actionType: "CREATED",
+          actorUserId: session.userId,
+          entityId: booking.id,
+          entityLabel: booking.billboardAsset.name,
+          entityType: "BILLBOARD_BOOKING",
+          title: "Prenotazione cartellone creata",
+          details: `${booking.customer.name} • ${formatDateKey(booking.startsAt)} - ${formatDateKey(booking.endsAt)}${booking.monitorSlot ? ` • Slot ${booking.monitorSlot}` : ""}`,
+          snapshotAfter: buildBillboardBookingAuditSnapshot(booking)
+        })
+      )
+    );
+
     revalidateBillboardSurfaces();
     redirect(`/billboards?date=${formatDateKey(bookings[0].startsAt)}`);
   } catch (error) {
@@ -623,8 +967,8 @@ function parseBillboardMonitorSlots(raw: string | null) {
 }
 
 export async function createServiceAction(formData: FormData) {
-  await requireAuth();
-  await createService(
+  const session = await requireAuth();
+  const service = await createService(
     String(formData.get("code") || ""),
     String(formData.get("name") || ""),
     String(formData.get("description") || "") || undefined,
@@ -632,6 +976,16 @@ export async function createServiceAction(formData: FormData) {
     parseServiceUnit(formData.get("unit")),
     String(formData.get("quantityTiers") || "")
   );
+  await writeAuditLog({
+    actionType: "CREATED",
+    actorUserId: session.userId,
+    entityId: service.id,
+    entityLabel: service.name,
+    entityType: "SERVICE_CATALOG",
+    title: "Servizio creato",
+    details: service.code || null,
+    snapshotAfter: buildServiceAuditSnapshot(service)
+  });
 
   revalidatePath("/settings");
   revalidatePath("/orders/new");
@@ -639,9 +993,11 @@ export async function createServiceAction(formData: FormData) {
 }
 
 export async function updateServiceAction(formData: FormData) {
-  await requireAuth();
-  await updateServiceCatalogEntry({
-    id: String(formData.get("id") || ""),
+  const session = await requireAuth();
+  const id = String(formData.get("id") || "");
+  const previous = await prisma.serviceCatalog.findUnique({ where: { id } });
+  const service = await updateServiceCatalogEntry({
+    id,
     code: String(formData.get("code") || ""),
     name: String(formData.get("name") || ""),
     description: String(formData.get("description") || "") || undefined,
@@ -650,6 +1006,25 @@ export async function updateServiceAction(formData: FormData) {
     quantityTiers: String(formData.get("quantityTiers") || ""),
     active: parseBooleanFlag(formData.get("active"))
   });
+  await writeAuditLog({
+    actionType: "UPDATED",
+    actorUserId: session.userId,
+    entityId: service.id,
+    entityLabel: service.name,
+    entityType: "SERVICE_CATALOG",
+    title: "Servizio aggiornato",
+    details: previous ? formatChangedFields(describeChangedFields(previous, service, {
+      code: "Codice",
+      name: "Nome",
+      description: "Descrizione",
+      basePriceCents: "Prezzo base",
+      unit: "Unita",
+      quantityTiers: "Scaglioni",
+      active: "Attivo"
+    })) : null,
+    snapshotBefore: previous ? buildServiceAuditSnapshot(previous) : undefined,
+    snapshotAfter: buildServiceAuditSnapshot(service)
+  });
 
   revalidatePath("/settings");
   revalidatePath("/orders/new");
@@ -657,13 +1032,28 @@ export async function updateServiceAction(formData: FormData) {
 }
 
 export async function saveWhatsappTemplateAction(formData: FormData) {
-  await requireAuth();
+  const session = await requireAuth();
   const template = String(formData.get("template") || "").trim();
   if (!template) {
     throw new Error("Il template WhatsApp non puo essere vuoto.");
   }
 
+  const previous = await prisma.appSetting.findUnique({
+    where: { key: "whatsappTemplate" },
+    select: { key: true, value: true }
+  });
   await saveSetting("whatsappTemplate", template);
+  await writeAuditLog({
+    actionType: "UPDATED",
+    actorUserId: session.userId,
+    entityId: "whatsappTemplate",
+    entityLabel: "Template WhatsApp",
+    entityType: "APP_SETTING",
+    title: "Template WhatsApp aggiornato",
+    details: previous?.value === template ? null : "Contenuto messaggio aggiornato",
+    snapshotBefore: previous ? { [previous.key]: previous.value } : undefined,
+    snapshotAfter: { whatsappTemplate: template }
+  });
   revalidatePath("/settings");
 }
 
@@ -671,7 +1061,7 @@ export async function saveStaffInviteSettingsAction(
   _: StaffInviteSettingsActionState,
   formData: FormData
 ): Promise<StaffInviteSettingsActionState> {
-  await requireAdmin();
+  const session = await requireAdmin();
 
   const accessBaseUrl = String(formData.get("accessBaseUrl") || "").trim();
   const subject = String(formData.get("subject") || "").trim();
@@ -698,11 +1088,45 @@ export async function saveStaffInviteSettingsAction(
     };
   }
 
+  const previousSettings = await prisma.appSetting.findMany({
+    where: {
+      key: {
+        in: ["staffAccessBaseUrl", "staffInviteEmailSubject", "staffInviteEmailTemplate"]
+      }
+    },
+    select: {
+      key: true,
+      value: true
+    }
+  });
+  const previousSnapshot = Object.fromEntries(previousSettings.map((entry) => [entry.key, entry.value]));
+  const nextSnapshot = {
+    staffAccessBaseUrl: accessBaseUrl,
+    staffInviteEmailSubject: subject,
+    staffInviteEmailTemplate: template
+  };
+
   await Promise.all([
     saveSetting("staffAccessBaseUrl", accessBaseUrl),
     saveSetting("staffInviteEmailSubject", subject),
     saveSetting("staffInviteEmailTemplate", template)
   ]);
+
+  await writeAuditLog({
+    actionType: "UPDATED",
+    actorUserId: session.userId,
+    entityId: "staffInviteSettings",
+    entityLabel: "Invito staff",
+    entityType: "APP_SETTING",
+    title: "Impostazioni invito staff aggiornate",
+    details: formatChangedFields(describeChangedFields(previousSnapshot, nextSnapshot, {
+      staffAccessBaseUrl: "URL accesso",
+      staffInviteEmailSubject: "Oggetto",
+      staffInviteEmailTemplate: "Testo"
+    })),
+    snapshotBefore: previousSnapshot,
+    snapshotAfter: nextSnapshot
+  });
 
   revalidatePath("/settings/staff");
 
@@ -716,7 +1140,7 @@ export async function createStaffUserAction(
   _: StaffProfileActionState,
   formData: FormData
 ): Promise<StaffProfileActionState> {
-  await requireAdmin();
+  const session = await requireAdmin();
 
   try {
     const user = await createStaffUser({
@@ -737,6 +1161,31 @@ export async function createStaffUserAction(
       subject: inviteConfig.subject,
       template: inviteConfig.template,
       accessBaseUrl: inviteConfig.accessBaseUrl
+    });
+    const auditUser = await prisma.user.findUniqueOrThrow({
+      where: { id: user.id },
+      select: {
+        id: true,
+        name: true,
+        nickname: true,
+        email: true,
+        role: true,
+        active: true,
+        invitePreparedAt: true,
+        inviteSentAt: true,
+        createdAt: true
+      }
+    });
+
+    await writeAuditLog({
+      actionType: "CREATED",
+      actorUserId: session.userId,
+      entityId: auditUser.id,
+      entityLabel: auditUser.name,
+      entityType: "STAFF_USER",
+      title: "Profilo staff creato",
+      details: inviteDelivery.sent ? "Invito email inviato" : "Profilo creato con bozza invito pronta",
+      snapshotAfter: buildStaffUserAuditSnapshot(auditUser)
     });
 
     revalidatePath("/settings");
@@ -764,7 +1213,32 @@ export async function updateOwnNicknameAction(
   const session = await requireAuth();
 
   try {
+    const previous = await prisma.user.findUnique({
+      where: { id: session.userId },
+      select: {
+        id: true,
+        name: true,
+        nickname: true,
+        email: true,
+        role: true,
+        active: true,
+        invitePreparedAt: true,
+        inviteSentAt: true,
+        createdAt: true
+      }
+    });
     const user = await updateOwnStaffNickname(session.userId, String(formData.get("nickname") || ""));
+    await writeAuditLog({
+      actionType: "UPDATED",
+      actorUserId: session.userId,
+      entityId: user.id,
+      entityLabel: user.name,
+      entityType: "STAFF_USER",
+      title: "Nickname accesso aggiornato",
+      details: previous ? formatChangedFields(describeChangedFields(previous, user, { nickname: "Nickname" })) : null,
+      snapshotBefore: previous ? buildStaffUserAuditSnapshot(previous) : undefined,
+      snapshotAfter: buildStaffUserAuditSnapshot(user)
+    });
 
     revalidatePath("/settings");
 
@@ -783,9 +1257,34 @@ export async function updateOwnNicknameAction(
 }
 
 export async function deleteOrderAction(formData: FormData) {
-  await requireAuth();
+  const session = await requireAuth();
   const id = String(formData.get("id") || "");
   const order = await deleteOrder(id);
+  await writeAuditLog({
+    actionType: "DELETED",
+    actorUserId: session.userId,
+    entityId: order.id,
+    entityLabel: getDisplayOrderLabel(order.orderCode, order.title),
+    entityType: "ORDER",
+    title: order.isQuote ? "Preventivo eliminato" : "Ordine eliminato",
+    details: `${order.attachments.length} allegati rimossi`,
+    snapshotBefore: {
+      id: order.id,
+      orderCode: order.orderCode,
+      title: order.title,
+      isQuote: order.isQuote,
+      mainPhase: order.mainPhase,
+      deliveryAt: order.deliveryAt,
+      totalCents: order.totalCents,
+      invoiceStatus: order.invoiceStatus,
+      paymentStatus: order.paymentStatus,
+      attachments: order.attachments.map((attachment) => ({
+        id: attachment.id,
+        fileName: attachment.fileName,
+        filePath: attachment.filePath
+      }))
+    }
+  });
   await cleanupOrderAttachments(order.attachments);
   revalidateOperationalSurfaces();
   redirect(order.isQuote ? "/quotes" : order.mainPhase === "CONSEGNATO" ? "/orders?view=DELIVERED" : "/orders");

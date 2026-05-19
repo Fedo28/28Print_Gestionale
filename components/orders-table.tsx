@@ -78,8 +78,8 @@ export function OrdersTable({
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
   const deliveryColumnLabel = view === "DELIVERED" ? "Consegnato" : "Consegna";
   const sortableHeaders: Array<{ field: OrderSortField; label: string }> = [
-    { field: "order", label: "Ordine" },
     { field: "customer", label: "Cliente" },
+    { field: "order", label: "Ordine" },
     { field: "delivery", label: deliveryColumnLabel },
     { field: "priority", label: "Priorita" },
     { field: "status", label: "Stato" },
@@ -133,6 +133,7 @@ export function OrdersTable({
             const displayLabel = getDisplayOrderLabel(order.orderCode, order.title);
             const secondaryLabel = order.title?.trim() && order.title.trim() !== displayLabel ? order.title.trim() : null;
             const entryMeta = [secondaryLabel, order.isQuote ? "Preventivo" : null].filter(Boolean).join(" • ");
+            const customerContact = getCustomerContact(order.customer);
             const priorityToneClass = view === "ACTIVE" ? getPriorityToneClass(order.priority) : "";
             const deliveredLabel = order.deliveredAt ? formatDateTime(order.deliveredAt) : formatDateTime(order.deliveryAt);
             const whatsappNotified = order.mainPhase === "SVILUPPO_COMPLETATO" && Boolean(order.readyWhatsappSentAt);
@@ -151,15 +152,15 @@ export function OrdersTable({
                   className={`${isOpen ? "order-row-open" : ""}${priorityToneClass ? ` order-row-${priorityToneClass}` : ""}${whatsappNotified ? " order-row-whatsapp-notified" : ""}`}
                   key={order.id}
                 >
-                  <td data-label="Ordine">
+                  <td data-label="Cliente">
                     <div className="order-mobile-card">
                       <div className="order-mobile-card-head">
                         <div className="order-inline-head order-inline-head-spread">
                           <div className="order-mobile-card-copy">
                             <Link href={`/orders/${order.id}`}>
-                              <div className="order-code order-display-title">{displayLabel}</div>
+                              <div className="order-code order-display-title">{order.customer.name}</div>
                             </Link>
-                            {entryMeta ? <div className="subtle order-entry-meta">{entryMeta}</div> : null}
+                            <div className="subtle order-entry-meta">{customerContact}</div>
                           </div>
                           <QuickOrderTriggerButton
                             ariaControls={panelId}
@@ -174,8 +175,8 @@ export function OrdersTable({
                       </div>
 
                       <div className="order-mobile-card-customer">
-                        <strong>{order.customer.name}</strong>
-                        <span>{getCustomerContact(order.customer)}</span>
+                        <strong>{displayLabel}</strong>
+                        {entryMeta ? <span>{entryMeta}</span> : null}
                       </div>
 
                       <div className="order-mobile-card-meta">
@@ -219,7 +220,7 @@ export function OrdersTable({
                     <div className="order-desktop-cell">
                       <div className="order-inline-head order-inline-head-spread">
                         <Link href={`/orders/${order.id}`}>
-                          <div className="order-code order-display-title">{displayLabel}</div>
+                          <div className="order-code order-display-title">{order.customer.name}</div>
                         </Link>
                         <QuickOrderTriggerButton
                           ariaControls={panelId}
@@ -227,12 +228,14 @@ export function OrdersTable({
                           onClick={() => setOpenOrderId((current) => (current === order.id ? null : order.id))}
                         />
                       </div>
-                      {entryMeta ? <div className="subtle order-entry-meta">{entryMeta}</div> : null}
+                      <div className="subtle order-entry-meta">{customerContact}</div>
                     </div>
                   </td>
-                  <td data-label="Cliente">
-                    <strong>{order.customer.name}</strong>
-                    <div className="subtle">{getCustomerContact(order.customer)}</div>
+                  <td data-label="Ordine">
+                    <div className="order-desktop-cell">
+                      <div className="order-code order-display-title">{displayLabel}</div>
+                      {entryMeta ? <div className="subtle order-entry-meta">{entryMeta}</div> : null}
+                    </div>
                   </td>
                   <td
                     className={`orders-table-delivery-cell${priorityToneClass ? ` ${priorityToneClass}` : ""}`}

@@ -2,6 +2,7 @@
 
 import { useDeferredValue, useState } from "react";
 import { updateServiceAction } from "@/app/actions";
+import { normalizeCatalogServiceSearchValue, rankCatalogServices } from "@/lib/catalog-search";
 import { formatCurrency } from "@/lib/format";
 import { formatServiceUnitPriceLabel, serviceUnitOptions, type ServiceUnitValue } from "@/lib/service-units";
 
@@ -17,71 +18,6 @@ type CatalogServiceSearchProps = {
     active: boolean;
   }>;
 };
-
-function normalizeSearchValue(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
-
-function buildSearchHaystack(service: CatalogServiceSearchProps["services"][number]) {
-  return normalizeSearchValue(
-    [
-      service.code || "",
-      service.name,
-      service.description || "",
-      formatServiceUnitPriceLabel(service.unit),
-      service.unit,
-      service.quantityTiers || "",
-      service.active ? "attivo" : "disattivato"
-    ].join(" ")
-  );
-}
-
-function getSearchScore(service: CatalogServiceSearchProps["services"][number], normalizedQuery: string) {
-  const haystack = buildSearchHaystack(service);
-  const terms = normalizedQuery.split(/\s+/).filter(Boolean);
-
-  if (!terms.length || !terms.every((term) => haystack.includes(term))) {
-    return Number.MAX_SAFE_INTEGER;
-  }
-
-  const normalizedCode = normalizeSearchValue(service.code || "");
-  const normalizedName = normalizeSearchValue(service.name);
-  const normalizedDescription = normalizeSearchValue(service.description || "");
-
-  if (normalizedCode === normalizedQuery) {
-    return 0;
-  }
-
-  if (normalizedName === normalizedQuery) {
-    return 1;
-  }
-
-  if (normalizedCode.startsWith(normalizedQuery)) {
-    return 2;
-  }
-
-  if (normalizedName.startsWith(normalizedQuery)) {
-    return 3;
-  }
-
-  if (normalizedDescription.startsWith(normalizedQuery)) {
-    return 4;
-  }
-
-  if (normalizedCode.includes(normalizedQuery)) {
-    return 5;
-  }
-
-  if (normalizedName.includes(normalizedQuery)) {
-    return 6;
-  }
-
-  return 7;
-}
 
 function ServiceResultCard({ service }: { service: CatalogServiceSearchProps["services"][number] }) {
   return (
@@ -150,23 +86,9 @@ function ServiceResultCard({ service }: { service: CatalogServiceSearchProps["se
 export function CatalogServiceSearch({ services }: CatalogServiceSearchProps) {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
-  const normalizedQuery = normalizeSearchValue(deferredQuery);
+  const normalizedQuery = normalizeCatalogServiceSearchValue(deferredQuery);
 
-  const rankedResults = normalizedQuery
-    ? services
-        .map((service) => ({
-          service,
-          score: getSearchScore(service, normalizedQuery)
-        }))
-        .filter((entry) => entry.score !== Number.MAX_SAFE_INTEGER)
-        .sort(
-          (left, right) =>
-            left.score - right.score ||
-            left.service.name.localeCompare(right.service.name, "it") ||
-            (left.service.code || "").localeCompare(right.service.code || "", "it")
-        )
-        .map((entry) => entry.service)
-    : [];
+  const rankedResults = normalizedQuery ? rankCatalogServices(services, normalizedQuery) : [];
 
   const suggestionResults = rankedResults.slice(0, 6);
   const visibleResults = rankedResults.slice(0, 12);

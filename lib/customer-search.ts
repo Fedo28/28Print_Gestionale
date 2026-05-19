@@ -1,4 +1,5 @@
 import { CustomerType } from "@prisma/client";
+import { createSearchIndexValue, createSearchMatcher, getSearchFieldScore, matchesSearchIndexValue, normalizeSearchText } from "@/lib/search-text";
 
 export type SearchableCustomer = {
   id: string;
@@ -14,15 +15,11 @@ export type SearchableCustomer = {
 };
 
 export function normalizeCustomerSearchValue(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
+  return normalizeSearchText(value);
 }
 
 function buildCustomerSearchHaystack(customer: SearchableCustomer) {
-  return normalizeCustomerSearchValue(
+  return createSearchIndexValue(
     [
       customer.name,
       customer.phone || "",
@@ -36,71 +33,27 @@ function buildCustomerSearchHaystack(customer: SearchableCustomer) {
   );
 }
 
-export function getCustomerSearchScore(customer: SearchableCustomer, normalizedQuery: string) {
-  const haystack = buildCustomerSearchHaystack(customer);
-  const normalizedName = normalizeCustomerSearchValue(customer.name);
-  const normalizedPhone = normalizeCustomerSearchValue(customer.phone || "");
-  const normalizedWhatsapp = normalizeCustomerSearchValue(customer.whatsapp || "");
-  const normalizedEmail = normalizeCustomerSearchValue(customer.email || "");
-  const normalizedPec = normalizeCustomerSearchValue(customer.pec || "");
-  const normalizedTaxCode = normalizeCustomerSearchValue(customer.taxCode || "");
-  const normalizedVatNumber = normalizeCustomerSearchValue(customer.vatNumber || "");
-  const normalizedUniqueCode = normalizeCustomerSearchValue(customer.uniqueCode || "");
-  const terms = normalizedQuery.split(/\s+/).filter(Boolean);
+function withWeight(score: number | null, weight: number) {
+  return score === null ? Number.MAX_SAFE_INTEGER : score + weight;
+}
 
-  if (!terms.length || !terms.every((term) => haystack.includes(term))) {
+export function getCustomerSearchScore(customer: SearchableCustomer, normalizedQuery: string) {
+  const matcher = createSearchMatcher(normalizedQuery);
+
+  if (!matchesSearchIndexValue(buildCustomerSearchHaystack(customer), matcher)) {
     return Number.MAX_SAFE_INTEGER;
   }
 
-  if (normalizedName === normalizedQuery) {
-    return 0;
-  }
-
-  if (normalizedName.startsWith(normalizedQuery)) {
-    return 1;
-  }
-
-  if (normalizedName.includes(normalizedQuery)) {
-    return 2;
-  }
-
-  if (normalizedPhone === normalizedQuery || normalizedWhatsapp === normalizedQuery) {
-    return 3;
-  }
-
-  if (normalizedPhone.includes(normalizedQuery) || normalizedWhatsapp.includes(normalizedQuery)) {
-    return 4;
-  }
-
-  if (normalizedEmail === normalizedQuery) {
-    return 5;
-  }
-
-  if (normalizedPec === normalizedQuery) {
-    return 5;
-  }
-
-  if (normalizedEmail.includes(normalizedQuery)) {
-    return 6;
-  }
-
-  if (normalizedPec.includes(normalizedQuery)) {
-    return 6;
-  }
-
-  if (normalizedTaxCode === normalizedQuery || normalizedVatNumber === normalizedQuery || normalizedUniqueCode === normalizedQuery) {
-    return 7;
-  }
-
-  if (
-    normalizedTaxCode.includes(normalizedQuery) ||
-    normalizedVatNumber.includes(normalizedQuery) ||
-    normalizedUniqueCode.includes(normalizedQuery)
-  ) {
-    return 8;
-  }
-
-  return 9;
+  return Math.min(
+    withWeight(getSearchFieldScore(customer.name, matcher), 0),
+    withWeight(getSearchFieldScore(customer.phone || "", matcher), 12),
+    withWeight(getSearchFieldScore(customer.whatsapp || "", matcher), 13),
+    withWeight(getSearchFieldScore(customer.email || "", matcher), 24),
+    withWeight(getSearchFieldScore(customer.pec || "", matcher), 25),
+    withWeight(getSearchFieldScore(customer.taxCode || "", matcher), 32),
+    withWeight(getSearchFieldScore(customer.vatNumber || "", matcher), 33),
+    withWeight(getSearchFieldScore(customer.uniqueCode || "", matcher), 34)
+  );
 }
 
 export function rankCustomers<T extends SearchableCustomer>(customers: T[], query: string) {

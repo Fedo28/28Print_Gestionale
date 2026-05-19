@@ -40,6 +40,8 @@ describe("customer search", () => {
 
   it("matches on phone, email and fiscal data", () => {
     expect(rankCustomers(customers, "2222222").map((customer) => customer.id)).toEqual(["2"]);
+    expect(rankCustomers(customers, "393332222222").map((customer) => customer.id)).toEqual(["2"]);
+    expect(rankCustomers(customers, "OFFICINAROSSI").map((customer) => customer.id)).toEqual(["2"]);
     expect(rankCustomers(customers, "officinarossi").map((customer) => customer.id)).toEqual(["2"]);
     expect(rankCustomers(customers, "pec.it").map((customer) => customer.id)).toEqual(["2"]);
     expect(rankCustomers(customers, "RSSMRA80A01H501Z").map((customer) => customer.id)).toEqual(["1"]);

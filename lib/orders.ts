@@ -21,6 +21,7 @@ import {
   paymentStatusLabels,
   phaseOrder
 } from "@/lib/constants";
+import { getDisplayOrderLabel } from "@/lib/order-display";
 import { canTransitionPhase } from "@/lib/order-phase-transitions";
 import { formatCompactDate, formatCurrency, formatDateKey, formatQuantity, formatWeekdayLabel } from "@/lib/format";
 import { comparePriorityDesc, computeAutomaticPriority } from "@/lib/priorities";
@@ -50,6 +51,7 @@ import type {
   QuoteFilter,
   StatusFilter
 } from "@/lib/order-filters";
+import { rankSearchableOrders } from "@/lib/order-search";
 import { upsertOrderMaterialPurchaseNote } from "@/lib/purchase-notes";
 import { prisma } from "@/lib/prisma";
 import { getWhatsappTemplate } from "@/lib/settings";
@@ -264,6 +266,23 @@ type RestorableOrderHistorySnapshot =
   | OrderInvoiceStatusHistorySnapshot
   | OrderItemHistorySnapshot
   | OrderPaymentsHistorySnapshot;
+
+export type RecentOrderHistorySnapshotKind = RestorableOrderHistorySnapshot["kind"] | null;
+
+export type RecentOrderHistoryEntry = {
+  id: string;
+  orderId: string;
+  href: string;
+  orderLabel: string;
+  customerName: string;
+  customerContact: string | null;
+  description: string;
+  summary: string;
+  createdAt: Date;
+  canRestore: boolean;
+  categoryLabel: string;
+  snapshotKind: RecentOrderHistorySnapshotKind;
+};
 
 function usesLineTotalCatalogPricing(options: {
   format?: string | null;
@@ -1192,6 +1211,42 @@ function parseRestorableOrderHistorySnapshot(value: Prisma.JsonValue | null): Re
 
 function getRestoreDetailsLabel(description: string, createdAt: Date | string) {
   return `Ripristino da "${description}" del ${formatCompactDate(createdAt)}`;
+}
+
+function getRecentOrderHistoryCategory(type: HistoryType, snapshotKind: RecentOrderHistorySnapshotKind) {
+  if (snapshotKind === "order-invoice-status") {
+    return "Fatturazione";
+  }
+
+  if (snapshotKind === "order-status") {
+    return "Stato operativo";
+  }
+
+  if (snapshotKind === "order-payments") {
+    return "Contabilita";
+  }
+
+  if (snapshotKind === "order-item") {
+    return "Riga ordine";
+  }
+
+  if (snapshotKind === "order-details") {
+    return "Dettagli";
+  }
+
+  if (type === "ATTACHMENT_UPLOADED") {
+    return "Allegati";
+  }
+
+  if (type === "NOTE") {
+    return "Note";
+  }
+
+  return "Ordine";
+}
+
+function getOrderCustomerContact(customer: { phone?: string | null; whatsapp?: string | null }) {
+  return customer.phone?.trim() || customer.whatsapp?.trim() || null;
 }
 
 async function syncOrderFinancialsFromItems(
@@ -3266,7 +3321,7 @@ export async function getSalesStats(options?: { months?: number; referenceDate?:
   return buildSalesStatsReport(orders, options);
 }
 
-export async function getOrdersList(filters: {
+type OrdersListQueryFilters = {
   view?: OrderListView;
   query?: string;
   phase?: PhaseFilter;
@@ -3279,24 +3334,13 @@ export async function getOrdersList(filters: {
   preset?: DashboardPreset;
   sort?: OrderSortField;
   direction?: OrderSortDirection;
-}) {
-  const query = filters.query?.trim();
+};
+
+async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
   const now = new Date();
   const todayStart = startOfDay(now);
   const tomorrowStart = addDays(todayStart, 1);
   const isDeliveredView = filters.view === "DELIVERED";
-  const sortField = filters.sort || "delivery";
-  const sortDirection = filters.direction || (isDeliveredView ? "desc" : "asc");
-  const queryWhere = query
-    ? {
-        OR: [
-          { orderCode: { contains: query } },
-          { title: { contains: query } },
-          { customer: { name: { contains: query } } },
-          { customer: { phone: { contains: query } } }
-        ]
-      }
-    : undefined;
 
   const presetWhere =
     isDeliveredView
@@ -3414,7 +3458,6 @@ export async function getOrdersList(filters: {
     where: {
       ...viewWhere,
       ...presetWhere,
-      ...(queryWhere ? { AND: [queryWhere] } : {}),
       ...(filters.phase && filters.phase !== "ALL"
         ? {
             mainPhase:
@@ -3449,11 +3492,108 @@ export async function getOrdersList(filters: {
       ? ordersWithPriority.filter((order) => order.priority === filters.priority)
       : ordersWithPriority;
 
-  return sortOrdersList(filteredOrders, {
+  return filteredOrders;
+}
+
+export async function getOrdersList(filters: OrdersListQueryFilters) {
+  const query = filters.query?.trim();
+  const sortField = filters.sort || "delivery";
+  const sortDirection = filters.direction || (filters.view === "DELIVERED" ? "desc" : "asc");
+  const filteredOrders = await getFilteredOrdersCollection(filters);
+  const queryMatchedOrders = query ? rankSearchableOrders(filteredOrders, query) : filteredOrders;
+
+  return sortOrdersList(queryMatchedOrders, {
     field: sortField,
     direction: sortDirection,
     view: filters.view || "ACTIVE"
   });
+}
+
+export async function getOrderSearchSuggestions(filters: OrdersListQueryFilters & { limit?: number }) {
+  const query = filters.query?.trim();
+
+  if (!query) {
+    return [];
+  }
+
+  const matchedOrders = rankSearchableOrders(await getFilteredOrdersCollection(filters), query).slice(0, filters.limit || 6);
+
+  return matchedOrders.map((order) => ({
+    id: order.id,
+    label: getDisplayOrderLabel(order.orderCode, order.title),
+    meta: [order.customer.name, order.customer.phone?.trim() || order.customer.whatsapp?.trim() || null]
+      .filter((value): value is string => Boolean(value))
+      .join(" • "),
+    href: `/orders/${order.id}`
+  }));
+}
+
+export async function getOrderRecentActivityFeed(options?: { limit?: number; invoiceLimit?: number }) {
+  const recentWindow = Math.max((options?.limit || 8) * 6, (options?.invoiceLimit || 6) * 6, 48);
+  const historyEntries = await prisma.orderHistory.findMany({
+    where: {
+      order: {
+        isQuote: false
+      }
+    },
+    select: {
+      id: true,
+      orderId: true,
+      type: true,
+      description: true,
+      details: true,
+      createdAt: true,
+      snapshotBefore: true,
+      order: {
+        select: {
+          orderCode: true,
+          title: true,
+          customer: {
+            select: {
+              name: true,
+              phone: true,
+              whatsapp: true
+            }
+          }
+        }
+      }
+    },
+    orderBy: {
+      createdAt: "desc"
+    },
+    take: recentWindow
+  });
+
+  const mappedEntries = historyEntries
+    .filter((entry) => entry.type !== "CREATED")
+    .map((entry) => {
+      const snapshot = parseRestorableOrderHistorySnapshot(entry.snapshotBefore);
+      const snapshotKind = snapshot?.kind || null;
+
+      return {
+        id: entry.id,
+        orderId: entry.orderId,
+        href: `/orders/${entry.orderId}`,
+        orderLabel: getDisplayOrderLabel(entry.order.orderCode, entry.order.title),
+        customerName: entry.order.customer.name,
+        customerContact: getOrderCustomerContact(entry.order.customer),
+        description: entry.description,
+        summary: entry.details || entry.description,
+        createdAt: entry.createdAt,
+        canRestore: Boolean(snapshot),
+        categoryLabel: getRecentOrderHistoryCategory(entry.type, snapshotKind),
+        snapshotKind
+      } satisfies RecentOrderHistoryEntry;
+    });
+
+  return {
+    recentInvoiceChanges: mappedEntries
+      .filter((entry) => entry.snapshotKind === "order-invoice-status")
+      .slice(0, options?.invoiceLimit || 6),
+    recentChanges: mappedEntries
+      .filter((entry) => entry.snapshotKind !== "order-invoice-status")
+      .slice(0, options?.limit || 8)
+  };
 }
 
 export async function getOrdersTabCounts(filters: {

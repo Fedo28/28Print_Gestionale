@@ -2,7 +2,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import logoImage from "@/logo.png";
 import prAdvLogoImage from "@/pr-adv-logo.png";
-import { AutoPrintOnLoad } from "@/components/auto-print-on-load";
+import { PrintOrderActions } from "@/components/print-order-actions";
 import { requireAuth } from "@/lib/auth";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { formatOrderItemQuantity } from "@/lib/order-item-units";
@@ -21,7 +21,7 @@ export default async function OrderPrintPage({
   searchParams
 }: {
   params: { id: string };
-  searchParams?: { autoprint?: string; brand?: string };
+  searchParams?: { brand?: string };
 }) {
   await requireAuth();
   const order = await getOrderById(params.id);
@@ -44,8 +44,8 @@ export default async function OrderPrintPage({
         };
 
   return (
-    <div className="print-preview-page">
-      {searchParams?.autoprint === "1" ? <AutoPrintOnLoad /> : null}
+    <div className="print-order-page-shell">
+      <PrintOrderActions backHref={`/orders/${order.id}`} brandLabel={headerBrand.alt} />
       <article className="print-sheet print-sheet-minimal">
         <header className="print-sheet-minimal-header">
           <div className="print-sheet-logo">

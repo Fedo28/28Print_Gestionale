@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { OrderSearchInput } from "@/components/order-search-input";
 import { QuotesTable } from "@/components/quotes-table";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
@@ -47,11 +48,12 @@ export default async function QuotesPage({ searchParams }: Props) {
       <section className="card card-pad quotes-page-filters-card">
         <form className="toolbar filters-bar" method="get">
           <div className="filters-grow">
-            <input
-              aria-label="Ricerca preventivi"
-              defaultValue={filters.q}
+            <OrderSearchInput
+              ariaLabel="Ricerca preventivi"
               name="q"
+              initialValue={filters.q}
               placeholder="Cerca codice, titolo, cliente o telefono"
+              scope="quotes"
             />
           </div>
           <button className="secondary" type="submit">

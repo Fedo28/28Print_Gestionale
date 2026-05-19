@@ -104,6 +104,24 @@ enum HistoryType {
   NOTE
 }
 
+enum AuditEntityType {
+  ORDER
+  CUSTOMER
+  PURCHASE_NOTE
+  BILLBOARD_BOOKING
+  SERVICE_CATALOG
+  APP_SETTING
+  STAFF_USER
+}
+
+enum AuditActionType {
+  CREATED
+  UPDATED
+  DELETED
+  COMPLETED
+  REOPENED
+}
+
 model User {
   id           String   @id @default(uuid())
   name         String
@@ -116,6 +134,7 @@ model User {
   inviteSentAt DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  auditLogs    AuditLog[]
 }
 
 model Customer {
@@ -271,6 +290,25 @@ model OrderHistory {
   order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId, createdAt])
+}
+
+model AuditLog {
+  id             String          @id @default(uuid())
+  entityType     AuditEntityType
+  entityId       String
+  entityLabel    String
+  actionType     AuditActionType
+  title          String
+  details        String?
+  snapshotBefore Json?
+  snapshotAfter  Json?
+  actorUserId    String?
+  createdAt      DateTime        @default(now())
+  actorUser      User?           @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([entityType, entityId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 model AppSetting {

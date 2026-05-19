@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import Link from "next/link";
+import { HistoryBackButton } from "@/components/history-back-button";
 import { StaffInviteSettingsForm } from "@/components/staff-invite-settings-form";
 import { StaffProfileForm } from "@/components/staff-profile-form";
 import { PageHeader } from "@/components/page-header";
@@ -143,9 +144,7 @@ export default async function StaffSettingsPage({
             <h3>Staff registrato</h3>
             <p className="card-muted">Elenco profili gia creati, con stato reale del link e dell'invio mail.</p>
           </div>
-          <Link className="button ghost" href="/settings">
-            Torna a impostazioni
-          </Link>
+          <HistoryBackButton className="button ghost" fallbackHref="/settings" label="Torna indietro" />
         </div>
 
         <div className="stack">

@@ -19,6 +19,7 @@ type NavIcon =
   | "purchases"
   | "production"
   | "stats"
+  | "history"
   | "settings"
   | "logout";
 
@@ -47,6 +48,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isLoginRoute = pathname === "/login";
   const isPrintRoute = pathname.endsWith("/print");
   const isDashboardRoute = pathname === "/";
+  const isActivityRoute = pathname.startsWith("/activity");
+  const isSettingsRoute = pathname.startsWith("/settings");
   const activeNavItem =
     navItems.find((item) => pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))) ?? navItems[0];
   const [isCompactViewport, setIsCompactViewport] = useState(false);
@@ -385,6 +388,18 @@ export function AppShell({ children }: { children: ReactNode }) {
               <div className="mobile-nav-section-label">Utility rapide</div>
               <Link
                 className="mobile-nav-utility-link"
+                href="/activity"
+                onClick={handleMobileNavLinkClick}
+              >
+                <span aria-hidden="true" className="nav-icon">
+                  <ShellGlyph kind="history" />
+                </span>
+                <span className="nav-copy">
+                  <span>Ultime modifiche</span>
+                </span>
+              </Link>
+              <Link
+                className="mobile-nav-utility-link"
                 href="/settings"
                 onClick={handleMobileNavLinkClick}
               >
@@ -416,8 +431,15 @@ export function AppShell({ children }: { children: ReactNode }) {
               <GlobalSearch />
               <div className="shell-toolbar-actions">
                 <Link
+                  aria-label="Apri ultime modifiche"
+                  className={`shell-toolbar-icon-link shell-toolbar-history-link${isActivityRoute ? " active" : ""}`}
+                  href="/activity"
+                >
+                  <ShellGlyph kind="history" />
+                </Link>
+                <Link
                   aria-label="Apri impostazioni"
-                  className="shell-toolbar-icon-link shell-toolbar-settings-link"
+                  className={`shell-toolbar-icon-link shell-toolbar-settings-link${isSettingsRoute ? " active" : ""}`}
                   href="/settings"
                 >
                   <ShellGlyph kind="settings" />
@@ -503,6 +525,13 @@ function ShellGlyph({ kind }: { kind: NavIcon }) {
       <>
         <path d="M5 19.5V11M12 19.5V7M19 19.5V13" />
         <path d="M3.5 19.5h17" />
+      </>
+    ),
+    history: (
+      <>
+        <path d="M4 12a8 8 0 1 0 2.34-5.66" />
+        <path d="M4 4.5v4h4" />
+        <path d="M12 8v4l2.75 1.75" />
       </>
     ),
     settings: (

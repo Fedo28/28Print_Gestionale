@@ -1,5 +1,6 @@
 import { CustomerType, InvoiceStatus, MainPhase, OperationalStatus, PaymentStatus, Priority } from "@prisma/client";
 import Link from "next/link";
+import { OrderSearchInput } from "@/components/order-search-input";
 import { OrdersTable } from "@/components/orders-table";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
@@ -171,9 +172,14 @@ export default async function OrdersPage({ searchParams }: Props) {
       <PageHeader
         title={view === "DELIVERED" ? "Storico ordini" : "Ordini"}
         action={
-          <Link className="button primary" href="/orders/new">
-            Nuovo ordine
-          </Link>
+          <div className="button-row orders-page-head-actions">
+            <Link className="button ghost orders-page-history-button" href="/orders/activity">
+              Cronologia
+            </Link>
+            <Link className="button primary" href="/orders/new">
+              Nuovo ordine
+            </Link>
+          </div>
         }
       />
 
@@ -199,11 +205,22 @@ export default async function OrdersPage({ searchParams }: Props) {
           <input name="dir" type="hidden" value={filters.dir} />
           <div className="toolbar filters-bar">
             <div className="filters-grow">
-              <input
-                aria-label="Ricerca ordini"
-                defaultValue={filters.q}
+              <OrderSearchInput
+                ariaLabel="Ricerca ordini"
                 name="q"
+                initialValue={filters.q}
                 placeholder={view === "DELIVERED" ? "Cerca nello storico per codice, titolo, cliente o telefono" : "Cerca codice, titolo, cliente o telefono"}
+                requestParams={{
+                  view: filters.view,
+                  phase: filters.phase !== "ALL" ? filters.phase : undefined,
+                  status: filters.status !== "ALL" ? filters.status : undefined,
+                  payment: filters.payment !== "ALL" ? filters.payment : undefined,
+                  invoice: filters.invoice !== "ALL" ? filters.invoice : undefined,
+                  priority: filters.priority !== "ALL" ? filters.priority : undefined,
+                  customerType: filters.customerType !== "ALL" ? filters.customerType : undefined,
+                  preset: filters.preset !== "ALL" ? filters.preset : undefined
+                }}
+                scope="orders"
               />
             </div>
             <button className="secondary" type="submit">

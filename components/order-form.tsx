@@ -6,6 +6,7 @@ import { CustomerAutocomplete } from "@/components/customer-autocomplete";
 import { MaterialCategorySelectorField } from "@/components/material-category-selector-field";
 import { UndoButtonContent } from "@/components/undo-button-content";
 import { useUndoHistory } from "@/components/use-undo-history";
+import { getCatalogServiceSearchScore, normalizeCatalogServiceSearchValue } from "@/lib/catalog-search";
 import { normalizeCustomerSearchValue } from "@/lib/customer-search";
 import { isLabelCalculatorMaterialService } from "@/lib/label-calculator";
 import {
@@ -148,7 +149,7 @@ function getCatalogPriceModeForService(service: ServiceCatalog | undefined): Cat
 }
 
 function isLabelCalculatorFormat(format: string | null | undefined) {
-  return normalizeCatalogSearch(format || "").startsWith(normalizeCatalogSearch(LABEL_CALCULATOR_FORMAT_PREFIX));
+  return normalizeCatalogServiceSearchValue(format || "").startsWith(normalizeCatalogServiceSearchValue(LABEL_CALCULATOR_FORMAT_PREFIX));
 }
 
 function createEmptyLabelCalculatorDraft(): LabelCalculatorDraft {
@@ -239,50 +240,8 @@ function formatQuantityInput(value: string | number) {
   return quantity.toLocaleString("it-IT", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
 }
 
-function normalizeCatalogSearch(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
-
 function isPhotographyService(service: ServiceCatalog) {
   return String(service.code || "").startsWith("FOTOGRAFIE_");
-}
-
-function getServiceSearchScore(service: ServiceCatalog, normalizedQuery: string) {
-  const normalizedName = normalizeCatalogSearch(service.name);
-  const normalizedCode = normalizeCatalogSearch(service.code || "");
-  const normalizedDescription = normalizeCatalogSearch(service.description || "");
-  const haystack = [normalizedCode, normalizedName, normalizedDescription].join(" ");
-  const terms = normalizedQuery.split(/\s+/).filter(Boolean);
-
-  if (!terms.length || !terms.every((term) => haystack.includes(term))) {
-    return Number.MAX_SAFE_INTEGER;
-  }
-
-  if (normalizedCode === normalizedQuery) {
-    return 0;
-  }
-
-  if (normalizedName === normalizedQuery) {
-    return 1;
-  }
-
-  if (normalizedCode.startsWith(normalizedQuery)) {
-    return 2;
-  }
-
-  if (normalizedName.startsWith(normalizedQuery)) {
-    return 3;
-  }
-
-  if (normalizedName.includes(normalizedQuery)) {
-    return 4;
-  }
-
-  return 5;
 }
 
 function getServiceTiers(service: ServiceCatalog | undefined): QuantityTier[] {
@@ -1105,7 +1064,7 @@ export function OrderForm({
   }
 
   function getServiceSuggestions(query: string) {
-    const normalizedQuery = normalizeCatalogSearch(query);
+    const normalizedQuery = normalizeCatalogServiceSearchValue(query);
 
     if (!normalizedQuery) {
       return [] as ServiceSuggestion[];
@@ -1119,7 +1078,7 @@ export function OrderForm({
         label: service.name,
         meta: `${service.code || "Senza codice"} • ${formatCurrency(service.basePriceCents)} • ${formatServiceUnitPriceLabel(service.unit)}`,
         service,
-        score: getServiceSearchScore(service, normalizedQuery)
+        score: getCatalogServiceSearchScore(service, normalizedQuery)
       }))
       .filter((entry) => entry.score !== Number.MAX_SAFE_INTEGER)
       .sort(
@@ -1132,7 +1091,7 @@ export function OrderForm({
       .map(({ score: _score, ...entry }) => entry);
 
     const photographyScore = photographyServices.length
-      ? Math.min(...photographyServices.map((service) => getServiceSearchScore(service, normalizedQuery)))
+      ? Math.min(...photographyServices.map((service) => getCatalogServiceSearchScore(service, normalizedQuery)))
       : Number.MAX_SAFE_INTEGER;
 
     if (photographyScore !== Number.MAX_SAFE_INTEGER) {
@@ -1148,7 +1107,7 @@ export function OrderForm({
   }
 
   function findExactServiceMatch(query: string) {
-    const normalizedQuery = normalizeCatalogSearch(query);
+    const normalizedQuery = normalizeCatalogServiceSearchValue(query);
     if (!normalizedQuery) {
       return undefined;
     }
@@ -1156,7 +1115,10 @@ export function OrderForm({
     return catalogServices.find(
       (service) =>
         !isPhotographyService(service) &&
-        (normalizeCatalogSearch(service.name) === normalizedQuery || normalizeCatalogSearch(service.code || "") === normalizedQuery)
+        (
+          normalizeCatalogServiceSearchValue(service.name) === normalizedQuery ||
+          normalizeCatalogServiceSearchValue(service.code || "") === normalizedQuery
+        )
     );
   }
 
@@ -1197,7 +1159,8 @@ export function OrderForm({
         row?.serviceCatalogId && labelCalculatorMaterials.some((service) => service.id === row.serviceCatalogId)
           ? row.serviceCatalogId
           : "",
-      singleCut: normalizeCatalogSearch(row?.finishing || "") === normalizeCatalogSearch("Taglio singolo")
+      singleCut:
+        normalizeCatalogServiceSearchValue(row?.finishing || "") === normalizeCatalogServiceSearchValue("Taglio singolo")
     });
   }
 
@@ -1569,7 +1532,10 @@ export function OrderForm({
     const selectedService = catalogServices.find((entry) => entry.id === item.serviceCatalogId);
     const exactMatchedService =
       !selectedService && item.serviceQuery.trim()
-        ? catalogServices.find((entry) => normalizeCatalogSearch(entry.name) === normalizeCatalogSearch(item.serviceQuery))
+        ? catalogServices.find(
+            (entry) =>
+              normalizeCatalogServiceSearchValue(entry.name) === normalizeCatalogServiceSearchValue(item.serviceQuery)
+          )
         : undefined;
     const deactivatableService = selectedService || exactMatchedService;
     const suggestions = getServiceSuggestions(item.serviceQuery);
@@ -1584,7 +1550,9 @@ export function OrderForm({
       canUseCatalogTools &&
       activeServiceField === index &&
       item.serviceQuery.trim().length > 0 &&
-      (!selectedService || normalizeCatalogSearch(item.serviceQuery) !== normalizeCatalogSearch(selectedService.name) || isPhotographyRow);
+      (!selectedService ||
+        normalizeCatalogServiceSearchValue(item.serviceQuery) !== normalizeCatalogServiceSearchValue(selectedService.name) ||
+        isPhotographyRow);
     const hasTierEntries = parsedTiers.length > 0;
     const catalogPriceMode = getCatalogPriceModeForItem(item);
     const parsedDiscount = parseAdjustmentState(item.discountValue, item.discountMode);
@@ -1668,9 +1636,9 @@ export function OrderForm({
             id={`service-${index}`}
             onChange={(event) => {
               const nextValue = event.target.value;
-              const normalizedNextValue = normalizeCatalogSearch(nextValue);
+              const normalizedNextValue = normalizeCatalogServiceSearchValue(nextValue);
               const matchesSelectedService =
-                selectedService && normalizedNextValue === normalizeCatalogSearch(selectedService.name);
+                selectedService && normalizedNextValue === normalizeCatalogServiceSearchValue(selectedService.name);
               const exactMatchedService = item.bodyMode ? undefined : findExactServiceMatch(nextValue);
               const preserveMatchedSelection =
                 matchesSelectedService || (Boolean(exactMatchedService) && selectedService?.id === exactMatchedService?.id);

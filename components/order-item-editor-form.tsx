@@ -5,6 +5,7 @@ import { useDeferredValue, useEffect, useState } from "react";
 import { createOrderItemAction, updateOrderItemAction } from "@/app/actions";
 import { UndoButtonContent } from "@/components/undo-button-content";
 import { useUndoHistory } from "@/components/use-undo-history";
+import { normalizeCatalogServiceSearchValue, rankCatalogServices } from "@/lib/catalog-search";
 import { formatCurrency } from "@/lib/format";
 import { getTieredUnitPrice, parseFlexibleAdjustmentInput, parseQuantityValue, usesLineTotalQuantityTiers } from "@/lib/pricing";
 import { formatServiceUnitPriceLabel, formatServiceUnitShortLabel } from "@/lib/service-units";
@@ -54,56 +55,6 @@ type OrderItemEditorUndoSnapshot = {
 
 function formatPriceInput(cents: number) {
   return (Math.max(cents, 0) / 100).toFixed(2).replace(".", ",");
-}
-
-function normalizeSearchValue(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
-
-function buildSearchHaystack(service: OrderItemEditorService) {
-  return normalizeSearchValue([service.code || "", service.name, service.quantityTiers || ""].join(" "));
-}
-
-function getSearchScore(service: OrderItemEditorService, normalizedQuery: string) {
-  const haystack = buildSearchHaystack(service);
-  const terms = normalizedQuery.split(/\s+/).filter(Boolean);
-
-  if (!terms.length || !terms.every((term) => haystack.includes(term))) {
-    return Number.MAX_SAFE_INTEGER;
-  }
-
-  const normalizedCode = normalizeSearchValue(service.code || "");
-  const normalizedName = normalizeSearchValue(service.name);
-
-  if (normalizedCode === normalizedQuery) {
-    return 0;
-  }
-
-  if (normalizedName === normalizedQuery) {
-    return 1;
-  }
-
-  if (normalizedCode.startsWith(normalizedQuery)) {
-    return 2;
-  }
-
-  if (normalizedName.startsWith(normalizedQuery)) {
-    return 3;
-  }
-
-  if (normalizedCode.includes(normalizedQuery)) {
-    return 4;
-  }
-
-  if (normalizedName.includes(normalizedQuery)) {
-    return 5;
-  }
-
-  return 6;
 }
 
 function getCatalogPriceDisplay(service: OrderItemEditorService | undefined, quantity: number) {
@@ -198,27 +149,12 @@ export function OrderItemEditorForm({
   const deferredServiceQuery = useDeferredValue(serviceQuery);
   const action = mode === "create" ? createOrderItemAction : updateOrderItemAction;
   const selectedService = serviceCatalogId ? services.find((entry) => entry.id === serviceCatalogId) || null : null;
-  const normalizedServiceQuery = normalizeSearchValue(deferredServiceQuery);
-  const serviceSuggestions = normalizedServiceQuery
-    ? services
-        .map((service) => ({
-          service,
-          score: getSearchScore(service, normalizedServiceQuery)
-        }))
-        .filter((entry) => entry.score !== Number.MAX_SAFE_INTEGER)
-        .sort(
-          (left, right) =>
-            left.score - right.score ||
-            left.service.name.localeCompare(right.service.name, "it") ||
-            (left.service.code || "").localeCompare(right.service.code || "", "it")
-        )
-        .slice(0, 6)
-        .map((entry) => entry.service)
-    : [];
+  const normalizedServiceQuery = normalizeCatalogServiceSearchValue(deferredServiceQuery);
+  const serviceSuggestions = normalizedServiceQuery ? rankCatalogServices(services, normalizedServiceQuery).slice(0, 6) : [];
   const showServiceSuggestions =
     isServiceFocused &&
     normalizedServiceQuery.length > 0 &&
-    (!selectedService || normalizeSearchValue(selectedService.name) !== normalizedServiceQuery);
+    (!selectedService || normalizeCatalogServiceSearchValue(selectedService.name) !== normalizedServiceQuery);
 
   function captureUndoSnapshot(): OrderItemEditorUndoSnapshot {
     return {
@@ -289,10 +225,13 @@ export function OrderItemEditorForm({
   function handleServiceSearchChange(nextValue: string) {
     setServiceQuery(nextValue);
 
-    const normalizedNextValue = normalizeSearchValue(nextValue);
+    const normalizedNextValue = normalizeCatalogServiceSearchValue(nextValue);
     const exactMatchedService = services.find(
       (service) =>
-        normalizeSearchValue(service.name) === normalizedNextValue || normalizeSearchValue(service.code || "") === normalizedNextValue
+        (
+          normalizeCatalogServiceSearchValue(service.name) === normalizedNextValue ||
+          normalizeCatalogServiceSearchValue(service.code || "") === normalizedNextValue
+        )
     );
 
     if (exactMatchedService) {
@@ -301,7 +240,7 @@ export function OrderItemEditorForm({
       return;
     }
 
-    if (selectedService && normalizeSearchValue(selectedService.name) !== normalizedNextValue) {
+    if (selectedService && normalizeCatalogServiceSearchValue(selectedService.name) !== normalizedNextValue) {
       setServiceCatalogId("");
     }
   }

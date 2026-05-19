@@ -22,6 +22,7 @@ import { AttachmentUploadForm } from "@/components/attachment-upload-form";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DeleteOrderForm } from "@/components/delete-order-form";
 import { FormUndoButton } from "@/components/form-undo-button";
+import { HistoryBackButton } from "@/components/history-back-button";
 import { MaterialCategorySelectorField } from "@/components/material-category-selector-field";
 import { OrderPrintBrandMenu } from "@/components/order-print-brand-menu";
 import { OrderItemEditorForm } from "@/components/order-item-editor-form";
@@ -145,9 +146,11 @@ export default async function OrderDetailPage({
         action={
           <div className="order-detail-header-actions order-detail-header-actions-simple">
             <OrderPrintBrandMenu orderId={order.id} />
-            <Link className="button ghost" href={order.isQuote ? "/quotes" : order.mainPhase === "CONSEGNATO" ? "/orders?view=DELIVERED" : "/orders"}>
-              {order.isQuote ? "Torna ai preventivi" : "Torna agli ordini"}
-            </Link>
+            <HistoryBackButton
+              className="button ghost"
+              fallbackHref={order.isQuote ? "/quotes" : order.mainPhase === "CONSEGNATO" ? "/orders?view=DELIVERED" : "/orders"}
+              label="Torna indietro"
+            />
           </div>
         }
       />
@@ -760,29 +763,44 @@ export default async function OrderDetailPage({
                 </span>
               </summary>
               <div className="timeline">
-                {order.history.map((entry) => (
-                  <article className="timeline-item" key={entry.id}>
-                    <div className="list-header">
-                      <strong>{entry.description}</strong>
-                      <div className="timeline-item-actions">
-                        <span className="subtle">{formatDateTime(entry.createdAt)}</span>
-                        {entry.snapshotBefore ? (
-                          <form action={restoreOrderHistoryAction} className="timeline-restore-form">
-                            <input name="orderId" type="hidden" value={order.id} />
-                            <input name="historyId" type="hidden" value={entry.id} />
-                            <ConfirmSubmitButton
-                              className="button ghost timeline-restore-button"
-                              confirmMessage="Vuoi ripristinare questo stato precedente?"
-                            >
-                              <UndoButtonContent label="Ripristina" />
-                            </ConfirmSubmitButton>
-                          </form>
-                        ) : null}
+                {order.history.map((entry) => {
+                  const entryContent = (
+                    <>
+                      <div className="list-header">
+                        <strong>{entry.description}</strong>
+                        <div className="timeline-item-actions">
+                          <span className="subtle">{formatDateTime(entry.createdAt)}</span>
+                        </div>
                       </div>
-                    </div>
-                    {entry.details ? <div className="subtle">{entry.details}</div> : null}
-                  </article>
-                ))}
+                      {entry.details ? <div className="subtle">{entry.details}</div> : null}
+                    </>
+                  );
+
+                  if (!entry.snapshotBefore) {
+                    return (
+                      <article className="timeline-item" key={entry.id}>
+                        {entryContent}
+                      </article>
+                    );
+                  }
+
+                  return (
+                    <form action={restoreOrderHistoryAction} className="timeline-item timeline-item-restorable" key={entry.id}>
+                      <input name="orderId" type="hidden" value={order.id} />
+                      <input name="historyId" type="hidden" value={entry.id} />
+                      <ConfirmSubmitButton
+                        className="timeline-item-button"
+                        confirmMessage="Vuoi ripristinare questo stato precedente?"
+                      >
+                        {entryContent}
+                        <span className="timeline-item-restore-note">Tocca per tornare a questo stato</span>
+                        <span className="timeline-item-cta">
+                          <UndoButtonContent label="Torna a questo stato" />
+                        </span>
+                      </ConfirmSubmitButton>
+                    </form>
+                  );
+                })}
               </div>
             </details>
           </div>
