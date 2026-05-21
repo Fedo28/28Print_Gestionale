@@ -16,9 +16,14 @@ export default async function ActivityPage() {
         title="Ultime modifiche"
         description="Registro rapido delle operazioni recenti, con link diretto e annullamento dove disponibile."
         action={
-          <Link className="button ghost" href="/">
-            Torna alla dashboard
-          </Link>
+          <div className="button-row activity-page-actions">
+            <Link className="button ghost" href="/activity/trash">
+              Cestino
+            </Link>
+            <Link className="button ghost" href="/">
+              Torna alla dashboard
+            </Link>
+          </div>
         }
       />
 

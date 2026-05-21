@@ -95,6 +95,7 @@ export async function DashboardPage({
   const financePaidOrders = invoiceOrdersSorted.filter((order) => order.paymentStatus === "PAGATO");
   const financePartialOrders = invoiceOrdersSorted.filter((order) => isDashboardFinancePartial(order.paymentStatus));
   const financeUnpaidOrders = invoiceOrdersSorted.filter((order) => order.paymentStatus === "NON_PAGATO");
+  const stalePaidInvoiceOrders = financePaidOrders.filter((order) => getDashboardDateAgeInDays(getDashboardFinanceReferenceDate(order)) > 7);
   const financeReceivableOrders = [...financePartialOrders, ...financeUnpaidOrders];
   const activeFinanceMode = getDashboardFinanceMode(financeMode, financePaidOrders.length, financeReceivableOrders.length);
   const activeFinanceBucket =
@@ -108,7 +109,7 @@ export async function DashboardPage({
   const activeMaterialsFilter = getDashboardMaterialsFilter(materials);
   const filteredPurchaseNotes = getDashboardPurchaseNotesVisible(purchaseNotes.pending, activeMaterialsFilter);
   const visiblePurchaseNotes = filteredPurchaseNotes.slice(0, 5);
-  const financeOrdersVisible = getFinanceOrdersVisible(
+  const financeOrdersSelected = getFinanceOrdersVisible(
     activeFinanceMode,
     activeFinanceBucket,
     financePaidOrders,
@@ -116,19 +117,20 @@ export async function DashboardPage({
     financeUnpaidOrders,
     activeFinanceSort
   );
+  const isFinanceAgedFocus = isFinancePanelOpen && activeFinanceMode === "PAID" && activePulse === "FINANCE_AGED";
+  const financeOrdersVisible = isFinanceAgedFocus ? stalePaidInvoiceOrders : financeOrdersSelected;
   const financeAging = {
-    today: financeOrdersVisible.filter((order) => getDashboardDateAgeInDays(getDashboardFinanceReferenceDate(order)) === 0).length,
-    week: financeOrdersVisible.filter((order) => {
+    today: financeOrdersSelected.filter((order) => getDashboardDateAgeInDays(getDashboardFinanceReferenceDate(order)) === 0).length,
+    week: financeOrdersSelected.filter((order) => {
       const age = getDashboardDateAgeInDays(getDashboardFinanceReferenceDate(order));
       return age >= 1 && age <= 7;
     }).length,
-    older: financeOrdersVisible.filter((order) => getDashboardDateAgeInDays(getDashboardFinanceReferenceDate(order)) > 7).length
+    older: financeOrdersSelected.filter((order) => getDashboardDateAgeInDays(getDashboardFinanceReferenceDate(order)) > 7).length
   };
   const blockedCustomerOrders = blockedOrders.filter((order) => order.operationalStatus === "IN_ATTESA_APPROVAZIONE");
   const blockedProductionOrders = blockedOrders.filter((order) => order.operationalStatus !== "IN_ATTESA_APPROVAZIONE");
   const deliveredInvoiceOrders = invoiceOrders.filter((order) => order.mainPhase === "CONSEGNATO");
   const deliveredInvoiceTotalCents = deliveredInvoiceOrders.reduce((sum, order) => sum + order.totalCents, 0);
-  const stalePaidInvoiceOrders = financePaidOrders.filter((order) => getDashboardDateAgeInDays(getDashboardFinanceReferenceDate(order)) > 7);
   const deliveredInvoiceOrderIds = new Set(deliveredInvoiceOrders.map((order) => order.id));
   const tomorrowDate = getTomorrowDashboardDate();
   const lateStartOrders = toStartOrders.filter((order) => new Date(order.deliveryAt).getTime() < tomorrowDate.getTime());
@@ -171,6 +173,7 @@ export async function DashboardPage({
     ready: buildOrdersFilterHref({ preset: "READY" }),
     balance: buildOrdersFilterHref({ preset: "FINANCE_UNPAID" }),
     financePaid: buildOrdersFilterHref({ preset: "FINANCE_PAID" }),
+    financePaidAged: buildOrdersFilterHref({ preset: "FINANCE_PAID_AGED" }),
     financePartial: buildOrdersFilterHref({ preset: "FINANCE_PARTIAL" }),
     financeUnpaidOnly: buildOrdersFilterHref({ preset: "FINANCE_UNPAID_ONLY" }),
     financeUnpaid: buildOrdersFilterHref({ preset: "FINANCE_UNPAID" }),
@@ -809,7 +812,9 @@ export async function DashboardPage({
                 className={`dashboard-finance-lane${pulseClass(activePulse, "FINANCE", "FINANCE_AGED")}`}
                 density="dense"
                 emptyMessage={
-                  activeFinanceMode === "PAID"
+                  isFinanceAgedFocus
+                    ? "Nessun ordine pagato da oltre 7 giorni ancora da fatturare."
+                    : activeFinanceMode === "PAID"
                     ? "Nessun ordine pagato ancora da fatturare."
                     : activeFinanceBucket === "PARTIAL"
                       ? "Nessun ordine parziale ancora da fatturare."
@@ -819,7 +824,9 @@ export async function DashboardPage({
                 }
                 orders={financeOrdersVisible}
                 title={
-                  activeFinanceMode === "PAID"
+                  isFinanceAgedFocus
+                    ? "Pagati non fatturati oltre 7 giorni"
+                    : activeFinanceMode === "PAID"
                     ? "Pagati da fatturare"
                     : activeFinanceBucket === "PARTIAL"
                       ? "Parziali da fatturare"
@@ -829,7 +836,9 @@ export async function DashboardPage({
                 }
                 visibleLimit={6}
                 viewHref={
-                  activeFinanceMode === "PAID"
+                  isFinanceAgedFocus
+                    ? links.financePaidAged
+                    : activeFinanceMode === "PAID"
                     ? links.financePaid
                     : activeFinanceBucket === "PARTIAL"
                       ? links.financePartial

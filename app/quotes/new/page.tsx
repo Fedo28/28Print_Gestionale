@@ -7,14 +7,21 @@ import { getCustomers, getServices } from "@/lib/orders";
 
 export const dynamic = "force-dynamic";
 
-export default async function NewQuotePage() {
+export default async function NewQuotePage({ searchParams }: { searchParams?: { customerId?: string } }) {
   await requireAuth();
   const [customers, services] = await Promise.all([getCustomers(), getServices()]);
+  const initialCustomerId = searchParams?.customerId?.trim() || undefined;
 
   return (
     <div className="stack order-entry-page-shell quote-create-page-shell">
       <PageHeader action={<OrderDraftHeaderAction kind="quote" />} title="Nuovo preventivo" />
-      <OrderForm action={createQuoteAction} customers={customers} kind="quote" services={services} />
+      <OrderForm
+        action={createQuoteAction}
+        customers={customers}
+        initialCustomerId={initialCustomerId}
+        kind="quote"
+        services={services}
+      />
     </div>
   );
 }

@@ -7,7 +7,7 @@ import {
   parseCustomerType,
   parseBooleanFlag,
   parseCurrencyToCents,
-  parseDateTime,
+  parseInvoiceRequestStatus,
   parseInvoiceStatus,
   parsePurchaseNoteUrgency,
   parseItemsPayload,
@@ -17,7 +17,7 @@ import {
   parsePaymentMethod,
   parseUserRole
 } from "@/lib/forms";
-import { writeAuditLog } from "@/lib/audit-log";
+import { restoreDeletedEntity, writeAuditLog } from "@/lib/audit-log";
 import { formatDateKey } from "@/lib/format";
 import { getDisplayOrderLabel } from "@/lib/order-display";
 import type { DiscountMode, Prisma } from "@prisma/client";
@@ -119,6 +119,13 @@ function parseOrderFormInput(formData: FormData, options?: { forceQuote?: boolea
   const isQuote = options?.forceQuote ?? parseBooleanFlag(formData.get("isQuote"));
   const globalDiscount = parseFlexibleAdjustmentInput(formData.get("globalDiscount")?.toString() || null);
   const globalExtra = parseFlexibleAdjustmentInput(formData.get("globalExtra")?.toString() || null);
+  const deliveryAt = parseOptionalDateTime(formData.get("deliveryAt")?.toString() || null);
+  const appointmentAt = parseOptionalDateTime(formData.get("appointmentAt")?.toString() || null);
+
+  if (!isQuote && !deliveryAt && !appointmentAt) {
+    throw new Error("Per creare l'ordine devi impostare una consegna oppure un appuntamento.");
+  }
+
   return {
     customerId: String(formData.get("customerId") || "").trim() || undefined,
     customer: {
@@ -134,13 +141,11 @@ function parseOrderFormInput(formData: FormData, options?: { forceQuote?: boolea
       notes: String(formData.get("customerNotes") || "")
     },
     title: String(formData.get("title") || ""),
-    deliveryAt: isQuote
-      ? parseOptionalDateTime(formData.get("deliveryAt")?.toString() || null)
-      : parseDateTime(formData.get("deliveryAt")?.toString() || null),
-    appointmentAt: parseOptionalDateTime(formData.get("appointmentAt")?.toString() || null),
+    deliveryAt,
+    appointmentAt,
     appointmentNote: String(formData.get("appointmentNote") || ""),
     notes: String(formData.get("notes") || ""),
-    invoiceStatus: parseInvoiceStatus(formData.get("invoiceStatus")?.toString() || null),
+    invoiceStatus: parseInvoiceRequestStatus(formData.get("invoiceStatus")?.toString() || null),
     isQuote,
     items: parseItemsPayload(formData.get("itemsPayload")?.toString() || null),
     globalDiscountMode: globalDiscount.mode,
@@ -530,6 +535,40 @@ export async function deletePurchaseNoteAction(formData: FormData) {
   return note;
 }
 
+export async function restoreDeletedAuditEntryAction(formData: FormData) {
+  const session = await requireAuth();
+  const auditLogId = String(formData.get("auditLogId") || "").trim();
+  const returnTo = String(formData.get("returnTo") || "").trim();
+
+  const restored = await restoreDeletedEntity(auditLogId);
+  await writeAuditLog({
+    actionType: "REOPENED",
+    actorUserId: session.userId,
+    entityId: restored.entityId,
+    entityLabel: restored.entityLabel,
+    entityType: restored.entityType,
+    title: restored.entityType === "CUSTOMER" ? "Cliente ripristinato dal cestino" : "Voce da ordinare ripristinata dal cestino",
+    snapshotAfter: restored.snapshotAfter
+  });
+
+  revalidatePath("/activity");
+  revalidatePath("/activity/trash");
+
+  if (restored.entityType === "CUSTOMER") {
+    revalidatePath("/customers");
+    revalidatePath(`/customers/${restored.entityId}`);
+    revalidatePath("/orders/new");
+    revalidatePath("/quotes/new");
+    revalidateBillboardSurfaces();
+  }
+
+  if (restored.entityType === "PURCHASE_NOTE") {
+    revalidateLinkedPurchaseNoteSurfaces(restored.relatedOrderId);
+  }
+
+  redirect(returnTo || restored.href);
+}
+
 export async function updateCustomerAction(formData: FormData) {
   const session = await requireAuth();
   const id = String(formData.get("id") || "");
@@ -860,6 +899,113 @@ export async function markOrderInvoicedAction(formData: FormData) {
   const nextInvoiceStatus = parseInvoiceStatus(formData.get("nextInvoiceStatus")?.toString() || null);
   await updateOrderInvoiceStatus(orderId, nextInvoiceStatus);
   revalidateOperationalSurfaces(orderId);
+}
+
+function normalizeBulkOrderIds(orderIds: string[]) {
+  return [...new Set(orderIds.map((entry) => entry.trim()).filter(Boolean))];
+}
+
+function buildBulkOrderMutationMessage(actionLabel: string, updatedCount: number, skippedCount: number) {
+  if (updatedCount === 0 && skippedCount === 0) {
+    return "Seleziona almeno un ordine.";
+  }
+
+  if (skippedCount === 0) {
+    return `${actionLabel} applicata a ${updatedCount} ${updatedCount === 1 ? "ordine" : "ordini"}.`;
+  }
+
+  if (updatedCount === 0) {
+    return `Nessun ordine aggiornato. ${skippedCount} ${skippedCount === 1 ? "voce saltata" : "voci saltate"}.`;
+  }
+
+  return `${actionLabel} applicata a ${updatedCount} ${updatedCount === 1 ? "ordine" : "ordini"}, con ${skippedCount} ${skippedCount === 1 ? "voce saltata" : "voci saltate"}.`;
+}
+
+export async function bulkUpdateOrdersInvoiceStatusAction(input: {
+  orderIds: string[];
+  nextInvoiceStatus: string;
+}) {
+  await requireAuth();
+  const orderIds = normalizeBulkOrderIds(input.orderIds);
+  const nextInvoiceStatus = parseInvoiceStatus(input.nextInvoiceStatus);
+
+  let updatedCount = 0;
+  let skippedCount = 0;
+
+  for (const orderId of orderIds) {
+    try {
+      await updateOrderInvoiceStatus(orderId, nextInvoiceStatus);
+      updatedCount += 1;
+    } catch {
+      skippedCount += 1;
+    }
+  }
+
+  revalidateOperationalSurfaces();
+
+  return {
+    updatedCount,
+    skippedCount,
+    message: buildBulkOrderMutationMessage("Fatturazione", updatedCount, skippedCount)
+  };
+}
+
+export async function bulkUpdateOrdersPhaseAction(input: {
+  orderIds: string[];
+  nextPhase: string;
+}) {
+  await requireAuth();
+  const orderIds = normalizeBulkOrderIds(input.orderIds);
+  const nextPhase = parseMainPhase(input.nextPhase);
+
+  let updatedCount = 0;
+  let skippedCount = 0;
+
+  for (const orderId of orderIds) {
+    try {
+      await transitionOrderPhase(orderId, nextPhase);
+      updatedCount += 1;
+    } catch {
+      skippedCount += 1;
+    }
+  }
+
+  revalidateOperationalSurfaces();
+
+  return {
+    updatedCount,
+    skippedCount,
+    message: buildBulkOrderMutationMessage("Fase lavoro", updatedCount, skippedCount)
+  };
+}
+
+export async function bulkUpdateOrdersOperationalStatusAction(input: {
+  orderIds: string[];
+  operationalStatus: string;
+}) {
+  await requireAuth();
+  const orderIds = normalizeBulkOrderIds(input.orderIds);
+  const operationalStatus = parseOperationalStatus(input.operationalStatus);
+
+  let updatedCount = 0;
+  let skippedCount = 0;
+
+  for (const orderId of orderIds) {
+    try {
+      await updateOperationalStatus(orderId, operationalStatus);
+      updatedCount += 1;
+    } catch {
+      skippedCount += 1;
+    }
+  }
+
+  revalidateOperationalSurfaces();
+
+  return {
+    updatedCount,
+    skippedCount,
+    message: buildBulkOrderMutationMessage("Stato operativo", updatedCount, skippedCount)
+  };
 }
 
 export async function confirmQuoteAction(formData: FormData) {

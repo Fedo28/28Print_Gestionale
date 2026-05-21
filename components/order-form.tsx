@@ -386,7 +386,7 @@ function createEmptyMobileOrderMeta(): MobileOrderMeta {
     appointmentAt: "",
     appointmentNote: "",
     notes: "",
-    invoiceStatus: "NON_RICHIESTO",
+    invoiceStatus: "",
     globalDiscount: "",
     globalExtra: "",
     initialDeposit: ""
@@ -397,12 +397,14 @@ export function OrderForm({
   customers,
   services,
   action,
-  kind = "order"
+  kind = "order",
+  initialCustomerId
 }: {
   customers: CustomerWithOrders[];
   services: ServiceCatalog[];
   action: (formData: FormData) => void | Promise<void>;
   kind?: OrderFormMode;
+  initialCustomerId?: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const inlineCatalogNameInputRef = useRef<HTMLInputElement>(null);
@@ -410,9 +412,10 @@ export function OrderForm({
   const formMutationFrameRef = useRef<number | null>(null);
   const undoSeededRef = useRef(false);
   const undoRestoringRef = useRef(false);
+  const seededCustomer = initialCustomerId ? customers.find((customer) => customer.id === initialCustomerId) || null : null;
   const [catalogServices, setCatalogServices] = useState<ServiceCatalog[]>(services);
-  const [selectedCustomerId, setSelectedCustomerId] = useState("");
-  const [customerQuery, setCustomerQuery] = useState("");
+  const [selectedCustomerId, setSelectedCustomerId] = useState(seededCustomer?.id || "");
+  const [customerQuery, setCustomerQuery] = useState(seededCustomer?.name || "");
   const [items, setItems] = useState<ItemState[]>([emptyItem()]);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [mobileStep, setMobileStep] = useState<MobileOrderStep>("customer");
@@ -455,13 +458,14 @@ export function OrderForm({
   const labelCalculatorMaterials = catalogServices.filter(isLabelCalculatorMaterialService);
   const isCatalogEmpty = catalogServices.length === 0;
   const defaultCustomerType: CustomerType = "PUBBLICO";
-  const defaultInvoiceStatus = "NON_RICHIESTO";
+  const newOrderInvoiceChoices = ["DA_FATTURARE", "NON_RICHIESTO"] as const;
   const isQuoteMode = kind === "quote";
   const availableAppointmentNoteOptions = getAppointmentNoteOptions(appointmentNoteValue);
   const draftStorageKey = buildOrderDraftStorageKey(kind as OrderDraftMode);
   const submittedDraftKey = buildOrderDraftSubmittedKey(kind as OrderDraftMode);
   const mobileStepIndex = MOBILE_ORDER_STEPS.findIndex((step) => step.id === mobileStep);
   const isMobileItemSheetOpen = openMobileItemIndex !== null;
+  const hasChosenInvoiceStatus = Boolean(mobileMeta.invoiceStatus.trim());
 
   function addEmptyItemLine(options?: { bodyMode?: boolean }) {
     const nextIndex = items.length;
@@ -746,7 +750,7 @@ export function OrderForm({
       appointmentAt: String(formData.get("appointmentAt") || ""),
       appointmentNote: String(formData.get("appointmentNote") || ""),
       notes: String(formData.get("notes") || ""),
-      invoiceStatus: String(formData.get("invoiceStatus") || defaultInvoiceStatus),
+      invoiceStatus: String(formData.get("invoiceStatus") || ""),
       globalDiscount: String(formData.get("globalDiscount") || ""),
       globalExtra: String(formData.get("globalExtra") || ""),
       initialDeposit: String(formData.get("initialDeposit") || "")
@@ -914,7 +918,7 @@ export function OrderForm({
 
     const nextDraftFields = {
       ...draft.fields,
-      invoiceStatus: draft.fields.invoiceStatus || defaultInvoiceStatus
+      invoiceStatus: draft.fields.invoiceStatus || ""
     };
 
     setSelectedCustomerId(nextSelectedCustomerId);
@@ -934,7 +938,7 @@ export function OrderForm({
       setDraftHydrated(true);
       syncMobileMetaFromForm();
     }, 0);
-  }, [customers, defaultInvoiceStatus, draftStorageKey, kind, submittedDraftKey]);
+  }, [customers, draftStorageKey, kind, submittedDraftKey]);
 
   useEffect(() => {
     return () => {
@@ -1468,22 +1472,28 @@ export function OrderForm({
     : customerTypeLabels[(mobileMeta.customerType as CustomerType) || defaultCustomerType];
   const reviewCustomerName = selectedCustomer ? selectedCustomer.name : mobileMeta.customerName.trim() || "Da selezionare";
   const reviewTitle = mobileMeta.title.trim() || "Titolo da definire";
-  const reviewDelivery = mobileMeta.deliveryAt ? formatDateTime(mobileMeta.deliveryAt) : isQuoteMode ? "Da definire" : "Da impostare";
+  const reviewDelivery = mobileMeta.deliveryAt
+    ? formatDateTime(mobileMeta.deliveryAt)
+    : mobileMeta.appointmentAt
+      ? "Uso appuntamento"
+      : isQuoteMode
+        ? "Da definire"
+        : "Da impostare";
   const reviewAppointment = mobileMeta.appointmentAt ? formatDateTime(mobileMeta.appointmentAt) : "Non programmato";
   const reviewPriority = (() => {
-    const deliveryAt = mobileMeta.deliveryAt.trim();
-    if (!deliveryAt) {
+    const schedulingAt = mobileMeta.deliveryAt.trim() || mobileMeta.appointmentAt.trim();
+    if (!schedulingAt) {
       return "Da calcolare";
     }
 
-    const date = new Date(deliveryAt);
+    const date = new Date(schedulingAt);
     if (Number.isNaN(date.getTime())) {
       return "Da calcolare";
     }
 
     return priorityLabels[computeAutomaticPriority(date)];
   })();
-  const reviewInvoice = invoiceStatusLabels[mobileMeta.invoiceStatus as keyof typeof invoiceStatusLabels] || invoiceStatusLabels.NON_RICHIESTO;
+  const reviewInvoice = invoiceStatusLabels[mobileMeta.invoiceStatus as keyof typeof invoiceStatusLabels] || "Da scegliere";
   const mobileDraftStatusMessage = draftRestoredAt
     ? `Bozza recuperata da ${formatDateTime(draftRestoredAt)}`
     : lastDraftSavedAt
@@ -1493,7 +1503,7 @@ export function OrderForm({
     mobileStep === "customer"
       ? Boolean(selectedCustomerId || mobileMeta.customerName.trim())
       : mobileStep === "details"
-        ? Boolean(mobileMeta.title.trim() && (isQuoteMode || mobileMeta.deliveryAt))
+        ? Boolean(mobileMeta.title.trim() && (isQuoteMode || mobileMeta.deliveryAt || mobileMeta.appointmentAt))
         : mobileStep === "items"
           ? filledRows > 0
           : true;
@@ -2504,7 +2514,6 @@ export function OrderForm({
                   id="deliveryAt"
                   name="deliveryAt"
                   onPointerDown={openNativeDatePicker}
-                  required={!isQuoteMode}
                   type="datetime-local"
                 />
               </div>
@@ -2534,6 +2543,7 @@ export function OrderForm({
                   ))}
                 </select>
               </div>
+              {!isQuoteMode ? <p className="hint order-scheduling-hint">Compila una consegna oppure un appuntamento.</p> : null}
               <div className="field full order-notes-field">
                 <div className="order-notes-field-head">
                   <label htmlFor="notes">Note operative</label>
@@ -2740,10 +2750,13 @@ export function OrderForm({
             <div className="form-grid order-sheet-payment-row">
               <div className="field order-sheet-invoice-field">
                 <label htmlFor="invoiceStatus">Richiesta fattura</label>
-                <select defaultValue={defaultInvoiceStatus} id="invoiceStatus" name="invoiceStatus">
-                  {Object.entries(invoiceStatusLabels).map(([value, label]) => (
+                <select defaultValue="" id="invoiceStatus" name="invoiceStatus" required>
+                  <option disabled value="">
+                    Seleziona una scelta
+                  </option>
+                  {newOrderInvoiceChoices.map((value) => (
                     <option key={value} value={value}>
-                      {label}
+                      {invoiceStatusLabels[value]}
                     </option>
                   ))}
                 </select>
@@ -2908,12 +2921,15 @@ export function OrderForm({
                 <strong>Fatturazione e acconto</strong>
               </div>
               <div className="form-grid order-sheet-payment-row">
-                <div className="field order-sheet-invoice-field">
+              <div className="field order-sheet-invoice-field">
                   <label htmlFor="invoiceStatus">Richiesta fattura</label>
-                  <select defaultValue={defaultInvoiceStatus} id="invoiceStatus" name="invoiceStatus">
-                    {Object.entries(invoiceStatusLabels).map(([value, label]) => (
+                  <select defaultValue="" id="invoiceStatus" name="invoiceStatus" required>
+                    <option disabled value="">
+                      Seleziona una scelta
+                    </option>
+                    {newOrderInvoiceChoices.map((value) => (
                       <option key={value} value={value}>
-                        {label}
+                        {invoiceStatusLabels[value]}
                       </option>
                     ))}
                   </select>
@@ -2983,7 +2999,7 @@ export function OrderForm({
             Svuota bozza
           </button>
         ) : null}
-        <button className="primary" type="submit">
+        <button className="primary" disabled={!hasChosenInvoiceStatus} type="submit">
           {isQuoteMode ? "Crea preventivo" : "Crea ordine"}
         </button>
       </div>
@@ -3028,7 +3044,7 @@ export function OrderForm({
             Indietro
           </button>
           {mobileStep === "review" ? (
-            <button className="primary" type="submit">
+            <button className="primary" disabled={!hasChosenInvoiceStatus} type="submit">
               {mobileContinueLabel}
             </button>
           ) : (

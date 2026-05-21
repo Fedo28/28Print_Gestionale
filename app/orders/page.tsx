@@ -15,6 +15,7 @@ import {
 } from "@/lib/constants";
 import {
   buildOrdersFilterHref,
+  dashboardPresetLabels,
   type CustomerTypeFilter,
   type DashboardPreset,
   type OrderListFilters,
@@ -99,7 +100,15 @@ export default async function OrdersPage({ searchParams }: Props) {
       quote: "ORDER"
     })
   ]);
+  const presetFilterLabel = getOrdersPresetFilterLabel(filters.preset);
   const activeFilters = [
+    presetFilterLabel
+      ? {
+          key: "preset",
+          label: `Vista: ${presetFilterLabel}`,
+          href: buildOrdersFilterHref({ ...filters, preset: "ALL" })
+        }
+      : null,
     filters.q
       ? {
           key: "q",
@@ -421,4 +430,19 @@ function getOrdersTabResetFilters(
     sort: filters.sort,
     dir: filters.dir
   };
+}
+
+function getOrdersPresetFilterLabel(preset: DashboardPreset) {
+  if (
+    preset === "ALL" ||
+    preset === "PRIORITY_TODAY" ||
+    preset === "TO_START" ||
+    preset === "WORKING" ||
+    preset === "BLOCKED" ||
+    preset === "READY"
+  ) {
+    return null;
+  }
+
+  return dashboardPresetLabels[preset];
 }

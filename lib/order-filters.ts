@@ -24,6 +24,7 @@ export type DashboardPreset =
   | "BLOCKED"
   | "READY"
   | "FINANCE_PAID"
+  | "FINANCE_PAID_AGED"
   | "FINANCE_PARTIAL"
   | "FINANCE_UNPAID"
   | "FINANCE_UNPAID_ONLY"
@@ -40,6 +41,7 @@ export const dashboardPresetLabels: Record<Exclude<DashboardPreset, "ALL">, stri
   BLOCKED: "Sospesi",
   READY: "Pronti",
   FINANCE_PAID: "Pagati da fatturare",
+  FINANCE_PAID_AGED: "Pagati non fatturati oltre 7 giorni",
   FINANCE_PARTIAL: "Parziali da fatturare",
   FINANCE_UNPAID: "Da incassare e fatturare",
   FINANCE_UNPAID_ONLY: "Non pagati da fatturare",
@@ -132,6 +134,7 @@ export function parseDashboardPreset(raw: string | null): DashboardPreset {
       "BLOCKED",
       "READY",
       "FINANCE_PAID",
+      "FINANCE_PAID_AGED",
       "FINANCE_PARTIAL",
       "FINANCE_UNPAID",
       "FINANCE_UNPAID_ONLY",

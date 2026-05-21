@@ -76,7 +76,17 @@ export function parseOptionalDateTime(raw: string | null) {
 export function parseInvoiceStatus(raw: string | null): InvoiceStatus {
   const value = raw as InvoiceStatus | null;
   if (!value || !["DA_FATTURARE", "FATTURATO", "NON_RICHIESTO"].includes(value)) {
-    return "DA_FATTURARE";
+    throw new Error("Stato fatturazione non valido.");
+  }
+
+  return value;
+}
+
+export function parseInvoiceRequestStatus(raw: string | null): InvoiceStatus {
+  const value = parseInvoiceStatus(raw);
+
+  if (value === "FATTURATO") {
+    throw new Error("Per i nuovi ordini scegli solo se la fattura e richiesta oppure no.");
   }
 
   return value;

@@ -1,11 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { deleteCustomerAction, updateCustomerAction } from "@/app/actions";
+import { HistoryBackButton } from "@/components/history-back-button";
 import { PageHeader } from "@/components/page-header";
 import { StatusPills } from "@/components/status-pills";
+import { getEntityAuditTrail } from "@/lib/audit-log";
 import { requireAuth } from "@/lib/auth";
-import { customerTypeLabels } from "@/lib/constants";
-import { formatCurrency, formatDateTime } from "@/lib/format";
+import {
+  billboardAssetKindLabels,
+  billboardBookingStatusLabels,
+  customerTypeLabels,
+  purchaseNoteUrgencyLabels
+} from "@/lib/constants";
+import { formatCurrency, formatDate, formatDateKey, formatDateTime } from "@/lib/format";
 import { getDisplayOrderLabel } from "@/lib/order-display";
 import { getCustomerById } from "@/lib/orders";
 
@@ -19,16 +26,96 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
     notFound();
   }
 
+  const recentActivity = await getEntityAuditTrail("CUSTOMER", customer.id, { limit: 6 });
+  const customerOrders = customer.orders.filter((order) => !order.isQuote);
+  const customerQuotes = customer.orders.filter((order) => order.isQuote);
+  const pendingNotes = customer.purchaseNotes.filter((note) => !note.completedAt);
+  const completedNotes = customer.purchaseNotes.filter((note) => Boolean(note.completedAt));
+  const canDeleteCustomer = customer.orders.length === 0 && customer.billboardBookings.length === 0;
+  const contactChips = [
+    customer.phone ? customer.phone : null,
+    customer.whatsapp && customer.whatsapp !== customer.phone ? `WA ${customer.whatsapp}` : null,
+    customer.email ? customer.email : null,
+    customer.pec ? `PEC ${customer.pec}` : null,
+    customer.vatNumber ? `P. IVA ${customer.vatNumber}` : null,
+    customer.taxCode ? `CF ${customer.taxCode}` : null
+  ].filter((value): value is string => Boolean(value));
+
   return (
-    <div className="stack">
+    <div className="stack customer-detail-shell">
       <PageHeader
         title={customer.name}
-        description={`Scheda cliente ${customerTypeLabels[customer.type].toLowerCase()} con contatti, dati fiscali e storico ordini.`}
+        description={`Scheda cliente ${customerTypeLabels[customer.type].toLowerCase()} con ordini, preventivi, da ordinare, cartelloni e ultime modifiche.`}
+        action={
+          <div className="button-row customer-detail-header-actions">
+            <Link className="button secondary" href={`/orders/new?customerId=${customer.id}`}>
+              Nuovo ordine
+            </Link>
+            <Link className="button secondary" href={`/quotes/new?customerId=${customer.id}`}>
+              Nuovo preventivo
+            </Link>
+            <HistoryBackButton className="button ghost" fallbackHref="/customers" label="Torna ai clienti" />
+          </div>
+        }
       />
 
-      <div className="grid grid-2">
+      <section className="card card-pad customer-detail-overview-card">
+        <div className="customer-detail-overview-head">
+          <div className="customer-detail-overview-copy">
+            <span className="pill">{customerTypeLabels[customer.type]}</span>
+            <strong>{customer.name}</strong>
+            <span className="subtle">{contactChips[0] || "Nessun contatto rapido disponibile"}</span>
+          </div>
+          <div className="customer-detail-overview-actions">
+            <Link className="compact-link" href="/purchase-notes" prefetch={false}>
+              Apri da ordinare
+            </Link>
+            <Link className="compact-link" href="/activity/trash" prefetch={false}>
+              Apri cestino
+            </Link>
+          </div>
+        </div>
+
+        <div className="customer-detail-stat-grid">
+          <div className="customer-detail-stat">
+            <span>Ordini</span>
+            <strong>{customerOrders.length}</strong>
+          </div>
+          <div className="customer-detail-stat">
+            <span>Preventivi</span>
+            <strong>{customerQuotes.length}</strong>
+          </div>
+          <div className="customer-detail-stat">
+            <span>Da ordinare aperti</span>
+            <strong>{pendingNotes.length}</strong>
+          </div>
+          <div className="customer-detail-stat">
+            <span>Cartelloni</span>
+            <strong>{customer.billboardBookings.length}</strong>
+          </div>
+        </div>
+
+        <div className="customer-detail-contact-row">
+          {contactChips.length > 0 ? (
+            contactChips.map((chip) => (
+              <span className="customer-detail-contact-chip" key={chip}>
+                {chip}
+              </span>
+            ))
+          ) : (
+            <span className="customer-detail-contact-chip is-muted">Completa i recapiti per trovarlo e contattarlo piu velocemente.</span>
+          )}
+        </div>
+      </section>
+
+      <div className="grid grid-2 customer-detail-grid">
         <section className="card card-pad">
-          <h3>Aggiorna cliente</h3>
+          <div className="list-header">
+            <div>
+              <h3>Aggiorna cliente</h3>
+              <p className="card-muted">Contatti, dati fiscali e note operative in un punto unico.</p>
+            </div>
+          </div>
           <form action={updateCustomerAction} className="form-grid">
             <input name="id" type="hidden" value={customer.id} />
             <div className="field wide">
@@ -86,61 +173,196 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
         </section>
 
         <section className="card card-pad">
-          <div className="stack">
+          <div className="list-header">
             <div>
-              <h3>Eliminazione cliente</h3>
-              <p className="card-muted">Consentita solo se non esistono ordini collegati.</p>
+              <h3>Ultime modifiche cliente</h3>
+              <p className="card-muted">Storico rapido delle variazioni fatte sulla scheda anagrafica.</p>
             </div>
-            <form action={deleteCustomerAction}>
-              <input name="id" type="hidden" value={customer.id} />
-              <button className="secondary" disabled={customer.orders.length > 0} type="submit">
-                Elimina cliente
-              </button>
-            </form>
-            {customer.orders.length > 0 ? (
-              <p className="hint">Eliminazione bloccata: il cliente ha ordini collegati.</p>
-            ) : null}
+          </div>
+          <div className="mini-list">
+            {recentActivity.length === 0 ? (
+              <div className="empty">Nessuna modifica registrata su questa scheda.</div>
+            ) : (
+              recentActivity.map((entry) => (
+                <article className="mini-item" key={entry.id}>
+                  <div className="list-header">
+                    <strong>{entry.title}</strong>
+                    <span>{formatDateTime(entry.createdAt)}</span>
+                  </div>
+                  <div className="customer-detail-activity-meta">
+                    <span className="pill">{entry.categoryLabel}</span>
+                    {entry.actorLabel ? <span className="subtle">{entry.actorLabel}</span> : null}
+                  </div>
+                  {entry.details ? <div className="subtle">{entry.details}</div> : null}
+                </article>
+              ))
+            )}
+          </div>
+        </section>
+      </div>
+
+      <div className="grid grid-2 customer-detail-grid">
+        <section className="card card-pad">
+          <div className="list-header">
+            <div>
+              <h3>Ordini</h3>
+              <p className="card-muted">{customerOrders.length} ordini collegati.</p>
+            </div>
+          </div>
+          <div className="mini-list">
+            {customerOrders.length === 0 ? (
+              <div className="empty">Nessun ordine collegato.</div>
+            ) : (
+              customerOrders.map((order) => (
+                <article className="mini-item" key={order.id}>
+                  <div className="list-header">
+                    <Link href={`/orders/${order.id}`} prefetch={false}>
+                      <strong>{getDisplayOrderLabel(order.orderCode, order.title)}</strong>
+                    </Link>
+                    <span>{formatCurrency(order.totalCents)}</span>
+                  </div>
+                  {order.title && order.title !== getDisplayOrderLabel(order.orderCode, order.title) ? (
+                    <div className="subtle">{order.title}</div>
+                  ) : null}
+                  <div className="subtle">{formatDateTime(order.deliveryAt)}</div>
+                  <StatusPills
+                    isQuote={order.isQuote}
+                    phase={order.mainPhase}
+                    status={order.operationalStatus}
+                    payment={order.paymentStatus}
+                  />
+                </article>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="card card-pad">
+          <div className="list-header">
+            <div>
+              <h3>Preventivi</h3>
+              <p className="card-muted">{customerQuotes.length} preventivi collegati.</p>
+            </div>
+          </div>
+          <div className="mini-list">
+            {customerQuotes.length === 0 ? (
+              <div className="empty">Nessun preventivo collegato.</div>
+            ) : (
+              customerQuotes.map((order) => (
+                <article className="mini-item" key={order.id}>
+                  <div className="list-header">
+                    <Link href={`/orders/${order.id}`} prefetch={false}>
+                      <strong>{getDisplayOrderLabel(order.orderCode, order.title)}</strong>
+                    </Link>
+                    <span>{formatCurrency(order.totalCents)}</span>
+                  </div>
+                  {order.title && order.title !== getDisplayOrderLabel(order.orderCode, order.title) ? (
+                    <div className="subtle">{order.title}</div>
+                  ) : null}
+                  <div className="subtle">{formatDateTime(order.deliveryAt)}</div>
+                  <StatusPills
+                    isQuote={order.isQuote}
+                    phase={order.mainPhase}
+                    status={order.operationalStatus}
+                    payment={order.paymentStatus}
+                  />
+                </article>
+              ))
+            )}
+          </div>
+        </section>
+      </div>
+
+      <div className="grid grid-2 customer-detail-grid">
+        <section className="card card-pad">
+          <div className="list-header">
+            <div>
+              <h3>Da ordinare</h3>
+              <p className="card-muted">
+                {pendingNotes.length} aperte • {completedNotes.length} archiviate
+              </p>
+            </div>
+            <Link className="compact-link" href="/purchase-notes" prefetch={false}>
+              Apri lista completa
+            </Link>
+          </div>
+          <div className="mini-list">
+            {customer.purchaseNotes.length === 0 ? (
+              <div className="empty">Nessuna nota da ordinare collegata.</div>
+            ) : (
+              customer.purchaseNotes.map((note) => (
+                <article className="mini-item" key={note.id}>
+                  <div className="list-header">
+                    <strong>{note.completedAt ? "Ordinato" : "Da fare"}</strong>
+                    <span>{formatDateTime(note.completedAt || note.updatedAt)}</span>
+                  </div>
+                  <div className="customer-detail-activity-meta">
+                    <span className={`pill ${note.urgency === "BLOCCANTE" ? "danger" : note.urgency === "URGENTE" ? "warning" : ""}`}>
+                      {purchaseNoteUrgencyLabels[note.urgency]}
+                    </span>
+                    {note.order ? (
+                      <Link className="compact-link" href={`/orders/${note.order.id}`} prefetch={false}>
+                        {note.order.orderCode}
+                      </Link>
+                    ) : null}
+                  </div>
+                  <p className="customer-detail-note-copy">{note.content}</p>
+                </article>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="card card-pad">
+          <div className="list-header">
+            <div>
+              <h3>Cartelloni e monitor</h3>
+              <p className="card-muted">{customer.billboardBookings.length} prenotazioni collegate.</p>
+            </div>
+          </div>
+          <div className="mini-list">
+            {customer.billboardBookings.length === 0 ? (
+              <div className="empty">Nessuna prenotazione cartelloni collegata.</div>
+            ) : (
+              customer.billboardBookings.map((booking) => (
+                <article className="mini-item" key={booking.id}>
+                  <div className="list-header">
+                    <Link href={`/billboards?date=${formatDateKey(booking.startsAt)}`} prefetch={false}>
+                      <strong>{booking.billboardAsset.name}</strong>
+                    </Link>
+                    <span>{formatCurrency(booking.priceCents)}</span>
+                  </div>
+                  <div className="customer-detail-activity-meta">
+                    <span className="pill status">{billboardAssetKindLabels[booking.billboardAsset.kind]}</span>
+                    <span className="pill">{billboardBookingStatusLabels[booking.status]}</span>
+                    {booking.monitorSlot ? <span className="subtle">{`Slot ${booking.monitorSlot}`}</span> : null}
+                  </div>
+                  <div className="subtle">
+                    {booking.billboardAsset.code} • {formatDate(booking.startsAt)} - {formatDate(booking.endsAt)}
+                  </div>
+                  <div className="subtle">{`Pagato ${formatCurrency(booking.paidCents)} • Residuo ${formatCurrency(booking.balanceDueCents)}`}</div>
+                </article>
+              ))
+            )}
           </div>
         </section>
       </div>
 
       <section className="card card-pad">
-        <div className="list-header">
+        <div className="stack">
           <div>
-            <h3>Storico ordini</h3>
-            <p className="card-muted">{customer.orders.length} ordini collegati.</p>
+            <h3>Eliminazione cliente</h3>
+            <p className="card-muted">Consentita solo se non esistono ordini, preventivi o cartelloni collegati. In caso di errore puoi usare il nuovo cestino.</p>
           </div>
-        </div>
-        <div className="mini-list">
-          {customer.orders.length === 0 ? (
-            <div className="empty">Nessun ordine collegato.</div>
-          ) : (
-            customer.orders.map((order) => (
-              <article className="mini-item" key={order.id}>
-                <div className="list-header">
-                  <Link href={`/orders/${order.id}`} prefetch={false}>
-                    <strong>{getDisplayOrderLabel(order.orderCode, order.title)}</strong>
-                  </Link>
-                  <span>{formatCurrency(order.totalCents)}</span>
-                </div>
-                {order.title && order.title !== getDisplayOrderLabel(order.orderCode, order.title) ? (
-                  <div className="subtle">
-                    {order.title}
-                    {order.isQuote ? " • Preventivo" : ""}
-                  </div>
-                ) : order.isQuote ? (
-                  <div className="subtle">Preventivo</div>
-                ) : null}
-                <div className="subtle">{formatDateTime(order.deliveryAt)}</div>
-                <StatusPills
-                  isQuote={order.isQuote}
-                  phase={order.mainPhase}
-                  status={order.operationalStatus}
-                  payment={order.paymentStatus}
-                />
-              </article>
-            ))
-          )}
+          <form action={deleteCustomerAction}>
+            <input name="id" type="hidden" value={customer.id} />
+            <button className="secondary" disabled={!canDeleteCustomer} type="submit">
+              Elimina cliente
+            </button>
+          </form>
+          {!canDeleteCustomer ? (
+            <p className="hint">Eliminazione bloccata: il cliente ha ordini, preventivi o cartelloni collegati.</p>
+          ) : null}
         </div>
       </section>
     </div>

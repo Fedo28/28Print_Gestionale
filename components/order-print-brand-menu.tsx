@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 
 type PrintBrand = "28-print" | "pr-adv";
@@ -13,7 +13,6 @@ export function OrderPrintBrandMenu({ orderId }: { orderId: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
-  const router = useRouter();
 
   useEffect(() => {
     if (!isOpen) {
@@ -41,9 +40,8 @@ export function OrderPrintBrandMenu({ orderId }: { orderId: string }) {
     };
   }, [isOpen]);
 
-  function handleSelectBrand(brand: PrintBrand) {
+  function handleSelectBrand() {
     setIsOpen(false);
-    router.push(buildPrintHref(orderId, brand));
   }
 
   return (
@@ -61,24 +59,26 @@ export function OrderPrintBrandMenu({ orderId }: { orderId: string }) {
       {isOpen ? (
         <div aria-label="Scelta logo per la stampa" className="print-brand-panel" id={panelId} role="menu">
           <span className="print-brand-panel-title">Scegli logo</span>
-          <button
+          <Link
             className="print-brand-option"
-            onClick={() => handleSelectBrand("28-print")}
+            href={buildPrintHref(orderId, "28-print")}
+            onClick={handleSelectBrand}
+            prefetch={false}
             role="menuitem"
-            type="button"
           >
             <strong>28 Print</strong>
             <span>Usa il logo standard gia salvato</span>
-          </button>
-          <button
+          </Link>
+          <Link
             className="print-brand-option"
-            onClick={() => handleSelectBrand("pr-adv")}
+            href={buildPrintHref(orderId, "pr-adv")}
+            onClick={handleSelectBrand}
+            prefetch={false}
             role="menuitem"
-            type="button"
           >
             <strong>PR adv</strong>
             <span>Usa il logo allegato PR adv</span>
-          </button>
+          </Link>
         </div>
       ) : null}
     </div>

@@ -1621,7 +1621,8 @@ export async function deleteCustomer(id: string) {
     include: {
       _count: {
         select: {
-          orders: true
+          orders: true,
+          billboardBookings: true
         }
       }
     }
@@ -1631,8 +1632,8 @@ export async function deleteCustomer(id: string) {
     throw new Error("Cliente non trovato.");
   }
 
-  if (customer._count.orders > 0) {
-    throw new Error("Non puoi eliminare un cliente con ordini collegati.");
+  if (customer._count.orders > 0 || customer._count.billboardBookings > 0) {
+    throw new Error("Non puoi eliminare un cliente con ordini, preventivi o cartelloni collegati.");
   }
 
   await prisma.customer.delete({
@@ -3340,6 +3341,7 @@ async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
   const now = new Date();
   const todayStart = startOfDay(now);
   const tomorrowStart = addDays(todayStart, 1);
+  const financeAgedThreshold = addDays(todayStart, -7);
   const isDeliveredView = filters.view === "DELIVERED";
 
   const presetWhere =
@@ -3412,6 +3414,26 @@ async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
                         invoiceStatus: "DA_FATTURARE" as InvoiceStatus,
                         paymentStatus: "PAGATO" as PaymentStatus
                       }
+                    : filters.preset === "FINANCE_PAID_AGED"
+                      ? {
+                        mainPhase: { in: ["SVILUPPO_COMPLETATO", "CONSEGNATO"] as MainPhase[] },
+                        invoiceStatus: "DA_FATTURARE" as InvoiceStatus,
+                        paymentStatus: "PAGATO" as PaymentStatus,
+                        OR: [
+                          {
+                            mainPhase: "SVILUPPO_COMPLETATO" as MainPhase,
+                            deliveryAt: {
+                              lt: financeAgedThreshold
+                            }
+                          },
+                          {
+                            mainPhase: "CONSEGNATO" as MainPhase,
+                            deliveredAt: {
+                              lt: financeAgedThreshold
+                            }
+                          }
+                        ]
+                      }
                     : filters.preset === "FINANCE_PARTIAL"
                       ? {
                         mainPhase: { in: ["SVILUPPO_COMPLETATO", "CONSEGNATO"] as MainPhase[] },
@@ -3439,6 +3461,7 @@ async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
 
   const financePresetActive =
     filters.preset === "FINANCE_PAID" ||
+    filters.preset === "FINANCE_PAID_AGED" ||
     filters.preset === "FINANCE_PARTIAL" ||
     filters.preset === "FINANCE_UNPAID" ||
     filters.preset === "FINANCE_UNPAID_ONLY" ||
@@ -3743,7 +3766,61 @@ export async function getCustomerById(id: string) {
     where: { id },
     include: {
       orders: {
+        select: {
+          id: true,
+          orderCode: true,
+          title: true,
+          isQuote: true,
+          createdAt: true,
+          deliveryAt: true,
+          mainPhase: true,
+          operationalStatus: true,
+          paymentStatus: true,
+          totalCents: true
+        },
         orderBy: [{ createdAt: "desc" }]
+      },
+      purchaseNotes: {
+        select: {
+          id: true,
+          customerId: true,
+          customerName: true,
+          content: true,
+          urgency: true,
+          createdAt: true,
+          updatedAt: true,
+          completedAt: true,
+          order: {
+            select: {
+              id: true,
+              orderCode: true,
+              title: true,
+              operationalStatus: true
+            }
+          }
+        },
+        orderBy: [{ completedAt: "asc" }, { createdAt: "desc" }]
+      },
+      billboardBookings: {
+        select: {
+          id: true,
+          status: true,
+          startsAt: true,
+          endsAt: true,
+          priceCents: true,
+          paidCents: true,
+          balanceDueCents: true,
+          monitorSlot: true,
+          billboardAsset: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              kind: true
+            }
+          }
+        },
+        orderBy: [{ startsAt: "desc" }]
       }
     }
   });

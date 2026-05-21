@@ -185,7 +185,6 @@ export default async function OrderDetailPage({
                   id="deliveryAt"
                   name="deliveryAt"
                   type="datetime-local"
-                  required={!order.isQuote}
                 />
               </div>
               <div className="field wide">
@@ -198,6 +197,7 @@ export default async function OrderDetailPage({
                   type="datetime-local"
                 />
               </div>
+              {!order.isQuote ? <p className="hint order-scheduling-hint">Compila una consegna oppure un appuntamento.</p> : null}
               <div className="field">
                 <label htmlFor="invoiceStatus">Stato fatturazione</label>
                 <select defaultValue={order.invoiceStatus} id="invoiceStatus" name="invoiceStatus">

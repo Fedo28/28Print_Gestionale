@@ -7,14 +7,21 @@ import { getCustomers, getServices } from "@/lib/orders";
 
 export const dynamic = "force-dynamic";
 
-export default async function NewOrderPage() {
+export default async function NewOrderPage({ searchParams }: { searchParams?: { customerId?: string } }) {
   await requireAuth();
   const [customers, services] = await Promise.all([getCustomers(), getServices()]);
+  const initialCustomerId = searchParams?.customerId?.trim() || undefined;
 
   return (
     <div className="stack order-entry-page-shell order-create-page-shell">
       <PageHeader action={<OrderDraftHeaderAction kind="order" />} title="Nuovo ordine" />
-      <OrderForm action={createOrderAction} customers={customers} kind="order" services={services} />
+      <OrderForm
+        action={createOrderAction}
+        customers={customers}
+        initialCustomerId={initialCustomerId}
+        kind="order"
+        services={services}
+      />
     </div>
   );
 }
