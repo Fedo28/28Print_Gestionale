@@ -46,6 +46,30 @@ export function CustomersDirectory({ customers }: { customers: CustomerDirectory
         selectedCustomerId={highlightedCustomerId}
       />
 
+      <div className="customers-directory-search-meta">
+        <span className="subtle">
+          {deferredQuery.trim()
+            ? visibleCustomers.length === 1
+              ? "1 cliente visibile"
+              : `${visibleCustomers.length} clienti visibili`
+            : customers.length === 1
+              ? "1 cliente in elenco"
+              : `${customers.length} clienti in elenco`}
+        </span>
+        {query.trim() ? (
+          <button
+            className="ghost customers-directory-search-reset"
+            onClick={() => {
+              setQuery("");
+              setHighlightedCustomerId(null);
+            }}
+            type="button"
+          >
+            Azzera ricerca
+          </button>
+        ) : null}
+      </div>
+
       <div className="mini-list customer-directory-list">
         {visibleCustomers.length === 0 ? (
           <div className="empty">Nessun cliente corrisponde a questa ricerca.</div>
@@ -56,6 +80,9 @@ export function CustomersDirectory({ customers }: { customers: CustomerDirectory
               customer.whatsapp && customer.whatsapp !== customer.phone ? `WA ${customer.whatsapp}` : null,
               customer.email ? customer.email : null
             ].filter((value): value is string => Boolean(value));
+            const visibleContactChips = contactChips.slice(0, 2);
+            const hiddenContactCount = Math.max(contactChips.length - visibleContactChips.length, 0);
+            const lastOrderLabel = customer.orders[0] ? formatDate(customer.orders[0].createdAt) : null;
 
             return (
               <article
@@ -65,30 +92,34 @@ export function CustomersDirectory({ customers }: { customers: CustomerDirectory
                 <Link className="customer-directory-link" href={`/customers/${customer.id}`} prefetch={false}>
                   <div className="customer-directory-head">
                     <div className="customer-directory-title">
-                      <strong>{customer.name}</strong>
-                      <span>{customerTypeLabels[customer.type]}</span>
+                      <div className="customer-directory-name-row">
+                        <strong>{customer.name}</strong>
+                        <span className="customer-directory-type-badge">{customerTypeLabels[customer.type]}</span>
+                      </div>
+                      <div className="customer-directory-inline-meta">
+                        <span>{customer.orders.length === 1 ? "1 ordine" : `${customer.orders.length} ordini`}</span>
+                        <span>{lastOrderLabel ? `Ultimo ${lastOrderLabel}` : "Nessun ordine"}</span>
+                        <span>{contactChips.length > 0 ? `${contactChips.length} contatti` : "Nessun contatto"}</span>
+                      </div>
                     </div>
-                    <span className="pill">{customer.orders.length} ordini</span>
-                  </div>
-
-                  <div className="customer-directory-meta-grid">
-                    <div className="customer-directory-stat">
-                      <span>Ultimo ordine</span>
-                      <strong>{customer.orders[0] ? formatDate(customer.orders[0].createdAt) : "Nessuno"}</strong>
-                    </div>
-                    <div className="customer-directory-stat">
-                      <span>Contatti</span>
-                      <strong>{contactChips.length > 0 ? contactChips.length : "Nessuno"}</strong>
-                    </div>
+                    <span className="pill customer-directory-open-pill">Apri</span>
                   </div>
 
                   <div className="customer-directory-contact-row">
-                    {contactChips.length > 0 ? (
-                      contactChips.slice(0, 3).map((entry) => (
+                    {visibleContactChips.length > 0 ? (
+                      visibleContactChips.map((entry) => (
                         <span className="customer-directory-contact-chip" key={entry}>
                           {entry}
                         </span>
-                      ))
+                      )).concat(
+                        hiddenContactCount > 0
+                          ? [
+                              <span className="customer-directory-contact-chip is-muted" key={`${customer.id}-more`}>
+                                +{hiddenContactCount}
+                              </span>
+                            ]
+                          : []
+                      )
                     ) : (
                       <span className="customer-directory-contact-chip is-muted">Nessun contatto rapido</span>
                     )}

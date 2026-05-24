@@ -14,7 +14,6 @@ export default async function ActivityPage() {
     <div className="stack activity-page-shell">
       <PageHeader
         title="Ultime modifiche"
-        description="Registro rapido delle operazioni recenti, con link diretto e annullamento dove disponibile."
         action={
           <div className="button-row activity-page-actions">
             <Link className="button ghost" href="/activity/trash">

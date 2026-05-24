@@ -19,13 +19,21 @@ export default async function SettingsPage() {
     getWhatsappTemplate(),
     getStaffUserProfile(session.userId)
   ]);
+  const headerAction =
+    session.role === "ADMIN" ? (
+      <div className="button-row">
+        <Link className="button ghost" href="/settings/staff">
+          Profili staff
+        </Link>
+        <Link className="button ghost" href="/settings/deploy-check">
+          Controllo deploy
+        </Link>
+      </div>
+    ) : null;
 
   return (
     <div className="stack">
-      <PageHeader
-        title="Impostazioni"
-        description="Catalogo servizi e template operativi della V1."
-      />
+      <PageHeader action={headerAction} title="Impostazioni" />
 
       {currentUser ? (
         <section className="card card-pad">
@@ -37,40 +45,6 @@ export default async function SettingsPage() {
             <span className="pill">Ruolo {session.role === "ADMIN" ? "Admin" : "Operatore"}</span>
           </div>
           <AccessProfileForm currentNickname={currentUser.nickname} email={currentUser.email} />
-        </section>
-      ) : null}
-
-      {session.role === "ADMIN" ? (
-        <section className="card card-pad">
-          <div className="list-header">
-            <div>
-              <h3>Profili staff</h3>
-              <p className="card-muted">Nickname, password iniziale ed email dei colleghi in un punto unico.</p>
-            </div>
-            <Link className="button secondary" href="/settings/staff">
-              Apri profili staff
-            </Link>
-          </div>
-          <p className="hint">
-            Da qui gestisci profilazione colleghi, bozza invito e stato dell'invio mail.
-          </p>
-        </section>
-      ) : null}
-
-      {session.role === "ADMIN" ? (
-        <section className="card card-pad">
-          <div className="list-header">
-            <div>
-              <h3>Controllo deploy</h3>
-              <p className="card-muted">Confronta locale e Vercel per capire subito se stanno leggendo lo stesso database.</p>
-            </div>
-            <Link className="button secondary" href="/settings/deploy-check">
-              Apri controllo
-            </Link>
-          </div>
-          <p className="hint">
-            Mostra ambiente attivo, impronta del database, archivio allegati e conteggi principali di ordini, preventivi e clienti.
-          </p>
         </section>
       ) : null}
 

@@ -14,7 +14,6 @@ export default async function OrdersActivityPage() {
     <div className="stack orders-activity-page-shell">
       <PageHeader
         title="Cronologia ordini"
-        description="Ultimi cambi fatturazione e ultime modifiche operative sugli ordini, con annullamento rapido dove disponibile."
         action={<HistoryBackButton className="button ghost" fallbackHref="/orders" label="Torna agli ordini" />}
       />
 

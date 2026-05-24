@@ -141,7 +141,6 @@ export default async function OrderDetailPage({
     <div className="stack order-detail-page-shell">
       <PageHeader
         title={getDisplayOrderLabel(order.orderCode, order.title)}
-        description={`Creato il ${formatDateTime(order.createdAt)}`}
         titleAction={<OrderEditToggleButton targetId="order-edit-panel" />}
         action={
           <div className="order-detail-header-actions order-detail-header-actions-simple">
@@ -161,6 +160,7 @@ export default async function OrderDetailPage({
         </summary>
         <div className="order-detail-edit-tray-head">
           <div>
+            <span className="compact-kicker">Modifica</span>
             <strong>Modifica ordine</strong>
             <span className="subtle">
               {needsScheduling
@@ -374,8 +374,22 @@ export default async function OrderDetailPage({
           <div className="order-detail-overview-main">
             <div className="order-detail-overview-head">
               <div>
+                <span className="compact-kicker">Cliente</span>
                 <h3>{order.customer.name}</h3>
-                <p className="card-muted">{getCustomerPrimaryContact(order.customer)}</p>
+                <p className="card-muted">
+                  {getCustomerPrimaryContact(order.customer)} • Creato il {formatDateTime(order.createdAt)}
+                </p>
+              </div>
+              <div className="order-detail-overview-links">
+                <Link className="compact-link" href={`/customers/${order.customer.id}`} prefetch={false}>
+                  Apri cliente
+                </Link>
+                <Link className="compact-link" href="#order-history-panel">
+                  Cronologia
+                </Link>
+                <Link className="compact-link" href="#order-detail-cashflow">
+                  Incassi
+                </Link>
               </div>
             </div>
           </div>
@@ -475,6 +489,7 @@ export default async function OrderDetailPage({
         <section className="card card-pad order-detail-lines-card">
           <div className="order-detail-section-head">
             <div>
+              <span className="compact-kicker">Produzione</span>
               <h3>Righe ordine</h3>
               <span className="subtle">{order.items.length} lavorazioni</span>
             </div>
@@ -574,6 +589,7 @@ export default async function OrderDetailPage({
           <details className="card card-pad order-detail-disclosure order-detail-cashflow-card" id="order-detail-cashflow">
           <summary className="order-detail-disclosure-summary">
             <div className="order-detail-disclosure-copy">
+              <span className="compact-kicker">Finanza</span>
               <h3>Incassi</h3>
               <span className="subtle payment-summary-desktop">
                 {activePayments.length === 0
@@ -694,6 +710,7 @@ export default async function OrderDetailPage({
           <section className="card card-pad order-detail-notes-card">
           <div className="order-detail-section-head">
             <div>
+              <span className="compact-kicker">Appunti</span>
               <h3>Note</h3>
               <span className="subtle">
                 {order.notes?.trim() ? "Interne" : "Nessuna nota interna"}
@@ -709,7 +726,10 @@ export default async function OrderDetailPage({
           {latestMaterialNote ? (
             <div className={`order-detail-note-panel order-detail-material-note${activeMaterialNote ? " is-linked" : ""}`}>
               <div className="list-header">
-                <strong>{activeMaterialNote ? "Da ordinare attivo" : "Ultima nota materiale"}</strong>
+                <div className="order-detail-note-head">
+                  <span className="compact-kicker">Materiali</span>
+                  <strong>{activeMaterialNote ? "Da ordinare attivo" : "Ultima nota materiale"}</strong>
+                </div>
                 <Link className="button ghost" href="/purchase-notes" prefetch={false}>
                   Apri lista
                 </Link>
@@ -728,6 +748,7 @@ export default async function OrderDetailPage({
             <details className="card card-pad order-detail-disclosure order-detail-attachments-card">
               <summary className="order-detail-disclosure-summary">
                 <div className="order-detail-disclosure-copy">
+                  <span className="compact-kicker">Archivio</span>
                   <h3>Allegati</h3>
                   <span className="subtle">{order.attachments.length === 0 ? "Nessun file" : `${order.attachments.length} file`}</span>
                 </div>
@@ -755,6 +776,7 @@ export default async function OrderDetailPage({
             <details className="card card-pad order-detail-disclosure order-detail-history-card" id="order-history-panel">
               <summary className="order-detail-disclosure-summary">
                 <div className="order-detail-disclosure-copy">
+                  <span className="compact-kicker">Storico</span>
                   <h3>Cronologia</h3>
                   <span className="subtle">{order.history.length} eventi</span>
                 </div>

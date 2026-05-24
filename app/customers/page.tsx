@@ -21,66 +21,118 @@ export default async function CustomersPage({ searchParams }: Props) {
   const filters = {
     type: parseCustomerTypeFilter(searchParams?.type || null)
   };
-  const customers = await getCustomers({
-    type: filters.type
-  });
+  const allCustomersPromise = getCustomers();
+  const filteredCustomersPromise = filters.type === "ALL" ? allCustomersPromise : getCustomers({ type: filters.type });
+  const [allCustomers, customers] = await Promise.all([allCustomersPromise, filteredCustomersPromise]);
+  const customerTypeCounts = Object.fromEntries(
+    Object.keys(customerTypeLabels).map((value) => [
+      value,
+      allCustomers.filter((customer) => customer.type === value).length
+    ])
+  ) as Record<keyof typeof customerTypeLabels, number>;
+  const customersWithOrdersCount = allCustomers.filter((customer) => customer.orders.length > 0).length;
+  const activeTypeLabel = filters.type === "ALL" ? "Tutti i clienti" : customerTypeLabels[filters.type];
+  const typeSummaryCards = [
+    {
+      key: "ALL" as const,
+      label: "Rubrica completa",
+      value: allCustomers.length,
+      href: buildCustomersFilterHref({ type: "ALL" })
+    },
+    ...Object.entries(customerTypeLabels).map(([value, label]) => ({
+      key: value as keyof typeof customerTypeLabels,
+      label,
+      value: customerTypeCounts[value as keyof typeof customerTypeLabels],
+      href: buildCustomersFilterHref({ type: value as keyof typeof customerTypeLabels })
+    }))
+  ];
   const typeTabs = [
-    { key: "ALL", label: "Tutti", href: buildCustomersFilterHref({ type: "ALL" }) },
+    {
+      key: "ALL" as const,
+      label: "Tutti",
+      count: allCustomers.length,
+      href: buildCustomersFilterHref({ type: "ALL" })
+    },
     ...Object.entries(customerTypeLabels).map(([value, label]) => ({
       key: value,
       label,
+      count: customerTypeCounts[value as keyof typeof customerTypeLabels],
       href: buildCustomersFilterHref({ type: value as keyof typeof customerTypeLabels })
     }))
   ];
 
   return (
     <div className="stack customers-page-shell">
-      <PageHeader title="Clienti" />
+      <PageHeader
+        title="Clienti"
+        action={
+          <div className="button-row customers-page-header-actions">
+            <Link className="button primary" href="#customers-new-entry">
+              Nuovo cliente
+            </Link>
+          </div>
+        }
+      />
 
-      <div className="grid grid-2 customers-page-grid">
-        <section className="card card-pad customers-entry-card" id="customers-new-entry">
-          <div className="list-header">
+      <section className="customers-overview-grid" aria-label="Panoramica clienti">
+        {typeSummaryCards.map((card) => (
+          <Link
+            className={`customers-overview-card compact-card-link${filters.type === card.key ? " active" : ""}`}
+            href={card.href}
+            key={card.key}
+            prefetch={false}
+          >
+            <span className="customers-overview-card-kicker">{card.label}</span>
+            <strong>{card.value}</strong>
+          </Link>
+        ))}
+        <article className="customers-overview-note">
+          <span className="customers-overview-card-kicker">Storico ordini</span>
+          <strong>{customersWithOrdersCount}</strong>
+        </article>
+      </section>
+
+      <div className="customers-page-grid">
+        <section className="card card-pad customers-directory-card">
+          <div className="list-header customers-directory-header">
+            <div className="customers-directory-header-copy">
+              <span className="compact-kicker">Archivio clienti</span>
+              <h3>{activeTypeLabel}</h3>
+            </div>
+            <div className="customers-directory-header-stats">
+              <span className="pill">{customers.length} visibili</span>
+            </div>
+          </div>
+
+          <nav className="customers-type-switch" aria-label="Filtro tipo cliente">
+            {typeTabs.map((tab) => (
+              <Link
+                className={`customers-type-link${filters.type === tab.key ? " active" : ""}`}
+                href={tab.href}
+                key={tab.key}
+                prefetch={false}
+              >
+                <span>{tab.label}</span>
+                <strong>{tab.count}</strong>
+              </Link>
+            ))}
+          </nav>
+
+          <CustomersDirectory customers={customers} />
+        </section>
+
+        <aside className="card card-pad customers-entry-card" id="customers-new-entry">
+          <div className="list-header customers-entry-head">
             <div>
-              <h3>Nuovo cliente</h3>
+              <span className="compact-kicker">Nuova anagrafica</span>
+              <h3>Inserisci cliente</h3>
             </div>
           </div>
           <CustomerCreateForm
             action={createCustomerAction}
             typeOptions={Object.entries(customerTypeLabels).map(([value, label]) => ({ value, label }))}
           />
-        </section>
-
-        <section className="card card-pad customers-directory-card">
-          <details className="customers-directory-disclosure" open={filters.type !== "ALL"}>
-            <summary className="customers-directory-summary">
-              <div className="customers-directory-summary-copy">
-                <strong>Archivio clienti</strong>
-                <span>Apri solo quando ti serve</span>
-              </div>
-              <div className="customers-directory-summary-aside">
-                <span className="pill">{customers.length} clienti</span>
-                <span aria-hidden="true" className="customers-directory-summary-chevron" />
-              </div>
-            </summary>
-
-            <div className="customers-directory-body">
-              <nav className="customers-type-switch" aria-label="Filtro tipo cliente">
-                {typeTabs.map((tab) => (
-                  <Link
-                    className={`customers-type-link${filters.type === tab.key ? " active" : ""}`}
-                    href={tab.href}
-                    key={tab.key}
-                    prefetch={false}
-                  >
-                    {tab.label}
-                  </Link>
-                ))}
-              </nav>
-
-              <CustomersDirectory customers={customers} />
-            </div>
-          </details>
-        </section>
+        </aside>
       </div>
     </div>
   );

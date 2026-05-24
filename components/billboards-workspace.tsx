@@ -378,27 +378,37 @@ export function BillboardsWorkspace({
         }
       />
 
-      <section className="billboards-kind-tabs" aria-label="Tipi di impianto">
-        {[
-          { value: "ALL" as const, label: "Tutti" },
-          { value: "CARTELLONE" as const, label: "Cartelloni" },
-          { value: "MONITOR" as const, label: "Monitor" },
-          { value: "VELA_ITINERANTE" as const, label: "Vela pubblicitaria" }
-        ].map((tab) => (
-          <button
-            className={`billboards-kind-tab${kind === tab.value ? " is-active" : ""}`}
-            key={tab.value}
-            onClick={() => setKind(tab.value)}
-            type="button"
-          >
-            {tab.label}
-          </button>
-        ))}
+      <section className="card card-pad billboards-filter-card" aria-label="Filtri cartelloni">
+        <div className="list-header billboards-filter-head">
+          <div>
+            <span className="compact-kicker">Filtro impianti</span>
+            <h3>Vista cartelloni</h3>
+          </div>
+          <span className="pill">{filteredAssets.length} visibili</span>
+        </div>
+        <nav className="billboards-kind-tabs" aria-label="Tipi di impianto">
+          {[
+            { value: "ALL" as const, label: "Tutti" },
+            { value: "CARTELLONE" as const, label: "Cartelloni" },
+            { value: "MONITOR" as const, label: "Monitor" },
+            { value: "VELA_ITINERANTE" as const, label: "Vela pubblicitaria" }
+          ].map((tab) => (
+            <button
+              className={`billboards-kind-tab${kind === tab.value ? " is-active" : ""}`}
+              key={tab.value}
+              onClick={() => setKind(tab.value)}
+              type="button"
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
       </section>
 
       {calendarAsset ? (
         <section className="mini-item billboards-selected-asset-banner">
           <div>
+            <span className="compact-kicker">Impianto selezionato</span>
             <strong>{calendarAsset.name}</strong>
             <div className="subtle">{calendarAsset.code} • Stai guardando la disponibilita di questo impianto. Clicca un giorno con spazio libero per prenotarlo.</div>
           </div>
@@ -446,6 +456,7 @@ export function BillboardsWorkspace({
         <section className="card card-pad billboards-booking-card-v2" id="new-billboard-booking" ref={bookingRef}>
           <div className="list-header">
             <div>
+              <span className="compact-kicker">Prenotazione</span>
               <h3>Nuova prenotazione</h3>
             </div>
             {selectedAsset ? <span className="pill status">{selectedAsset.code}</span> : null}
@@ -485,7 +496,8 @@ export function BillboardsWorkspace({
         <section className="card card-pad billboards-monitor-board" id="billboards-monitor-board">
           <div className="list-header">
             <div>
-              <h3>Plancia monitor</h3>
+              <span className="compact-kicker">Monitor</span>
+              <h3>Plancia giorno</h3>
               <div className="subtle">Slot del {formatDate(monitorBoardDate)}</div>
             </div>
             <span className="pill status">{monitorBoardAssets.length} monitor</span>
@@ -638,6 +650,7 @@ export function BillboardsWorkspace({
           <aside className="card card-pad billboards-focus-panel-v2" id="billboards-focus-panel" ref={panelRef}>
             <div className="list-header">
               <div>
+                <span className="compact-kicker">Vista attiva</span>
                 <h3>{focusContent.title}</h3>
               </div>
               <div className="billboards-focus-actions">

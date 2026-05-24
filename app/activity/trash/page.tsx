@@ -14,7 +14,6 @@ export default async function ActivityTrashPage() {
     <div className="stack activity-page-shell">
       <PageHeader
         title="Cestino"
-        description="Elementi eliminati di recente, con ripristino diretto dove il gestionale puo ricostruirli in sicurezza."
         action={
           <div className="button-row activity-page-actions">
             <Link className="button ghost" href="/activity">

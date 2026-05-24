@@ -282,6 +282,13 @@ export async function DashboardPage({
     { accent: "to-start", href: dashboardPanelLinks.toStart, label: "Avvio", value: toStartOrders.length },
     { accent: "balance", href: dashboardPanelLinks.balance, label: "Fatture", value: invoiceOrders.length }
   ] satisfies Array<{ accent: DashboardAccent; href: string; label: string; value: number }>;
+  const dashboardAttentionGroups = [
+    materialsOpenCount > 0,
+    lateStartOrders.length > 0,
+    tomorrowToStartOrders.length > 0,
+    stalePaidInvoiceOrders.length > 0,
+    deliveredInvoiceOrders.length > 0
+  ].filter(Boolean).length;
 
   return (
     <div className="stack dashboard-page-shell">
@@ -431,83 +438,96 @@ export async function DashboardPage({
         />
       </section>
 
-      {lateStartOrders.length > 0 || tomorrowToStartOrders.length > 0 || stalePaidInvoiceOrders.length > 0 || materialsOpenCount > 0 ? (
-        <section className="dashboard-alert-strip" aria-label="Attenzioni rapide dashboard">
-          {materialsOpenCount > 0 ? (
-            <Link className="dashboard-alert-chip dashboard-alert-chip-materials compact-card-link" href={dashboardPanelLinks.materials} replace scroll={false}>
-              <span className="dashboard-alert-chip-label">Materiali da ordinare</span>
-              <strong>{materialsBlockingCount > 0 ? materialsBlockingCount : materialsOpenCount}</strong>
-              <span className="dashboard-alert-chip-detail">
-                {materialsBlockingCount > 0
-                  ? `${materialsBlockingCount} bloccanti • ${materialsOpenCount} note aperte`
-                  : materialsOpenCount === 1
-                    ? "1 nota aperta"
-                    : `${materialsOpenCount} note aperte`}
-              </span>
-            </Link>
-          ) : null}
-          {lateStartOrders.length > 0 ? (
-            <Link
-              className="dashboard-alert-chip dashboard-alert-chip-warning compact-card-link"
-              href={buildDashboardStateHref({
-                anchor: "dashboard-focus-panel",
-                pulse: "LATE_START",
-                financeMode: currentFinanceMode,
-                financeBucket: currentFinanceBucket,
-                financeSort: currentFinanceSort,
-                financeOpen: isFinancePanelOpen,
-                focus: "TO_START"
-              })}
-              replace
-              scroll={false}
-            >
-              <span className="dashboard-alert-chip-label">Oggi in ritardo</span>
-              <strong>{lateStartOrders.length}</strong>
-              <span className="dashboard-alert-chip-detail">
-                {lateStartOrders.length === 1 ? "ordine non ancora avviato" : "ordini non ancora avviati"}
-              </span>
-            </Link>
-          ) : null}
-          {tomorrowToStartOrders.length > 0 ? (
-            <Link className="dashboard-alert-chip compact-card-link" href={dashboardPanelLinks.tomorrow} replace scroll={false}>
-              <span className="dashboard-alert-chip-label">Domani da avviare</span>
-              <strong>{tomorrowToStartOrders.length}</strong>
-              <span className="dashboard-alert-chip-detail">
-                {tomorrowToStartOrders.length === 1 ? "ordine non avviato" : "ordini non avviati"}
-              </span>
-            </Link>
-          ) : null}
-          {stalePaidInvoiceOrders.length > 0 ? (
-            <Link
-              className="dashboard-alert-chip dashboard-alert-chip-finance compact-card-link"
-              href={buildDashboardFinanceHref(
-                true,
-                activeFocus,
-                currentReadyMode,
-                "PAID",
-                undefined,
-                currentFinanceSort,
-                "FINANCE_AGED"
-              )}
-              replace
-              scroll={false}
-            >
-              <span className="dashboard-alert-chip-label">Pagati non fatturati</span>
-              <strong>{stalePaidInvoiceOrders.length}</strong>
-              <span className="dashboard-alert-chip-detail">
-                {stalePaidInvoiceOrders.length === 1 ? "ordine da oltre 7 giorni" : "ordini da oltre 7 giorni"}
-              </span>
-            </Link>
-          ) : null}
-          {deliveredInvoiceOrders.length > 0 ? (
-            <Link className="dashboard-alert-chip compact-card-link" href={links.financeDelivered} prefetch={false}>
-              <span className="dashboard-alert-chip-label">Consegnati non fatturati</span>
-              <strong>{deliveredInvoiceOrders.length}</strong>
-              <span className="dashboard-alert-chip-detail">
-                {deliveredInvoiceOrders.length === 1 ? "ordine gia consegnato" : "ordini gia consegnati"}
-              </span>
-            </Link>
-          ) : null}
+      {lateStartOrders.length > 0 ||
+      tomorrowToStartOrders.length > 0 ||
+      stalePaidInvoiceOrders.length > 0 ||
+      deliveredInvoiceOrders.length > 0 ||
+      materialsOpenCount > 0 ? (
+        <section className="card card-pad dashboard-attention-card dashboard-soft-slab" aria-label="Attenzioni rapide dashboard">
+          <div className="list-header compact-section-head dashboard-attention-head">
+            <div>
+              <span className="compact-kicker">Attenzioni</span>
+              <strong>Da controllare oggi</strong>
+            </div>
+            <span className="pill">{dashboardAttentionGroups}</span>
+          </div>
+          <div className="dashboard-alert-strip">
+            {materialsOpenCount > 0 ? (
+              <Link className="dashboard-alert-chip dashboard-alert-chip-materials compact-card-link" href={dashboardPanelLinks.materials} replace scroll={false}>
+                <span className="dashboard-alert-chip-label">Materiali da ordinare</span>
+                <strong>{materialsBlockingCount > 0 ? materialsBlockingCount : materialsOpenCount}</strong>
+                <span className="dashboard-alert-chip-detail">
+                  {materialsBlockingCount > 0
+                    ? `${materialsBlockingCount} bloccanti • ${materialsOpenCount} note aperte`
+                    : materialsOpenCount === 1
+                      ? "1 nota aperta"
+                      : `${materialsOpenCount} note aperte`}
+                </span>
+              </Link>
+            ) : null}
+            {lateStartOrders.length > 0 ? (
+              <Link
+                className="dashboard-alert-chip dashboard-alert-chip-warning compact-card-link"
+                href={buildDashboardStateHref({
+                  anchor: "dashboard-focus-panel",
+                  pulse: "LATE_START",
+                  financeMode: currentFinanceMode,
+                  financeBucket: currentFinanceBucket,
+                  financeSort: currentFinanceSort,
+                  financeOpen: isFinancePanelOpen,
+                  focus: "TO_START"
+                })}
+                replace
+                scroll={false}
+              >
+                <span className="dashboard-alert-chip-label">Oggi in ritardo</span>
+                <strong>{lateStartOrders.length}</strong>
+                <span className="dashboard-alert-chip-detail">
+                  {lateStartOrders.length === 1 ? "ordine non ancora avviato" : "ordini non ancora avviati"}
+                </span>
+              </Link>
+            ) : null}
+            {tomorrowToStartOrders.length > 0 ? (
+              <Link className="dashboard-alert-chip compact-card-link" href={dashboardPanelLinks.tomorrow} replace scroll={false}>
+                <span className="dashboard-alert-chip-label">Domani da avviare</span>
+                <strong>{tomorrowToStartOrders.length}</strong>
+                <span className="dashboard-alert-chip-detail">
+                  {tomorrowToStartOrders.length === 1 ? "ordine non avviato" : "ordini non avviati"}
+                </span>
+              </Link>
+            ) : null}
+            {stalePaidInvoiceOrders.length > 0 ? (
+              <Link
+                className="dashboard-alert-chip dashboard-alert-chip-finance compact-card-link"
+                href={buildDashboardFinanceHref(
+                  true,
+                  activeFocus,
+                  currentReadyMode,
+                  "PAID",
+                  undefined,
+                  currentFinanceSort,
+                  "FINANCE_AGED"
+                )}
+                replace
+                scroll={false}
+              >
+                <span className="dashboard-alert-chip-label">Pagati non fatturati</span>
+                <strong>{stalePaidInvoiceOrders.length}</strong>
+                <span className="dashboard-alert-chip-detail">
+                  {stalePaidInvoiceOrders.length === 1 ? "ordine da oltre 7 giorni" : "ordini da oltre 7 giorni"}
+                </span>
+              </Link>
+            ) : null}
+            {deliveredInvoiceOrders.length > 0 ? (
+              <Link className="dashboard-alert-chip compact-card-link" href={links.financeDelivered} prefetch={false}>
+                <span className="dashboard-alert-chip-label">Consegnati non fatturati</span>
+                <strong>{deliveredInvoiceOrders.length}</strong>
+                <span className="dashboard-alert-chip-detail">
+                  {deliveredInvoiceOrders.length === 1 ? "ordine gia consegnato" : "ordini gia consegnati"}
+                </span>
+              </Link>
+            ) : null}
+          </div>
         </section>
       ) : null}
 

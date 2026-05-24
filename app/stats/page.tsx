@@ -17,7 +17,6 @@ export default async function StatsPage() {
     <div className="stack">
       <PageHeader
         title="Statistiche"
-        description="Lettura commerciale semplice: cosa vendiamo di piu e come sta andando il fatturato mese dopo mese."
         action={
           <Link className="button ghost" href="/orders">
             Apri ordini

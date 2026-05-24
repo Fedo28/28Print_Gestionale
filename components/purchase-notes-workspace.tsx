@@ -552,6 +552,14 @@ export function PurchaseNotesWorkspace({
       />
 
       <section className="card card-pad purchase-notes-list-card">
+        <div className="list-header purchase-notes-section-head">
+          <div>
+            <span className="compact-kicker">Lista operativa</span>
+            <h3>{activeTab === "pending" ? "Da ordinare" : "Archivio acquisti"}</h3>
+          </div>
+          <span className="pill">{activeListCount} visibili</span>
+        </div>
+
         <div className="purchase-notes-toolbar">
           <div className="purchase-notes-toolbar-head">
             <div className="purchase-notes-tabs" role="tablist" aria-label="Liste ordini da fare">

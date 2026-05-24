@@ -49,7 +49,7 @@ export default async function StaffSettingsPage({
     <div className="stack">
       <PageHeader
         title="Profili Staff"
-        description="Area admin per profilare i colleghi con nickname, password iniziale ed email. Il link di accesso viene ricavato dal dominio attuale o dalla configurazione deploy."
+        action={<HistoryBackButton className="button ghost" fallbackHref="/settings" label="Torna alle impostazioni" />}
       />
 
       {searchParams?.created ? (
@@ -144,7 +144,6 @@ export default async function StaffSettingsPage({
             <h3>Staff registrato</h3>
             <p className="card-muted">Elenco profili gia creati, con stato reale del link e dell'invio mail.</p>
           </div>
-          <HistoryBackButton className="button ghost" fallbackHref="/settings" label="Torna indietro" />
         </div>
 
         <div className="stack">

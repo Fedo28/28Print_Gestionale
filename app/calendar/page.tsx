@@ -66,11 +66,6 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
     <div className="stack calendar-page-shell">
       <PageHeader
         title="Calendario"
-        description={
-          view === "month"
-            ? "Agenda mensile degli appuntamenti e delle installazioni programmate."
-            : "Quadro operativo per vedere carico lavoro e appuntamenti ravvicinati senza perdere il colpo d'occhio."
-        }
         action={
           <div className="calendar-toolbar">
             <nav className="calendar-view-switch" aria-label="Selettore vista calendario">

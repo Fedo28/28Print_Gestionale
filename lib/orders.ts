@@ -222,6 +222,7 @@ type OrderInvoiceStatusHistorySnapshot = {
 type OrderItemHistorySnapshot = {
   kind: "order-item";
   itemId: string;
+  createdAt: string;
   serviceCatalogId: string | null;
   label: string;
   description: string | null;
@@ -1091,6 +1092,7 @@ function buildOrderInvoiceStatusHistorySnapshot(order: {
 
 function buildOrderItemHistorySnapshot(item: {
   id: string;
+  createdAt: Date | string;
   serviceCatalogId: string | null;
   label: string;
   description: string | null;
@@ -1111,6 +1113,7 @@ function buildOrderItemHistorySnapshot(item: {
   return {
     kind: "order-item",
     itemId: item.id,
+    createdAt: new Date(item.createdAt).toISOString(),
     serviceCatalogId: item.serviceCatalogId || null,
     label: item.label,
     description: item.description || null,
@@ -2140,59 +2143,81 @@ export async function restoreOrderHistoryEntry(orderId: string, historyId: strin
   }
 
   return prisma.$transaction(async (tx) => {
-    const item = await tx.orderItem.findUnique({
-      where: { id: snapshotBefore.itemId },
+    const order = await tx.order.findUnique({
+      where: { id: orderId },
       include: {
-        order: {
-          include: {
-            payments: true
-          }
-        }
+        payments: true
       }
     });
 
-    if (!item || item.orderId !== orderId) {
+    if (!order) {
+      throw new Error("Ordine non trovato.");
+    }
+
+    const existingItem = await tx.orderItem.findUnique({
+      where: { id: snapshotBefore.itemId }
+    });
+
+    if (existingItem && existingItem.orderId !== orderId) {
       throw new Error("La riga storica non e piu disponibile per il ripristino.");
     }
 
-    const currentSnapshot = buildOrderItemHistorySnapshot(item);
-    const updatedItem = await tx.orderItem.update({
-      where: { id: snapshotBefore.itemId },
-      data: {
-        serviceCatalogId: snapshotBefore.serviceCatalogId,
-        label: snapshotBefore.label,
-        description: snapshotBefore.description,
-        quantity: snapshotBefore.quantity,
-        catalogBasePriceCents: snapshotBefore.catalogBasePriceCents,
-        discountMode: snapshotBefore.discountMode,
-        discountValue: snapshotBefore.discountValue,
-        extraMode: snapshotBefore.extraMode,
-        extraValue: snapshotBefore.extraValue,
-        unitPriceCents: snapshotBefore.unitPriceCents,
-        lineTotalCents: snapshotBefore.lineTotalCents,
-        format: snapshotBefore.format,
-        material: snapshotBefore.material,
-        finishing: snapshotBefore.finishing,
-        notes: snapshotBefore.notes,
-        deliveredAt: toSnapshotDate(snapshotBefore.deliveredAt)
-      }
-    });
+    const restoredServiceCatalogId = snapshotBefore.serviceCatalogId
+      ? (
+          await tx.serviceCatalog.findUnique({
+            where: { id: snapshotBefore.serviceCatalogId },
+            select: { id: true }
+          })
+        )?.id || null
+      : null;
+    const currentSnapshot = existingItem ? buildOrderItemHistorySnapshot(existingItem) : null;
+    const restoredItemData = {
+      serviceCatalogId: restoredServiceCatalogId,
+      label: snapshotBefore.label,
+      description: snapshotBefore.description,
+      quantity: snapshotBefore.quantity,
+      catalogBasePriceCents: snapshotBefore.catalogBasePriceCents,
+      discountMode: snapshotBefore.discountMode,
+      discountValue: snapshotBefore.discountValue,
+      extraMode: snapshotBefore.extraMode,
+      extraValue: snapshotBefore.extraValue,
+      unitPriceCents: snapshotBefore.unitPriceCents,
+      lineTotalCents: snapshotBefore.lineTotalCents,
+      format: snapshotBefore.format,
+      material: snapshotBefore.material,
+      finishing: snapshotBefore.finishing,
+      notes: snapshotBefore.notes,
+      deliveredAt: toSnapshotDate(snapshotBefore.deliveredAt)
+    };
+    const restoredItem = existingItem
+      ? await tx.orderItem.update({
+          where: { id: snapshotBefore.itemId },
+          data: restoredItemData
+        })
+      : await tx.orderItem.create({
+          data: {
+            id: snapshotBefore.itemId,
+            orderId,
+            createdAt: toSnapshotDate(snapshotBefore.createdAt) || new Date(),
+            ...restoredItemData
+          }
+        });
 
-    await syncOrderFinancialsFromItems(tx, orderId, item.order.payments);
-    const restoredSnapshot = buildOrderItemHistorySnapshot(updatedItem);
+    await syncOrderFinancialsFromItems(tx, orderId, order.payments);
+    const restoredSnapshot = buildOrderItemHistorySnapshot(restoredItem);
 
     await tx.orderHistory.create({
       data: {
         orderId,
         type: "UPDATED",
-        description: `Riga ordine ripristinata: ${updatedItem.label}`,
+        description: `Riga ordine ripristinata: ${restoredItem.label}`,
         details: getRestoreDetailsLabel(historyEntry.description, historyEntry.createdAt),
-        snapshotBefore: currentSnapshot as Prisma.InputJsonValue,
+        ...(currentSnapshot ? { snapshotBefore: currentSnapshot as Prisma.InputJsonValue } : {}),
         snapshotAfter: restoredSnapshot as Prisma.InputJsonValue
       }
     });
 
-    return updatedItem;
+    return restoredItem;
   });
 }
 
@@ -2719,6 +2744,8 @@ export async function deleteOrderItem(input: DeleteOrderItemInput) {
     throw new Error("Riga ordine non trovata.");
   }
 
+  const snapshotBefore = buildOrderItemHistorySnapshot(item);
+
   return prisma.$transaction(async (tx) => {
     await tx.orderItem.delete({
       where: { id: input.itemId }
@@ -2748,7 +2775,8 @@ export async function deleteOrderItem(input: DeleteOrderItemInput) {
         orderId: input.orderId,
         type: "UPDATED",
         description: `Riga eliminata: ${item.label}`,
-        details: `${formatQuantity(item.quantity)} • ${(item.lineTotalCents / 100).toFixed(2)} EUR`
+        details: `${formatQuantity(item.quantity)} • ${(item.lineTotalCents / 100).toFixed(2)} EUR`,
+        snapshotBefore: snapshotBefore as Prisma.InputJsonValue
       }
     });
   });

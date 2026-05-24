@@ -32,6 +32,7 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
   const pendingNotes = customer.purchaseNotes.filter((note) => !note.completedAt);
   const completedNotes = customer.purchaseNotes.filter((note) => Boolean(note.completedAt));
   const canDeleteCustomer = customer.orders.length === 0 && customer.billboardBookings.length === 0;
+  const lastCustomerUpdate = recentActivity[0]?.createdAt || customer.updatedAt;
   const contactChips = [
     customer.phone ? customer.phone : null,
     customer.whatsapp && customer.whatsapp !== customer.phone ? `WA ${customer.whatsapp}` : null,
@@ -45,7 +46,6 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
     <div className="stack customer-detail-shell">
       <PageHeader
         title={customer.name}
-        description={`Scheda cliente ${customerTypeLabels[customer.type].toLowerCase()} con ordini, preventivi, da ordinare, cartelloni e ultime modifiche.`}
         action={
           <div className="button-row customer-detail-header-actions">
             <Link className="button secondary" href={`/orders/new?customerId=${customer.id}`}>
@@ -62,16 +62,28 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
       <section className="card card-pad customer-detail-overview-card">
         <div className="customer-detail-overview-head">
           <div className="customer-detail-overview-copy">
+            <span className="compact-kicker">Scheda cliente</span>
             <span className="pill">{customerTypeLabels[customer.type]}</span>
             <strong>{customer.name}</strong>
-            <span className="subtle">{contactChips[0] || "Nessun contatto rapido disponibile"}</span>
+            <span className="subtle">
+              {contactChips[0] || "Nessun contatto rapido disponibile"} • Aggiornato il {formatDateTime(lastCustomerUpdate)}
+            </span>
           </div>
           <div className="customer-detail-overview-actions">
-            <Link className="compact-link" href="/purchase-notes" prefetch={false}>
-              Apri da ordinare
+            <Link className="compact-link" href="#customer-orders-panel">
+              Ordini
+            </Link>
+            <Link className="compact-link" href="#customer-quotes-panel">
+              Preventivi
+            </Link>
+            <Link className="compact-link" href="#customer-purchase-notes-panel">
+              Da ordinare
+            </Link>
+            <Link className="compact-link" href="#customer-billboards-panel">
+              Cartelloni
             </Link>
             <Link className="compact-link" href="/activity/trash" prefetch={false}>
-              Apri cestino
+              Cestino
             </Link>
           </div>
         </div>
@@ -110,10 +122,10 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
 
       <div className="grid grid-2 customer-detail-grid">
         <section className="card card-pad">
-          <div className="list-header">
+          <div className="list-header customer-detail-section-head">
             <div>
+              <span className="compact-kicker">Anagrafica</span>
               <h3>Aggiorna cliente</h3>
-              <p className="card-muted">Contatti, dati fiscali e note operative in un punto unico.</p>
             </div>
           </div>
           <form action={updateCustomerAction} className="form-grid">
@@ -173,11 +185,12 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
         </section>
 
         <section className="card card-pad">
-          <div className="list-header">
+          <div className="list-header customer-detail-section-head" id="customer-history-panel">
             <div>
-              <h3>Ultime modifiche cliente</h3>
-              <p className="card-muted">Storico rapido delle variazioni fatte sulla scheda anagrafica.</p>
+              <span className="compact-kicker">Cronologia</span>
+              <h3>Ultime modifiche</h3>
             </div>
+            <span className="pill">{recentActivity.length}</span>
           </div>
           <div className="mini-list">
             {recentActivity.length === 0 ? (
@@ -202,12 +215,13 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
       </div>
 
       <div className="grid grid-2 customer-detail-grid">
-        <section className="card card-pad">
-          <div className="list-header">
+        <section className="card card-pad" id="customer-orders-panel">
+          <div className="list-header customer-detail-section-head">
             <div>
+              <span className="compact-kicker">Operativo</span>
               <h3>Ordini</h3>
-              <p className="card-muted">{customerOrders.length} ordini collegati.</p>
             </div>
+            <span className="pill">{customerOrders.length}</span>
           </div>
           <div className="mini-list">
             {customerOrders.length === 0 ? (
@@ -237,12 +251,13 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
           </div>
         </section>
 
-        <section className="card card-pad">
-          <div className="list-header">
+        <section className="card card-pad" id="customer-quotes-panel">
+          <div className="list-header customer-detail-section-head">
             <div>
+              <span className="compact-kicker">Commerciale</span>
               <h3>Preventivi</h3>
-              <p className="card-muted">{customerQuotes.length} preventivi collegati.</p>
             </div>
+            <span className="pill">{customerQuotes.length}</span>
           </div>
           <div className="mini-list">
             {customerQuotes.length === 0 ? (
@@ -274,16 +289,15 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
       </div>
 
       <div className="grid grid-2 customer-detail-grid">
-        <section className="card card-pad">
-          <div className="list-header">
+        <section className="card card-pad" id="customer-purchase-notes-panel">
+          <div className="list-header customer-detail-section-head">
             <div>
+              <span className="compact-kicker">Acquisti</span>
               <h3>Da ordinare</h3>
-              <p className="card-muted">
-                {pendingNotes.length} aperte • {completedNotes.length} archiviate
-              </p>
             </div>
+            <span className="pill">{pendingNotes.length} aperte</span>
             <Link className="compact-link" href="/purchase-notes" prefetch={false}>
-              Apri lista completa
+              Apri lista
             </Link>
           </div>
           <div className="mini-list">
@@ -313,12 +327,13 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
           </div>
         </section>
 
-        <section className="card card-pad">
-          <div className="list-header">
+        <section className="card card-pad" id="customer-billboards-panel">
+          <div className="list-header customer-detail-section-head">
             <div>
+              <span className="compact-kicker">Impianti</span>
               <h3>Cartelloni e monitor</h3>
-              <p className="card-muted">{customer.billboardBookings.length} prenotazioni collegate.</p>
             </div>
+            <span className="pill">{customer.billboardBookings.length}</span>
           </div>
           <div className="mini-list">
             {customer.billboardBookings.length === 0 ? (
@@ -348,13 +363,14 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
         </section>
       </div>
 
-      <section className="card card-pad">
+      <section className="card card-pad danger-zone customer-detail-danger-card">
         <div className="stack">
           <div>
+            <span className="compact-kicker">Zona delicata</span>
             <h3>Eliminazione cliente</h3>
-            <p className="card-muted">Consentita solo se non esistono ordini, preventivi o cartelloni collegati. In caso di errore puoi usare il nuovo cestino.</p>
+            <span className="subtle">Disponibile solo se non ci sono collegamenti attivi.</span>
           </div>
-          <form action={deleteCustomerAction}>
+          <form action={deleteCustomerAction} className="danger-zone-actions">
             <input name="id" type="hidden" value={customer.id} />
             <button className="secondary" disabled={!canDeleteCustomer} type="submit">
               Elimina cliente

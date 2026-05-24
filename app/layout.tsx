@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Manrope, Sora, Space_Grotesk } from "next/font/google";
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/app-shell";
+import { InPageAnchorScroll } from "@/components/in-page-anchor-scroll";
+import { InteractionFeedback } from "@/components/interaction-feedback";
 import brandLogo from "../logo.png";
 import "./globals.css";
 
@@ -127,6 +129,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         ) : null}
       </head>
       <body className={`${manrope.variable} ${spaceGrotesk.variable} ${sora.variable}`}>
+        <InteractionFeedback />
+        <InPageAnchorScroll />
         <AppShell>{children}</AppShell>
       </body>
     </html>

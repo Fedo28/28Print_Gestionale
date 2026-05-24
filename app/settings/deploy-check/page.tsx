@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { requireAdmin } from "@/lib/auth";
 import { formatCurrency, formatDateTime } from "@/lib/format";
@@ -63,8 +64,12 @@ export default async function DeployCheckPage() {
   return (
     <div className="stack">
       <PageHeader
+        action={
+          <Link className="button ghost" href="/settings">
+            Torna alle impostazioni
+          </Link>
+        }
         title="Controllo deploy"
-        description="Apri questa pagina sia in locale sia su Vercel: se impronta database e conteggi coincidono, l'ambiente e allineato."
       />
 
       <section className="card card-pad">
