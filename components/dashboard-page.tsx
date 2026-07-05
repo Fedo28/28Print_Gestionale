@@ -183,19 +183,9 @@ export async function DashboardPage({
     purchaseNotes: "/purchase-notes"
   };
   const dashboardPanelLinks = {
-    today: buildDashboardStateHref({
-      anchor: "dashboard-calendar",
-      pulse: "CALENDAR",
-      financeMode: currentFinanceMode,
-      financeBucket: currentFinanceBucket,
-      financeSort: currentFinanceSort,
-      financeOpen: isFinancePanelOpen,
-      focus: activeFocus,
-      readyMode: currentReadyMode
-    }),
+    today: links.today,
     appointments: buildDashboardStateHref({
-      anchor: "dashboard-calendar",
-      pulse: "CALENDAR",
+      anchor: "dashboard-calendar-signals",
       financeMode: currentFinanceMode,
       financeBucket: currentFinanceBucket,
       financeSort: currentFinanceSort,
@@ -366,12 +356,7 @@ export async function DashboardPage({
           />
           <DashboardMobileModuleCard
             accent="agenda"
-            href={buildDashboardStateHref({
-              anchor: "dashboard-calendar-signals",
-              financeMode: currentFinanceMode,
-              financeOpen: isFinancePanelOpen,
-              focus: activeFocus
-            })}
+            href={links.appointments}
             icon={<DashboardGlyph kind="calendar" />}
             title="Agenda"
             items={[
@@ -411,10 +396,9 @@ export async function DashboardPage({
         />
         <MiniMetricCard
           accent="agenda"
-          href={dashboardPanelLinks.appointments}
+          href={links.appointments}
           icon={<DashboardGlyph kind="calendar" />}
           label="Appuntamenti"
-          pulse="CALENDAR"
           value={todayAppointments.length}
           tone="brand"
         />
@@ -531,89 +515,8 @@ export async function DashboardPage({
         </section>
       ) : null}
 
-      <section className={`dashboard-overview-grid${isDominantFocusLayout ? " is-focus-dominant" : ""}`}>
+      <section className={`dashboard-overview-grid dashboard-overview-grid-streamlined${isDominantFocusLayout ? " is-focus-dominant" : ""}`}>
         <div className={`dashboard-main-column${isDominantFocusLayout ? " is-compressed" : ""}`}>
-          <section
-            className={`card card-pad compact-lane-card dashboard-week-card dashboard-week-card-expanded dashboard-soft-slab${pulseClass(activePulse, "CALENDAR")}`}
-            id="dashboard-calendar"
-          >
-            <div className="list-header compact-section-head">
-              <div>
-                <span className="compact-kicker">Calendario</span>
-              </div>
-              <Link className="compact-link" href="/calendar?view=week">
-                Apri settimana
-              </Link>
-            </div>
-            <div className="dashboard-week-grid">
-              {weekLoad.map((day) => (
-                <article className={getDashboardWeekDayClassName(day, selectedDay?.key === day.key)} key={day.key}>
-                  <Link
-                    className="dashboard-week-head-link"
-                    href={buildDashboardStateHref({
-                      anchor: "dashboard-focus-panel",
-                      pulse: "DAY",
-                      day: day.key,
-                      dayFocus: "ALL",
-                      financeMode: currentFinanceMode,
-                      financeSort: currentFinanceSort,
-                      financeOpen: isFinancePanelOpen,
-                      focus: activeFocus,
-                      readyMode: currentReadyMode
-                    })}
-                    replace
-                    scroll={false}
-                  >
-                    <div className="dashboard-week-head">
-                      <span className="dashboard-week-label">{day.shortLabel}</span>
-                      <strong className="dashboard-week-date">{day.dayLabel}</strong>
-                    </div>
-                  </Link>
-                  <div className="dashboard-week-stats">
-                    <Link
-                      className={`dashboard-week-stat-link${selectedDay?.key === day.key && activeDayFocus === "WORKLOAD" ? " active" : ""}`}
-                      href={buildDashboardStateHref({
-                        anchor: "dashboard-focus-panel",
-                        pulse: "DAY",
-                        day: day.key,
-                        dayFocus: "WORKLOAD",
-                        financeOpen: isFinancePanelOpen,
-                        focus: activeFocus,
-                        financeMode: currentFinanceMode,
-                        financeSort: currentFinanceSort,
-                        readyMode: currentReadyMode
-                      })}
-                      replace
-                      scroll={false}
-                    >
-                      Lav. {day.workload}
-                    </Link>
-                    <Link
-                      className={`dashboard-week-stat-link${selectedDay?.key === day.key && activeDayFocus === "APPOINTMENTS" ? " active" : ""}`}
-                      href={buildDashboardStateHref({
-                        anchor: "dashboard-focus-panel",
-                        pulse: "DAY",
-                        day: day.key,
-                        dayFocus: "APPOINTMENTS",
-                        financeOpen: isFinancePanelOpen,
-                        focus: activeFocus,
-                        financeMode: currentFinanceMode,
-                        financeSort: currentFinanceSort,
-                        readyMode: currentReadyMode
-                      })}
-                      replace
-                      scroll={false}
-                    >
-                      App. {day.appointments}
-                    </Link>
-                    {day.blocked > 0 ? <span className="warning">Sosp. {day.blocked}</span> : null}
-                    {day.ready > 0 ? <span className="success">Pront. {day.ready}</span> : null}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-
           <div className="compact-signal-list dashboard-priority-grid" id="dashboard-calendar-signals">
             <CompactSignal
               href={links.priorityToday}
@@ -1347,6 +1250,7 @@ function DashboardLane({
                   href={`/orders/${order.id}`}
                   code={getDisplayOrderLabel(order.orderCode, order.title)}
                   deliveryAt={order.deliveryAt}
+                  priority={order.priority}
                   readyWhatsappSentAt={order.readyWhatsappSentAt}
                   title={order.customer.name}
                   meta={renderMeta(order)}
@@ -1655,6 +1559,7 @@ function CompactOrderItem({
   href,
   code,
   deliveryAt,
+  priority,
   readyWhatsappSentAt,
   title,
   meta,
@@ -1672,6 +1577,7 @@ function CompactOrderItem({
   href: string;
   code: string;
   deliveryAt: Date | string;
+  priority: DashboardOrder["priority"];
   readyWhatsappSentAt?: Date | string | null;
   title: string;
   meta: string;
@@ -1690,7 +1596,7 @@ function CompactOrderItem({
 
   return (
     <article
-      className={`compact-order-item compact-order-item-dashboard compact-order-item-${density} compact-order-item-${tone} workday-highlight-card${workdayHighlight ? ` ${workdayHighlight}` : ""}${whatsappNotified ? " whatsapp-notified" : ""}${needsWhatsapp ? " needs-whatsapp" : ""}${extraClassName ? ` ${extraClassName}` : ""}`}
+      className={`compact-order-item compact-order-item-dashboard compact-order-item-${density} compact-order-item-${tone} workday-highlight-card${workdayHighlight ? ` ${workdayHighlight}` : ""}${priority === "URGENTE" ? " compact-order-item-priority-urgent" : ""}${whatsappNotified ? " whatsapp-notified" : ""}${needsWhatsapp ? " needs-whatsapp" : ""}${extraClassName ? ` ${extraClassName}` : ""}`}
     >
       <div className="compact-order-main">
         <div className="compact-order-head">

@@ -2362,8 +2362,22 @@ tbody tr:hover td {
   background: var(--table-row-hover-bg);
 }
 
+tbody tr.order-row-priority-urgent td {
+  background: linear-gradient(135deg, rgba(214, 96, 116, 0.18), rgba(250, 239, 243, 0.96));
+  border-top-color: rgba(214, 96, 116, 0.2);
+  border-bottom-color: rgba(214, 96, 116, 0.2);
+}
+
 tbody tr.order-row-priority-urgent td:first-child {
-  border-left-color: rgba(205, 74, 74, 0.52);
+  border-left-color: rgba(205, 74, 74, 0.62);
+}
+
+tbody tr.order-row-priority-urgent td:last-child {
+  border-right-color: rgba(205, 74, 74, 0.24);
+}
+
+tbody tr.order-row-priority-urgent:hover td {
+  background: linear-gradient(135deg, rgba(214, 96, 116, 0.24), rgba(252, 234, 239, 0.98));
 }
 
 tbody tr.order-row-priority-high td:first-child {
@@ -2384,6 +2398,14 @@ tbody tr.order-row-whatsapp-notified td {
 
 tbody tr.order-row-whatsapp-notified td:first-child {
   border-left-color: rgba(47, 125, 91, 0.44);
+}
+
+tbody tr.order-row-priority-urgent.order-row-whatsapp-notified td {
+  background: linear-gradient(135deg, rgba(214, 96, 116, 0.18), rgba(250, 239, 243, 0.96));
+}
+
+tbody tr.order-row-priority-urgent.order-row-whatsapp-notified td:first-child {
+  border-left-color: rgba(205, 74, 74, 0.62);
 }
 
 .orders-table-delivery-cell {
@@ -2422,9 +2444,18 @@ tbody tr.order-row-whatsapp-notified td:first-child {
 
 .order-deadline-chip.priority-urgent {
   border-color: rgba(205, 74, 74, 0.46);
+  background: rgba(214, 96, 116, 0.14);
   box-shadow:
     inset 0 0 0 1px rgba(205, 74, 74, 0.16),
     0 12px 22px rgba(205, 74, 74, 0.08);
+}
+
+.order-deadline-chip.priority-urgent strong {
+  color: #8b4050;
+}
+
+.order-deadline-chip.priority-urgent span {
+  color: #9a5362;
 }
 
 .order-deadline-chip.priority-high {
@@ -5714,9 +5745,19 @@ button.danger {
 .order-mobile-card-priority.priority-urgent,
 .order-priority-chip.priority-urgent {
   border-color: rgba(205, 74, 74, 0.42);
+  background: rgba(214, 96, 116, 0.16);
+  color: #8b4050;
   box-shadow:
     inset 0 0 0 1px rgba(205, 74, 74, 0.14),
     0 10px 18px rgba(205, 74, 74, 0.08);
+}
+
+.order-mobile-card-priority.priority-urgent span {
+  color: #9a5362;
+}
+
+.order-mobile-card-priority.priority-urgent strong {
+  color: #8b4050;
 }
 
 .order-mobile-card-priority.priority-high,
@@ -12952,6 +12993,11 @@ textarea:focus-visible {
     border-radius: 24px 24px 18px 18px;
   }
 
+  .orders-table tbody tr.order-row-priority-urgent:not(.order-row-details) {
+    border-color: rgba(214, 96, 116, 0.32);
+    background: #faeef2;
+  }
+
   .orders-table tbody tr.order-row-details {
     margin-top: -18px;
   }
@@ -12966,6 +13012,10 @@ textarea:focus-visible {
     margin-top: 10px;
     padding-top: 10px;
     border-top: 1px solid var(--table-row-top-border);
+  }
+
+  .orders-table tbody tr.order-row-priority-urgent:not(.order-row-details) td + td {
+    border-top-color: rgba(214, 96, 116, 0.16);
   }
 
   .orders-table tbody td:first-child,
@@ -17747,6 +17797,23 @@ button.theme-toggle.toolbar-theme-toggle,
   gap: 16px;
 }
 
+.dashboard-overview-grid.dashboard-overview-grid-streamlined,
+.dashboard-overview-grid.dashboard-overview-grid-streamlined.is-focus-dominant {
+  grid-template-columns: 1fr;
+}
+
+.dashboard-overview-grid.dashboard-overview-grid-streamlined .dashboard-main-column {
+  order: 2;
+}
+
+.dashboard-overview-grid.dashboard-overview-grid-streamlined .dashboard-main-column.is-compressed {
+  gap: 16px;
+}
+
+.dashboard-overview-grid.dashboard-overview-grid-streamlined .dashboard-focus-panel {
+  order: 1;
+}
+
 .dashboard-main-column,
 .dashboard-side-column {
   gap: 16px;
@@ -18332,6 +18399,27 @@ button.theme-toggle.toolbar-theme-toggle,
   background: #eef3f8;
 }
 
+.dashboard-page-shell .compact-order-item.compact-order-item-priority-urgent {
+  border-color: rgba(214, 96, 116, 0.34);
+  background: #fae1e6;
+}
+
+.dashboard-page-shell .compact-order-item.compact-order-item-priority-urgent .order-code,
+.dashboard-page-shell .compact-order-item.compact-order-item-priority-urgent .compact-order-aside,
+.dashboard-page-shell .compact-order-item.compact-order-item-priority-urgent .compact-order-customer {
+  color: #7f3040;
+}
+
+.dashboard-page-shell .compact-order-item.compact-order-item-priority-urgent .compact-order-meta,
+.dashboard-page-shell .compact-order-item.compact-order-item-priority-urgent .hint {
+  color: #8f5160;
+}
+
+.dashboard-page-shell .compact-order-item.compact-order-item-priority-urgent .pill {
+  border-color: rgba(255, 255, 255, 0.62);
+  background: rgba(255, 255, 255, 0.58);
+}
+
 .dashboard-finance-lane .compact-order-item.finance-high-balance {
   border-color: rgba(196, 145, 30, 0.28);
   background: #f8f2e6;
@@ -18371,6 +18459,12 @@ button.theme-toggle.toolbar-theme-toggle,
 
   .dashboard-materials-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1181px) {
+  .dashboard-overview-grid.dashboard-overview-grid-streamlined .dashboard-side-lane-expanded .compact-order-grid-dense {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -19071,6 +19165,21 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   .orders-page-results-card .order-deadline-chip.priority-high,
   .orders-page-results-card .order-deadline-chip.priority-low {
     box-shadow: none;
+  }
+
+  .orders-page-results-card tbody tr.order-row-priority-urgent td {
+    background: linear-gradient(135deg, rgba(214, 96, 116, 0.18), rgba(250, 239, 243, 0.96));
+  }
+
+  .orders-page-results-card tbody tr.order-row-priority-urgent:hover td {
+    background: linear-gradient(135deg, rgba(214, 96, 116, 0.24), rgba(252, 234, 239, 0.98));
+  }
+
+  .orders-page-results-card .order-deadline-chip.priority-urgent,
+  .orders-page-results-card .order-priority-chip.priority-urgent,
+  .orders-page-results-card .order-mobile-card-priority.priority-urgent {
+    border-color: rgba(214, 96, 116, 0.28);
+    background: #faeef2;
   }
 
   .orders-page-results-card .order-row-panel {
