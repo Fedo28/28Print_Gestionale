@@ -137,9 +137,8 @@ export default async function DeployCheckPage() {
           </div>
           {latestOrder ? (
             <div className="mini-item">
-              <strong>{latestOrder.orderCode}</strong>
-              <div className="subtle">{latestOrder.title}</div>
-              <div className="subtle">{latestOrder.customer.name}</div>
+              <strong>{latestOrder.customer.name}</strong>
+              <div className="subtle">{latestOrder.orderCode} • {latestOrder.title}</div>
               <div className="subtle">{formatDateTime(latestOrder.createdAt)}</div>
               <div className="subtle">{formatCurrency(latestOrder.totalCents)}</div>
             </div>
@@ -157,9 +156,8 @@ export default async function DeployCheckPage() {
           </div>
           {latestQuote ? (
             <div className="mini-item">
-              <strong>{latestQuote.orderCode}</strong>
-              <div className="subtle">{latestQuote.title}</div>
-              <div className="subtle">{latestQuote.customer.name}</div>
+              <strong>{latestQuote.customer.name}</strong>
+              <div className="subtle">{latestQuote.orderCode} • {latestQuote.title}</div>
               <div className="subtle">{formatDateTime(latestQuote.createdAt)}</div>
               <div className="subtle">{formatCurrency(latestQuote.totalCents)}</div>
             </div>

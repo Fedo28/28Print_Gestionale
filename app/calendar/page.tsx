@@ -391,7 +391,7 @@ function MonthCalendar({
                     href={`/orders/${order.id}`}
                     key={order.id}
                     prefetch={false}
-                    title={`${getDisplayOrderLabel(order.orderCode, order.title)} • ${order.customer.name}`}
+                    title={`${order.customer.name} • ${getDisplayOrderLabel(order.orderCode, order.title)}`}
                   >
                     <span className="calendar-entry-title">{getCalendarEntryTitle(order)}</span>
                   </Link>
@@ -585,7 +585,7 @@ function CalendarOrderCard({
       className={`calendar-entry-link calendar-entry-link-day calendar-entry-link-${tone}${variant === "appointment" ? " calendar-entry-link-accent" : ""}`}
       href={`/orders/${order.id}`}
       prefetch={false}
-      title={`${getDisplayOrderLabel(order.orderCode, order.title)} • ${order.customer.name}`}
+      title={`${order.customer.name} • ${getDisplayOrderLabel(order.orderCode, order.title)}`}
     >
       <span className="calendar-entry-title">{title}</span>
     </Link>
@@ -604,7 +604,7 @@ function CalendarWeekItem({
       className={`calendar-entry-link calendar-entry-link-compact calendar-entry-link-uniform${variant === "appointment" ? " calendar-entry-link-uniform-appointment" : ""}`}
       href={`/orders/${order.id}`}
       prefetch={false}
-      title={`${getDisplayOrderLabel(order.orderCode, order.title)} • ${order.customer.name}`}
+      title={`${order.customer.name} • ${getDisplayOrderLabel(order.orderCode, order.title)}`}
     >
       <span className="calendar-entry-title">{getCalendarEntryTitle(order)}</span>
     </Link>
@@ -877,7 +877,7 @@ function sortByAppointment(orders: CalendarOrder[]) {
 }
 
 function getCalendarEntryTitle(order: CalendarOrder) {
-  return order.title?.trim() || order.customer.name;
+  return order.customer.name;
 }
 
 function getOrderTone(order: CalendarOrder, focusDate: Date, variant: "delivery" | "appointment" | "overdue") {

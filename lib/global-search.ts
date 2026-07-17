@@ -178,8 +178,8 @@ export async function searchGlobal(query: string): Promise<GlobalSearchSection[]
       items: orders.map((order) => ({
         id: order.id,
         kind: "order",
-        label: `${order.orderCode} • ${order.title}`,
-        meta: `${order.customer.name} • ${formatDateTime(order.deliveryAt)} • ${mainPhaseLabels[order.mainPhase]}`,
+        label: order.customer.name,
+        meta: `${order.orderCode} • ${order.title} • ${formatDateTime(order.deliveryAt)} • ${mainPhaseLabels[order.mainPhase]}`,
         href: `/orders/${order.id}`
       }))
     });
@@ -192,8 +192,8 @@ export async function searchGlobal(query: string): Promise<GlobalSearchSection[]
       items: quotes.map((quote) => ({
         id: quote.id,
         kind: "quote",
-        label: `${quote.orderCode} • ${quote.title}`,
-        meta: `${quote.customer.name} • Creato ${formatDate(quote.createdAt)}`,
+        label: quote.customer.name,
+        meta: `${quote.orderCode} • ${quote.title} • Creato ${formatDate(quote.createdAt)}`,
         href: `/orders/${quote.id}`
       }))
     });

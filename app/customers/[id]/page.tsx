@@ -231,13 +231,11 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
                 <article className="mini-item" key={order.id}>
                   <div className="list-header">
                     <Link href={`/orders/${order.id}`} prefetch={false}>
-                      <strong>{getDisplayOrderLabel(order.orderCode, order.title)}</strong>
+                      <strong>{customer.name}</strong>
                     </Link>
                     <span>{formatCurrency(order.totalCents)}</span>
                   </div>
-                  {order.title && order.title !== getDisplayOrderLabel(order.orderCode, order.title) ? (
-                    <div className="subtle">{order.title}</div>
-                  ) : null}
+                  <div className="subtle">{getDisplayOrderLabel(order.orderCode, order.title)}</div>
                   <div className="subtle">{formatDateTime(order.deliveryAt)}</div>
                   <StatusPills
                     isQuote={order.isQuote}
@@ -267,13 +265,11 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
                 <article className="mini-item" key={order.id}>
                   <div className="list-header">
                     <Link href={`/orders/${order.id}`} prefetch={false}>
-                      <strong>{getDisplayOrderLabel(order.orderCode, order.title)}</strong>
+                      <strong>{customer.name}</strong>
                     </Link>
                     <span>{formatCurrency(order.totalCents)}</span>
                   </div>
-                  {order.title && order.title !== getDisplayOrderLabel(order.orderCode, order.title) ? (
-                    <div className="subtle">{order.title}</div>
-                  ) : null}
+                  <div className="subtle">{getDisplayOrderLabel(order.orderCode, order.title)}</div>
                   <div className="subtle">{formatDateTime(order.deliveryAt)}</div>
                   <StatusPills
                     isQuote={order.isQuote}

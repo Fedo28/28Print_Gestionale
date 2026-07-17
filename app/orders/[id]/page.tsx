@@ -6,7 +6,6 @@ import {
   correctPaymentAction,
   deleteOrderItemAction,
   markReadyAction,
-  recordPaymentAction,
   restoreOrderHistoryAction,
   saveOrderMaterialNoteAction,
   toggleOrderItemDeliveryAction,
@@ -21,20 +20,20 @@ import { StatusPills } from "@/components/status-pills";
 import { AttachmentUploadForm } from "@/components/attachment-upload-form";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DeleteOrderForm } from "@/components/delete-order-form";
-import { FormUndoButton } from "@/components/form-undo-button";
 import { HistoryBackButton } from "@/components/history-back-button";
 import { MaterialCategorySelectorField } from "@/components/material-category-selector-field";
 import { OrderPrintBrandMenu } from "@/components/order-print-brand-menu";
 import { OrderItemEditorForm } from "@/components/order-item-editor-form";
 import { OrderEditToggleButton } from "@/components/order-edit-toggle-button";
 import { OrderItemDeleteButton } from "@/components/order-item-delete-button";
+import { OrderPaymentEntryForm } from "@/components/order-payment-entry-form";
 import { UndoButtonContent } from "@/components/undo-button-content";
 import { formatAttachmentSize } from "@/lib/attachment-utils";
 import { requireAuth } from "@/lib/auth";
 import {
   getAppointmentNoteOptions,
-  mainPhaseLabels,
   invoiceStatusLabels,
+  mainPhaseLabels,
   normalizeMainPhaseForWorkflow,
   operationalStatusLabels,
   paymentStatusLabels,
@@ -136,11 +135,61 @@ export default async function OrderDetailPage({
       ? `Ultima nota chiusa il ${formatDateTime(latestMaterialNote.completedAt)}`
       : "Nessuna nota collegata";
   const activeMaterialNoteFormState = parseOrderMaterialNoteContent(activeMaterialNote?.content || "");
+  const customerContactWarning =
+    order.mainPhase === "SVILUPPO_COMPLETATO" && !hasWhatsapp ? "Manca un numero cliente valido: aggiorna telefono o WhatsApp." : null;
+  const orderTitlePrimaryAction =
+    guidedAction?.kind === "deliver" ? (
+      <form action={transitionPhaseAction} className="action-form order-detail-title-primary-action">
+        <input name="orderId" type="hidden" value={order.id} />
+        <input name="nextPhase" type="hidden" value="CONSEGNATO" />
+        {order.balanceDueCents > 0 ? (
+          <input
+            aria-label="Nota override consegna"
+            name="note"
+            placeholder="Nota facoltativa sulla consegna"
+          />
+        ) : null}
+        <button className="primary" type="submit">
+          Segna consegnato
+        </button>
+      </form>
+    ) : order.mainPhase === "CONSEGNATO" ? (
+      <div className="order-detail-title-actions-note">
+        {order.deliveredAt ? `Ordine gia consegnato il ${formatDateTime(order.deliveredAt)}.` : "Ordine gia consegnato."}
+      </div>
+    ) : isSchedulePendingQuote ? (
+      <Link className="button primary order-detail-title-primary-link" href={`/orders/${order.id}?needsScheduling=1&edit=1#order-edit-panel`}>
+        Definisci data per confermare
+      </Link>
+    ) : order.isQuote ? (
+      <form action={confirmQuoteAction} className="order-detail-header-inline-form order-detail-title-primary-action">
+        <input name="orderId" type="hidden" value={order.id} />
+        <button className="primary" type="submit">
+          Conferma come ordine
+        </button>
+      </form>
+    ) : guidedAction?.kind === "transition" ? (
+      <form action={transitionPhaseAction} className="order-detail-header-inline-form order-detail-title-primary-action">
+        <input name="orderId" type="hidden" value={order.id} />
+        <input name="nextPhase" type="hidden" value={guidedAction.nextPhase} />
+        <button className="primary" type="submit">
+          {guidedAction.label}
+        </button>
+      </form>
+    ) : guidedAction?.kind === "ready" ? (
+      <form action={markReadyAction} className="order-detail-header-inline-form order-detail-title-primary-action">
+        <input name="orderId" type="hidden" value={order.id} />
+        <button className="success" type="submit">
+          Segna pronto
+        </button>
+      </form>
+    ) : null;
 
   return (
     <div className="stack order-detail-page-shell">
       <PageHeader
-        title={getDisplayOrderLabel(order.orderCode, order.title)}
+        description={getDisplayOrderLabel(order.orderCode, order.title)}
+        title={order.customer.name}
         titleAction={<OrderEditToggleButton targetId="order-edit-panel" />}
         action={
           <div className="order-detail-header-actions order-detail-header-actions-simple">
@@ -154,6 +203,17 @@ export default async function OrderDetailPage({
         }
       />
 
+      <div className="order-detail-title-actions-bar">
+        <div className="order-detail-title-actions">
+          {orderTitlePrimaryAction}
+          {order.mainPhase === "SVILUPPO_COMPLETATO" ? (
+            <ReadyWhatsAppButton compact hasPhone={hasWhatsapp} notifiedAt={order.readyWhatsappSentAt} orderId={order.id} />
+          ) : null}
+          <MarkOrderInvoicedButton compact invoiceStatus={order.invoiceStatus} orderId={order.id} />
+          <DeleteOrderForm compact isQuote={order.isQuote} orderId={order.id} />
+        </div>
+      </div>
+
       <details className="card card-pad order-detail-disclosure order-detail-edit-card" id="order-edit-panel" open={shouldOpenEditPanel}>
         <summary className="order-detail-edit-summary-hidden">
           Modifica ordine
@@ -161,23 +221,30 @@ export default async function OrderDetailPage({
         <div className="order-detail-edit-tray-head">
           <div>
             <span className="compact-kicker">Modifica</span>
-            <strong>Modifica ordine</strong>
+            <strong>Ordina tutto qui</strong>
             <span className="subtle">
               {needsScheduling
-                ? "Per confermare il preventivo come ordine devi impostare una consegna oppure un appuntamento."
-                : "Consegna, stato, note e impostazioni principali"}
+                ? "Serve una data per confermare il preventivo."
+                : "Pochi campi, separati bene, senza rumore."}
             </span>
           </div>
         </div>
-        <div className="grid grid-2 order-detail-edit-grid">
-          <div className="stack order-detail-edit-column">
-            <form action={updateOrderAction} className="form-grid">
+        <div className="stack order-detail-edit-stack">
+          <section className="order-detail-edit-section order-detail-edit-section-main">
+            <div className="order-detail-edit-section-head">
+              <div>
+                <span className="compact-kicker">Essenziale</span>
+                <strong>Dati ordine</strong>
+              </div>
+              {needsScheduling ? <span className="order-detail-edit-inline-note">Manca ancora la data.</span> : null}
+            </div>
+            <form action={updateOrderAction} className="form-grid order-detail-edit-form">
               <input name="id" type="hidden" value={order.id} />
-              <div className="field wide">
+              <div className="field wide order-detail-edit-title-field">
                 <label htmlFor="title">Titolo</label>
                 <input defaultValue={order.title} id="title" name="title" required />
               </div>
-              <div className="field">
+              <div className="field order-detail-edit-delivery-field">
                 <label htmlFor="deliveryAt">{order.isQuote ? "Consegna (facoltativa)" : "Consegna"}</label>
                 <input
                   className="date-time-input"
@@ -187,7 +254,7 @@ export default async function OrderDetailPage({
                   type="datetime-local"
                 />
               </div>
-              <div className="field wide">
+              <div className="field wide order-detail-edit-appointment-field">
                 <label htmlFor="appointmentAt">Appuntamento programmato</label>
                 <input
                   className="date-time-input"
@@ -197,8 +264,7 @@ export default async function OrderDetailPage({
                   type="datetime-local"
                 />
               </div>
-              {!order.isQuote ? <p className="hint order-scheduling-hint">Compila una consegna oppure un appuntamento.</p> : null}
-              <div className="field">
+              <div className="field order-detail-edit-invoice-field">
                 <label htmlFor="invoiceStatus">Stato fatturazione</label>
                 <select defaultValue={order.invoiceStatus} id="invoiceStatus" name="invoiceStatus">
                   {Object.entries(invoiceStatusLabels).map(([value, label]) => (
@@ -208,16 +274,13 @@ export default async function OrderDetailPage({
                   ))}
                 </select>
               </div>
-              <div className="field">
+              <div className="field order-detail-edit-quote-field">
                 <label className="toggle-field" htmlFor="isQuote">
                   <input defaultChecked={order.isQuote} id="isQuote" name="isQuote" type="checkbox" />
                   <span>Preventivo</span>
                 </label>
               </div>
-              <p className="hint order-priority-auto-hint">
-                Priorita automatica attuale: {priorityLabels[order.priority]}. Il sistema la ricalcola dalla consegna quando salvi.
-              </p>
-              <div className="field full">
+              <div className="field full order-detail-edit-appointment-note-field">
                 <label htmlFor="appointmentNote">Nota appuntamento</label>
                 <select defaultValue={order.appointmentNote || ""} id="appointmentNote" name="appointmentNote">
                   <option value="">Seleziona nota appuntamento</option>
@@ -228,21 +291,26 @@ export default async function OrderDetailPage({
                   ))}
                 </select>
               </div>
-              <div className="field full">
+              <div className="field full order-detail-edit-notes-field">
                 <label htmlFor="notes">Note interne</label>
-                <textarea defaultValue={order.notes || ""} id="notes" name="notes" />
+                <textarea defaultValue={order.notes || ""} id="notes" name="notes" rows={4} />
               </div>
               <div className="button-row order-detail-submit-row">
-                <FormUndoButton />
                 <button className="primary" type="submit">
                   Aggiorna ordine
                 </button>
               </div>
             </form>
-          </div>
+          </section>
 
-          <div className="stack order-detail-edit-column">
-            <form action={updateOrderStatusDetailAction} className="form-grid order-status-form">
+          <section className="order-detail-edit-section order-detail-edit-section-status">
+            <div className="order-detail-edit-section-head">
+              <div>
+                <span className="compact-kicker">Stato</span>
+                <strong>Blocco o avanzamento</strong>
+              </div>
+            </div>
+            <form action={updateOrderStatusDetailAction} className="form-grid order-status-form order-detail-edit-form">
               <input name="orderId" type="hidden" value={order.id} />
               <div className="field order-status-field">
                 <label htmlFor="operationalStatus">Stato operativo</label>
@@ -263,38 +331,37 @@ export default async function OrderDetailPage({
                   placeholder="Motivo sospensione o dettaglio operativo"
                 />
               </div>
-              <p className="hint">
-                {order.operationalStatus === "ATTIVO"
-                  ? "Nessun blocco operativo attivo."
-                  : `Motivo corrente: ${order.operationalNote || "non indicato"}`}
-              </p>
               <div className="button-row order-status-actions">
-                <FormUndoButton />
                 <button className="secondary" type="submit">
                   Salva stato
                 </button>
               </div>
             </form>
+          </section>
 
-            {!order.isQuote ? (
+          {!order.isQuote ? (
+            <section className="order-detail-edit-section order-detail-edit-section-material">
+              <div className="order-detail-edit-section-head">
+                <div>
+                  <span className="compact-kicker">Materiali</span>
+                  <strong>Da ordinare</strong>
+                </div>
+                <span className="order-detail-edit-inline-note">{materialSummary}</span>
+              </div>
               <form action={saveOrderMaterialNoteAction} className="form-grid order-status-form order-material-form">
                 <input name="orderId" type="hidden" value={order.id} />
-                <div className="order-material-form-head">
-                  <strong>Materiale da ordinare</strong>
-                  <span className="subtle">{materialSummary}</span>
-                </div>
                 <MaterialCategorySelectorField
                   defaultValue={activeMaterialNoteFormState.categoryCounts}
                   idPrefix={`order-detail-material-${order.id}`}
                   inputNamePrefix="materialCategoryCount"
                 />
-                <div className="field full order-status-note">
+                <div className="field full order-status-note order-detail-edit-material-note-field">
                   <label htmlFor="materialNoteContent">Note</label>
                   <textarea
                     defaultValue={activeMaterialNoteFormState.content}
                     id="materialNoteContent"
                     name="materialNoteContent"
-                    rows={4}
+                    rows={3}
                   />
                 </div>
                 <div className="field order-status-field">
@@ -327,8 +394,8 @@ export default async function OrderDetailPage({
                   </button>
                 </div>
               </form>
-            ) : null}
-          </div>
+            </section>
+          ) : null}
         </div>
       </details>
 
@@ -370,85 +437,25 @@ export default async function OrderDetailPage({
       </div>
 
       <section className="order-detail-overview-card card card-pad">
-        <div className="order-detail-overview-bar">
-          <div className="order-detail-overview-main">
-            <div className="order-detail-overview-head">
-              <div>
-                <span className="compact-kicker">Cliente</span>
-                <h3>{order.customer.name}</h3>
-                <p className="card-muted">
-                  {getCustomerPrimaryContact(order.customer)} • Creato il {formatDateTime(order.createdAt)}
-                </p>
-              </div>
-              <div className="order-detail-overview-links">
-                <Link className="compact-link" href={`/customers/${order.customer.id}`} prefetch={false}>
-                  Apri cliente
-                </Link>
-                <Link className="compact-link" href="#order-history-panel">
-                  Cronologia
-                </Link>
-                <Link className="compact-link" href="#order-detail-cashflow">
-                  Incassi
-                </Link>
-              </div>
-            </div>
-          </div>
-
-          <div className="order-detail-overview-actions">
-            <div className="order-detail-overview-top-actions">
-              <MarkOrderInvoicedButton compact invoiceStatus={order.invoiceStatus} orderId={order.id} />
-              <DeleteOrderForm compact isQuote={order.isQuote} orderId={order.id} />
-              {order.mainPhase === "SVILUPPO_COMPLETATO" ? (
-                <ReadyWhatsAppButton hasPhone={hasWhatsapp} notifiedAt={order.readyWhatsappSentAt} orderId={order.id} />
-              ) : null}
-            </div>
-
-            {guidedAction?.kind === "deliver" ? (
-              <form action={transitionPhaseAction} className="action-form action-form-wide order-detail-overview-primary-action">
-                <input name="orderId" type="hidden" value={order.id} />
-                <input name="nextPhase" type="hidden" value="CONSEGNATO" />
-                {order.balanceDueCents > 0 ? (
-                  <input
-                    aria-label="Nota override consegna"
-                    name="note"
-                    placeholder="Nota facoltativa sulla consegna"
-                  />
-                ) : null}
-                <button className="primary" type="submit">
-                  Segna consegnato
-                </button>
-              </form>
-            ) : order.mainPhase === "CONSEGNATO" ? (
-              <div className="empty order-detail-overview-empty">
-                {order.deliveredAt ? `Ordine gia consegnato il ${formatDateTime(order.deliveredAt)}.` : "Ordine gia consegnato."}
-              </div>
-            ) : isSchedulePendingQuote ? (
-              <Link className="button primary order-detail-overview-primary-link" href={`/orders/${order.id}?needsScheduling=1&edit=1#order-edit-panel`}>
-                Definisci data per confermare
+        <div className="order-detail-overview-head">
+          <div>
+            <span className="compact-kicker">Cliente</span>
+            <h3>{order.customer.name}</h3>
+            <p className="card-muted">
+              {getCustomerPrimaryContact(order.customer)} • Creato il {formatDateTime(order.createdAt)}
+            </p>
+            <div className="order-detail-overview-links">
+              <Link className="compact-link" href={`/customers/${order.customer.id}`} prefetch={false}>
+                Apri cliente
               </Link>
-            ) : order.isQuote ? (
-              <form action={confirmQuoteAction} className="order-detail-header-inline-form order-detail-overview-primary-action">
-                <input name="orderId" type="hidden" value={order.id} />
-                <button className="primary" type="submit">
-                  Conferma come ordine
-                </button>
-              </form>
-            ) : guidedAction?.kind === "transition" ? (
-              <form action={transitionPhaseAction} className="order-detail-header-inline-form order-detail-overview-primary-action">
-                <input name="orderId" type="hidden" value={order.id} />
-                <input name="nextPhase" type="hidden" value={guidedAction.nextPhase} />
-                <button className="primary" type="submit">
-                  {guidedAction.label}
-                </button>
-              </form>
-            ) : guidedAction?.kind === "ready" ? (
-              <form action={markReadyAction} className="order-detail-header-inline-form order-detail-overview-primary-action">
-                <input name="orderId" type="hidden" value={order.id} />
-                <button className="success" type="submit">
-                  Segna pronto
-                </button>
-              </form>
-            ) : null}
+              <Link className="compact-link" href="#order-history-panel">
+                Cronologia
+              </Link>
+              <Link className="compact-link" href="#order-detail-cashflow">
+                Incassi
+              </Link>
+            </div>
+            {customerContactWarning ? <p className="order-detail-overview-warning">{customerContactWarning}</p> : null}
           </div>
         </div>
       </section>
@@ -502,7 +509,7 @@ export default async function OrderDetailPage({
               <summary className="order-item-editor-summary">
                 <div className="order-item-editor-copy">
                   <strong>Nuova riga</strong>
-                  <span className="subtle">Aggiungi una lavorazione manuale o collegata al catalogo.</span>
+                  <span className="subtle">Catalogo o voce libera.</span>
                 </div>
                 <span className="order-item-editor-total">Aggiungi</span>
               </summary>
@@ -620,33 +627,7 @@ export default async function OrderDetailPage({
               <strong>{formatCurrency(order.balanceDueCents)}</strong>
             </span>
           </div>
-          <form action={recordPaymentAction} className="form-grid payment-entry-form">
-            <input name="orderId" type="hidden" value={order.id} />
-            <div className="field">
-              <label htmlFor="amount">Importo</label>
-              <input className="currency-input" id="amount" inputMode="decimal" name="amount" placeholder="0,00" required />
-            </div>
-            <div className="field">
-              <label htmlFor="method">Metodo</label>
-              <select id="method" name="method">
-                {Object.entries(paymentMethodLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field wide">
-              <label htmlFor="paymentNote">Nota</label>
-              <input id="paymentNote" name="note" placeholder="Acconto, saldo, riferimento cassa" />
-            </div>
-            <div className="button-row payment-form-actions">
-              <FormUndoButton />
-              <button className="primary" type="submit">
-                Registra pagamento
-              </button>
-            </div>
-          </form>
+          <OrderPaymentEntryForm orderId={order.id} />
 
           <div className="mini-list">
             {activePayments.length === 0 ? (
@@ -660,47 +641,49 @@ export default async function OrderDetailPage({
                   </div>
                   <div className="subtle">{formatDateTime(payment.createdAt)}</div>
                   <div className="subtle">{payment.note || "Nessuna nota"}</div>
-                  <form action={correctPaymentAction} className="form-grid payment-correction-form">
-                    <input name="orderId" type="hidden" value={order.id} />
-                    <input name="paymentId" type="hidden" value={payment.id} />
-                    <div className="field">
-                      <label htmlFor={`correct-amount-${payment.id}`}>Importo corretto</label>
-                      <input
-                        className="currency-input"
-                        defaultValue={(payment.amountCents / 100).toFixed(2).replace(".", ",")}
-                        id={`correct-amount-${payment.id}`}
-                        inputMode="decimal"
-                        name="amount"
-                        placeholder="0,00"
-                        required
-                      />
-                    </div>
-                    <div className="field">
-                      <label htmlFor={`correct-method-${payment.id}`}>Metodo</label>
-                      <select defaultValue={payment.method} id={`correct-method-${payment.id}`} name="method">
-                        {Object.entries(paymentMethodLabels).map(([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="field wide">
-                      <label htmlFor={`correct-note-${payment.id}`}>Nota correzione</label>
-                      <input
-                        defaultValue={payment.note || ""}
-                        id={`correct-note-${payment.id}`}
-                        name="note"
-                        placeholder="Motivo della correzione"
-                      />
-                    </div>
-                    <div className="button-row payment-form-actions">
-                      <FormUndoButton />
-                      <button className="secondary" type="submit">
-                        Correggi pagamento
-                      </button>
-                    </div>
-                  </form>
+                  <details className="payment-correction-disclosure">
+                    <summary className="payment-correction-summary">Correggi</summary>
+                    <form action={correctPaymentAction} className="form-grid payment-correction-form">
+                      <input name="orderId" type="hidden" value={order.id} />
+                      <input name="paymentId" type="hidden" value={payment.id} />
+                      <div className="field">
+                        <label htmlFor={`correct-amount-${payment.id}`}>Importo corretto</label>
+                        <input
+                          className="currency-input"
+                          defaultValue={(payment.amountCents / 100).toFixed(2).replace(".", ",")}
+                          id={`correct-amount-${payment.id}`}
+                          inputMode="decimal"
+                          name="amount"
+                          placeholder="0,00"
+                          required
+                        />
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`correct-method-${payment.id}`}>Metodo</label>
+                        <select defaultValue={payment.method} id={`correct-method-${payment.id}`} name="method">
+                          {Object.entries(paymentMethodLabels).map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="field wide">
+                        <label htmlFor={`correct-note-${payment.id}`}>Nota correzione</label>
+                        <input
+                          defaultValue={payment.note || ""}
+                          id={`correct-note-${payment.id}`}
+                          name="note"
+                          placeholder="Motivo della correzione"
+                        />
+                      </div>
+                      <div className="button-row payment-form-actions">
+                        <button className="secondary" type="submit">
+                          Salva correzione
+                        </button>
+                      </div>
+                    </form>
+                  </details>
                 </article>
               ))
             )}

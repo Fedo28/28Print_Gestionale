@@ -22,6 +22,8 @@ export type QuickOrderControlProps = {
   includeQuote?: boolean;
   align?: "start" | "end";
   mode?: "popover" | "inline";
+  placement?: "above" | "below";
+  showStatus?: boolean;
 };
 
 export function QuickOrderTriggerButton({
@@ -59,7 +61,8 @@ export function QuickOrderControlForms({
   readyWhatsappSentAt,
   showWhatsapp = true,
   isQuote = false,
-  includeQuote = false
+  includeQuote = false,
+  showStatus = true
 }: Omit<QuickOrderControlProps, "align">) {
   const phaseFormRef = useRef<HTMLFormElement>(null);
   const statusFormRef = useRef<HTMLFormElement>(null);
@@ -90,26 +93,28 @@ export function QuickOrderControlForms({
         </select>
       </form>
 
-      <form action={quickUpdateOperationalStatusAction} ref={statusFormRef}>
-        <input name="orderId" type="hidden" value={orderId} />
-        <label className="quick-order-label" htmlFor={`quick-status-${orderId}`}>
-          Stato operativo
-        </label>
-        <select
-          aria-label="Stato operativo"
-          className="quick-select"
-          defaultValue={status}
-          id={`quick-status-${orderId}`}
-          name="operationalStatus"
-          onChange={() => statusFormRef.current?.requestSubmit()}
-        >
-          {Object.entries(operationalStatusLabels).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </form>
+      {showStatus ? (
+        <form action={quickUpdateOperationalStatusAction} ref={statusFormRef}>
+          <input name="orderId" type="hidden" value={orderId} />
+          <label className="quick-order-label" htmlFor={`quick-status-${orderId}`}>
+            Stato operativo
+          </label>
+          <select
+            aria-label="Stato operativo"
+            className="quick-select"
+            defaultValue={status}
+            id={`quick-status-${orderId}`}
+            name="operationalStatus"
+            onChange={() => statusFormRef.current?.requestSubmit()}
+          >
+            {Object.entries(operationalStatusLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </form>
+      ) : null}
 
       {includeQuote ? (
         <form action={quickUpdateQuoteFlagAction} ref={quoteFormRef}>
@@ -150,7 +155,9 @@ export function QuickOrderControls({
   isQuote = false,
   includeQuote = false,
   align = "start",
-  mode = "popover"
+  mode = "popover",
+  placement = "below",
+  showStatus = true
 }: QuickOrderControlProps) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -182,7 +189,7 @@ export function QuickOrderControls({
   }, [isOpen]);
 
   return (
-    <div className={`quick-order-menu quick-order-menu-${align} quick-order-menu-${mode}${isOpen ? " open" : ""}`} ref={menuRef}>
+    <div className={`quick-order-menu quick-order-menu-${align} quick-order-menu-${mode} quick-order-menu-${placement}${isOpen ? " open" : ""}`} ref={menuRef}>
       <QuickOrderTriggerButton isOpen={isOpen} onClick={() => setIsOpen((current) => !current)} />
       {isOpen ? (
         <div className="quick-order-panel">
@@ -194,6 +201,7 @@ export function QuickOrderControls({
             phase={phase}
             readyWhatsappSentAt={readyWhatsappSentAt}
             showWhatsapp={showWhatsapp}
+            showStatus={showStatus}
             status={status}
           />
         </div>

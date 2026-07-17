@@ -1658,7 +1658,7 @@ export async function updateOperationalStatus(orderId: string, status: Operation
       where: { id: orderId },
       data: {
         operationalStatus: status,
-        operationalNote: status === "ATTIVO" ? undefined : cleanNote
+        operationalNote: status === "ATTIVO" ? null : cleanNote
       }
     });
     const snapshotAfter = buildOrderStatusHistorySnapshot(updated);

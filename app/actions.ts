@@ -20,7 +20,7 @@ import {
 import { restoreDeletedEntity, writeAuditLog } from "@/lib/audit-log";
 import { formatDateKey } from "@/lib/format";
 import { getDisplayOrderLabel } from "@/lib/order-display";
-import type { DiscountMode, Prisma } from "@prisma/client";
+import type { DiscountMode, MainPhase, OperationalStatus, Prisma } from "@prisma/client";
 import {
   cloneOrderItem,
   correctPayment,
@@ -67,6 +67,8 @@ import {
 } from "@/lib/staff-users";
 import { parseServiceUnit } from "@/lib/service-units";
 import { parseFlexibleAdjustmentInput } from "@/lib/pricing";
+import { mainPhaseLabels, normalizeMainPhaseForWorkflow, operationalStatusLabels } from "@/lib/constants";
+import { canTransitionPhase } from "@/lib/order-phase-transitions";
 
 function revalidateOperationalSurfaces(orderId?: string) {
   revalidatePath("/");
@@ -376,6 +378,12 @@ export type AccessProfileActionState = {
 export type StaffInviteSettingsActionState = {
   error: string | null;
   successMessage: string | null;
+};
+
+export type PaymentEntryActionState = {
+  error: string | null;
+  successMessage: string | null;
+  submittedAt: string | null;
 };
 
 export async function createCustomerAction(formData: FormData) {
@@ -850,6 +858,34 @@ export async function recordPaymentAction(formData: FormData) {
   revalidateOperationalSurfaces(orderId);
 }
 
+export async function recordPaymentEntryAction(
+  _previousState: PaymentEntryActionState,
+  formData: FormData
+): Promise<PaymentEntryActionState> {
+  try {
+    await requireAuth();
+    const orderId = String(formData.get("orderId") || "");
+    const amountCents = parseCurrencyToCents(formData.get("amount")?.toString() || null);
+    const method = parsePaymentMethod(formData.get("method")?.toString() || null);
+    const note = String(formData.get("note") || "");
+
+    await recordPayment(orderId, amountCents, method, note);
+    revalidateOperationalSurfaces(orderId);
+
+    return {
+      error: null,
+      successMessage: "Pagamento registrato.",
+      submittedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Non sono riuscito a registrare il pagamento.",
+      successMessage: null,
+      submittedAt: null
+    };
+  }
+}
+
 export async function correctPaymentAction(formData: FormData) {
   await requireAuth();
   const orderId = String(formData.get("orderId") || "");
@@ -876,6 +912,100 @@ export async function quickUpdateOperationalStatusAction(formData: FormData) {
   const status = parseOperationalStatus(formData.get("operationalStatus")?.toString() || null);
   await updateOperationalStatus(orderId, status);
   revalidateOperationalSurfaces(orderId);
+}
+
+type ProductionMoveTarget = "PLANNING" | "WORKING" | "READY" | "BLOCKED";
+
+const productionBlockedStatuses = new Set<OperationalStatus>([
+  "IN_ATTESA_FILE",
+  "IN_ATTESA_MATERIALE",
+  "IN_ATTESA_APPROVAZIONE"
+]);
+
+const productionPhaseTargets: Record<Exclude<ProductionMoveTarget, "BLOCKED">, MainPhase> = {
+  PLANNING: "ACCETTATO",
+  WORKING: "IN_LAVORAZIONE",
+  READY: "SVILUPPO_COMPLETATO"
+};
+
+const validMainPhases = new Set<MainPhase>([
+  "ACCETTATO",
+  "CALENDARIZZATO",
+  "IN_LAVORAZIONE",
+  "SVILUPPO_COMPLETATO",
+  "CONSEGNATO"
+]);
+
+function isProductionMoveTarget(value: unknown): value is ProductionMoveTarget {
+  return value === "PLANNING" || value === "WORKING" || value === "READY" || value === "BLOCKED";
+}
+
+export async function moveOrderInProductionAction(input: {
+  orderId: string;
+  target: ProductionMoveTarget;
+  blockedStatus?: OperationalStatus;
+  note?: string;
+  restorePhase?: MainPhase;
+}) {
+  await requireAuth();
+
+  const orderId = input.orderId.trim();
+  if (!orderId || !isProductionMoveTarget(input.target)) {
+    throw new Error("Spostamento ordine non valido.");
+  }
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: {
+      mainPhase: true,
+      operationalStatus: true
+    }
+  });
+
+  if (!order || order.mainPhase === "CONSEGNATO") {
+    throw new Error("Ordine non disponibile in produzione.");
+  }
+
+  if (input.target === "BLOCKED") {
+    if (!input.blockedStatus || !productionBlockedStatuses.has(input.blockedStatus)) {
+      throw new Error("Scegli il motivo della sospensione.");
+    }
+
+    const note = input.note?.trim();
+    if (!note) {
+      throw new Error("Indica il motivo della sospensione.");
+    }
+
+    if (input.restorePhase && validMainPhases.has(input.restorePhase)) {
+      if (!canTransitionPhase(order.mainPhase, input.restorePhase)) {
+        throw new Error("Puoi spostare un ordine di una fase alla volta.");
+      }
+
+      if (normalizeMainPhaseForWorkflow(order.mainPhase) !== normalizeMainPhaseForWorkflow(input.restorePhase)) {
+        await transitionOrderPhase(orderId, input.restorePhase);
+      }
+    }
+
+    await updateOperationalStatus(orderId, input.blockedStatus, note);
+    revalidateOperationalSurfaces(orderId);
+    return { message: `Ordine sospeso: ${operationalStatusLabels[input.blockedStatus]}.` };
+  }
+
+  const nextPhase = productionPhaseTargets[input.target];
+  if (!canTransitionPhase(order.mainPhase, nextPhase)) {
+    throw new Error("Puoi spostare un ordine di una fase alla volta.");
+  }
+
+  if (order.operationalStatus !== "ATTIVO") {
+    await updateOperationalStatus(orderId, "ATTIVO");
+  }
+
+  if (normalizeMainPhaseForWorkflow(order.mainPhase) !== normalizeMainPhaseForWorkflow(nextPhase)) {
+    await transitionOrderPhase(orderId, nextPhase);
+  }
+
+  revalidateOperationalSurfaces(orderId);
+  return { message: `Ordine spostato in ${mainPhaseLabels[nextPhase]}.` };
 }
 
 export async function quickUpdateQuoteFlagAction(formData: FormData) {

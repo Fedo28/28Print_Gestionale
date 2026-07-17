@@ -9,12 +9,14 @@ export function ReadyWhatsAppButton({
   hasPhone,
   disabled = false,
   compact = false,
+  showLabel = false,
   notifiedAt
 }: {
   orderId: string;
   hasPhone: boolean;
   disabled?: boolean;
   compact?: boolean;
+  showLabel?: boolean;
   notifiedAt?: Date | string | null;
 }) {
   const router = useRouter();
@@ -34,7 +36,7 @@ export function ReadyWhatsAppButton({
     <div className={`ready-whatsapp-control${compact ? " compact" : ""}`}>
       <button
         aria-label="Apri messaggio WhatsApp"
-        className={`button ghost ready-whatsapp-button${hasAlreadyNotified ? " sent" : ""}`}
+        className={`button ghost ready-whatsapp-button${hasAlreadyNotified ? " sent" : ""}${showLabel ? " with-label" : ""}`}
         disabled={isDisabled}
         onClick={() => {
           startTransition(() => {
@@ -65,6 +67,7 @@ export function ReadyWhatsAppButton({
           <path d="M4.5 7.5A2.5 2.5 0 0 1 7 5h10a2.5 2.5 0 0 1 2.5 2.5v9A2.5 2.5 0 0 1 17 19H7a2.5 2.5 0 0 1-2.5-2.5v-9Z" />
           <path d="m6 8l6 5l6-5" />
         </svg>
+        {showLabel ? <span>{hasAlreadyNotified ? "Reinvia" : "Avvisa"}</span> : null}
       </button>
       {!compact && message ? <p className="hint">{message}</p> : null}
       {!compact && !message && hasAlreadyNotified ? <p className="hint">{`Avvisato il ${formatDateTime(notifiedAt!)}`}</p> : null}

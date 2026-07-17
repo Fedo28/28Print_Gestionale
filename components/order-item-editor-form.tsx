@@ -45,6 +45,7 @@ type OrderItemEditorUndoSnapshot = {
   catalogBasePrice: string;
   priceOverridden: boolean;
   label: string;
+  isCustomLabel: boolean;
   discountInput: string;
   extraInput: string;
   format: string;
@@ -125,6 +126,9 @@ export function OrderItemEditorForm({
   const [priceOverridden, setPriceOverridden] = useState(getInitialPriceOverrideState(values, services, initialQuantity));
   const [isServiceFocused, setIsServiceFocused] = useState(false);
   const [label, setLabel] = useState(values?.label || "");
+  const [isCustomLabel, setIsCustomLabel] = useState(
+    initialSelectedService ? (values?.label || "").trim() !== initialSelectedService.name.trim() : true
+  );
   const [discountInput, setDiscountInput] = useState(
     values ? formatAdjustmentInput(values.discountMode, values.discountValue) : ""
   );
@@ -149,6 +153,13 @@ export function OrderItemEditorForm({
   const deferredServiceQuery = useDeferredValue(serviceQuery);
   const action = mode === "create" ? createOrderItemAction : updateOrderItemAction;
   const selectedService = serviceCatalogId ? services.find((entry) => entry.id === serviceCatalogId) || null : null;
+  const hasAdvancedValues = Boolean(
+    discountInput.trim() ||
+      extraInput.trim() ||
+      format.trim() ||
+      material.trim() ||
+      finishing.trim()
+  );
   const normalizedServiceQuery = normalizeCatalogServiceSearchValue(deferredServiceQuery);
   const serviceSuggestions = normalizedServiceQuery ? rankCatalogServices(services, normalizedServiceQuery).slice(0, 6) : [];
   const showServiceSuggestions =
@@ -164,6 +175,7 @@ export function OrderItemEditorForm({
       catalogBasePrice,
       priceOverridden,
       label,
+      isCustomLabel,
       discountInput,
       extraInput,
       format,
@@ -180,6 +192,7 @@ export function OrderItemEditorForm({
     setCatalogBasePrice(snapshot.catalogBasePrice);
     setPriceOverridden(snapshot.priceOverridden);
     setLabel(snapshot.label);
+    setIsCustomLabel(snapshot.isCustomLabel);
     setDiscountInput(snapshot.discountInput);
     setExtraInput(snapshot.extraInput);
     setFormat(snapshot.format);
@@ -200,6 +213,7 @@ export function OrderItemEditorForm({
     extraInput,
     finishing,
     format,
+    isCustomLabel,
     label,
     material,
     notes,
@@ -213,13 +227,15 @@ export function OrderItemEditorForm({
   function handleServiceChange(nextServiceCatalogId: string) {
     setServiceCatalogId(nextServiceCatalogId);
 
-    const selectedService = services.find((entry) => entry.id === nextServiceCatalogId);
-    if (!selectedService) {
+    const nextSelectedService = services.find((entry) => entry.id === nextServiceCatalogId);
+    if (!nextSelectedService) {
       return;
     }
 
-    setCatalogBasePrice(getCatalogPriceDisplay(selectedService, parseQuantityValue(quantity, 1)));
+    setCatalogBasePrice(getCatalogPriceDisplay(nextSelectedService, parseQuantityValue(quantity, 1)));
     setPriceOverridden(false);
+    setLabel(nextSelectedService.name);
+    setIsCustomLabel(false);
   }
 
   function handleServiceSearchChange(nextValue: string) {
@@ -228,10 +244,8 @@ export function OrderItemEditorForm({
     const normalizedNextValue = normalizeCatalogServiceSearchValue(nextValue);
     const exactMatchedService = services.find(
       (service) =>
-        (
-          normalizeCatalogServiceSearchValue(service.name) === normalizedNextValue ||
-          normalizeCatalogServiceSearchValue(service.code || "") === normalizedNextValue
-        )
+        normalizeCatalogServiceSearchValue(service.name) === normalizedNextValue ||
+        normalizeCatalogServiceSearchValue(service.code || "") === normalizedNextValue
     );
 
     if (exactMatchedService) {
@@ -246,8 +260,14 @@ export function OrderItemEditorForm({
   }
 
   function clearSelectedService() {
+    const shouldClearLabel = Boolean(selectedService) && !isCustomLabel && label.trim() === (selectedService?.name || "").trim();
     setServiceCatalogId("");
     setServiceQuery("");
+    setIsCustomLabel(true);
+
+    if (shouldClearLabel) {
+      setLabel("");
+    }
   }
 
   function handleQuantityChange(nextQuantity: string) {
@@ -257,20 +277,21 @@ export function OrderItemEditorForm({
       return;
     }
 
-    const selectedService = services.find((entry) => entry.id === serviceCatalogId);
-    if (!selectedService) {
+    const nextSelectedService = services.find((entry) => entry.id === serviceCatalogId);
+    if (!nextSelectedService) {
       return;
     }
 
-    setCatalogBasePrice(getCatalogPriceDisplay(selectedService, parseQuantityValue(nextQuantity, 1)));
+    setCatalogBasePrice(getCatalogPriceDisplay(nextSelectedService, parseQuantityValue(nextQuantity, 1)));
   }
 
   return (
     <form action={action} className="form-grid order-item-editor-form">
       <input name="orderId" type="hidden" value={orderId} />
       {mode === "update" && values?.id ? <input name="itemId" type="hidden" value={values.id} /> : null}
+
       <div className="field wide">
-        <label htmlFor={`${fieldPrefix}-service`}>Cerca servizio di catalogo</label>
+        <label htmlFor={`${fieldPrefix}-service`}>Catalogo</label>
         <input
           autoComplete="off"
           id={`${fieldPrefix}-service`}
@@ -279,7 +300,7 @@ export function OrderItemEditorForm({
           }}
           onChange={(event) => handleServiceSearchChange(event.target.value)}
           onFocus={() => setIsServiceFocused(true)}
-          placeholder="Scrivi nome o codice servizio"
+          placeholder="Scrivi nome o codice"
           spellCheck={false}
           type="search"
           value={serviceQuery}
@@ -289,7 +310,7 @@ export function OrderItemEditorForm({
           <span className="subtle">
             {selectedService
               ? `${selectedService.code || "Senza codice"} • ${formatCurrency(selectedService.basePriceCents)} • ${formatServiceUnitPriceLabel(selectedService.unit)}`
-              : "Lascia vuoto o non selezionare nulla per usare una voce libera."}
+              : "Vuoto = voce libera"}
           </span>
           {selectedService || serviceQuery ? (
             <button className="ghost order-item-service-clear" onClick={clearSelectedService} type="button">
@@ -324,15 +345,58 @@ export function OrderItemEditorForm({
             </div>
           ) : (
             <div className="mini-item customer-autocomplete-empty">
-              <p className="subtle">Nessun servizio trovato. Continua a scrivere oppure lascia la riga come voce libera.</p>
+              <p className="subtle">Nessun servizio trovato.</p>
             </div>
           )
         ) : null}
       </div>
-      <div className="field wide">
-        <label htmlFor={`${fieldPrefix}-label`}>Titolo riga</label>
-        <input id={`${fieldPrefix}-label`} name="label" onChange={(event) => setLabel(event.target.value)} required value={label} />
-      </div>
+
+      {selectedService && !isCustomLabel ? (
+        <div className="field full order-item-linked-label">
+          <label>Titolo automatico</label>
+          <div className="order-item-linked-label-card">
+            <div>
+              <strong>{label}</strong>
+              <span className="subtle">Preso dal catalogo</span>
+            </div>
+            <button className="ghost order-item-title-toggle" onClick={() => setIsCustomLabel(true)} type="button">
+              Cambia nome
+            </button>
+          </div>
+          <input name="label" type="hidden" value={label} />
+        </div>
+      ) : (
+        <div className="field wide">
+          <label htmlFor={`${fieldPrefix}-label`}>{selectedService ? "Nome personalizzato" : "Nome riga"}</label>
+          <input
+            id={`${fieldPrefix}-label`}
+            name="label"
+            onChange={(event) => {
+              setLabel(event.target.value);
+              if (selectedService) {
+                setIsCustomLabel(true);
+              }
+            }}
+            required
+            value={label}
+          />
+          {selectedService ? (
+            <div className="order-item-manual-label-actions">
+              <button
+                className="ghost order-item-title-toggle"
+                onClick={() => {
+                  setLabel(selectedService.name);
+                  setIsCustomLabel(false);
+                }}
+                type="button"
+              >
+                Usa nome catalogo
+              </button>
+            </div>
+          ) : null}
+        </div>
+      )}
+
       <div className="field">
         <label htmlFor={`${fieldPrefix}-qty`}>Qta</label>
         <input
@@ -344,8 +408,9 @@ export function OrderItemEditorForm({
           value={quantity}
         />
       </div>
+
       <div className="field">
-        <label htmlFor={`${fieldPrefix}-base`}>Prezzo listino</label>
+        <label htmlFor={`${fieldPrefix}-base`}>Prezzo</label>
         <input
           className="currency-input"
           id={`${fieldPrefix}-base`}
@@ -358,46 +423,58 @@ export function OrderItemEditorForm({
           value={catalogBasePrice}
         />
       </div>
-      <div className="field">
-        <label htmlFor={`${fieldPrefix}-discount-value`}>Sconto</label>
-        <input
-          className="numeric-input"
-          id={`${fieldPrefix}-discount-value`}
-          inputMode="decimal"
-          name="discountValue"
-          onChange={(event) => setDiscountInput(event.target.value)}
-          placeholder="0,00 o 10%"
-          value={discountInput}
-        />
-      </div>
-      <div className="field">
-        <label htmlFor={`${fieldPrefix}-extra-value`}>Lavorazione extra</label>
-        <input
-          className="numeric-input"
-          id={`${fieldPrefix}-extra-value`}
-          inputMode="decimal"
-          name="extraValue"
-          onChange={(event) => setExtraInput(event.target.value)}
-          placeholder="0,00 o 10%"
-          value={extraInput}
-        />
-      </div>
-      <div className="field">
-        <label htmlFor={`${fieldPrefix}-format`}>Formato</label>
-        <input id={`${fieldPrefix}-format`} name="format" onChange={(event) => setFormat(event.target.value)} value={format} />
-      </div>
-      <div className="field">
-        <label htmlFor={`${fieldPrefix}-material`}>Materiale</label>
-        <input id={`${fieldPrefix}-material`} name="material" onChange={(event) => setMaterial(event.target.value)} value={material} />
-      </div>
-      <div className="field">
-        <label htmlFor={`${fieldPrefix}-finishing`}>Finitura</label>
-        <input id={`${fieldPrefix}-finishing`} name="finishing" onChange={(event) => setFinishing(event.target.value)} value={finishing} />
-      </div>
+
       <div className="field full">
-        <label htmlFor={`${fieldPrefix}-notes`}>Note riga</label>
+        <label htmlFor={`${fieldPrefix}-notes`}>Note</label>
         <textarea id={`${fieldPrefix}-notes`} name="notes" onChange={(event) => setNotes(event.target.value)} value={notes} />
       </div>
+
+      <details className="order-item-advanced-panel" open={hasAdvancedValues}>
+        <summary className="order-item-advanced-summary">Dettagli opzionali</summary>
+        <div className="form-grid order-item-advanced-grid">
+          <div className="field">
+            <label htmlFor={`${fieldPrefix}-discount-value`}>Sconto</label>
+            <input
+              className="numeric-input"
+              id={`${fieldPrefix}-discount-value`}
+              inputMode="decimal"
+              name="discountValue"
+              onChange={(event) => setDiscountInput(event.target.value)}
+              placeholder="0,00 o 10%"
+              value={discountInput}
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor={`${fieldPrefix}-extra-value`}>Extra</label>
+            <input
+              className="numeric-input"
+              id={`${fieldPrefix}-extra-value`}
+              inputMode="decimal"
+              name="extraValue"
+              onChange={(event) => setExtraInput(event.target.value)}
+              placeholder="0,00 o 10%"
+              value={extraInput}
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor={`${fieldPrefix}-format`}>Formato</label>
+            <input id={`${fieldPrefix}-format`} name="format" onChange={(event) => setFormat(event.target.value)} value={format} />
+          </div>
+
+          <div className="field">
+            <label htmlFor={`${fieldPrefix}-material`}>Materiale</label>
+            <input id={`${fieldPrefix}-material`} name="material" onChange={(event) => setMaterial(event.target.value)} value={material} />
+          </div>
+
+          <div className="field">
+            <label htmlFor={`${fieldPrefix}-finishing`}>Finitura</label>
+            <input id={`${fieldPrefix}-finishing`} name="finishing" onChange={(event) => setFinishing(event.target.value)} value={finishing} />
+          </div>
+        </div>
+      </details>
+
       <div className="button-row order-detail-submit-row">
         <input name="discountMode" type="hidden" value={parseFlexibleAdjustmentInput(discountInput, "AMOUNT").mode} />
         <input name="extraMode" type="hidden" value={parseFlexibleAdjustmentInput(extraInput, "AMOUNT").mode} />
@@ -426,7 +503,14 @@ export function OrderItemEditorForm({
           {submitLabel}
         </button>
       </div>
-      {serviceCatalogId ? <input name="catalogPriceMode" type="hidden" value={usesLineTotalQuantityTiers(selectedService) ? "LINE_TOTAL" : "UNIT"} /> : null}
+
+      {selectedService ? (
+        <input
+          name="catalogPriceMode"
+          type="hidden"
+          value={usesLineTotalQuantityTiers(selectedService) ? "LINE_TOTAL" : "UNIT"}
+        />
+      ) : null}
     </form>
   );
 }

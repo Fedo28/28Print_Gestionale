@@ -4,7 +4,7 @@ import type { MainPhase, PaymentStatus } from "@prisma/client";
 import { PageHeader } from "@/components/page-header";
 import { QuickOrderControls } from "@/components/quick-order-controls";
 import { StatusPills } from "@/components/status-pills";
-import { invoiceStatusLabels, operationalStatusLabels, paymentStatusLabels, purchaseNoteUrgencyLabels } from "@/lib/constants";
+import { operationalStatusLabels, purchaseNoteUrgencyLabels } from "@/lib/constants";
 import { formatCompactDate, formatCurrency, formatDateKey, formatDateTime, formatWeekdayLabel } from "@/lib/format";
 import { getDisplayOrderLabel } from "@/lib/order-display";
 import { buildOrdersFilterHref } from "@/lib/order-filters";
@@ -25,6 +25,7 @@ type DashboardMaterialsFilter = "ALL" | "BLOCKING" | "LINKED" | "UNLINKED";
 type DashboardPulse = "CALENDAR" | "DAY" | "PRIORITY" | "TO_START" | "LATE_START" | "BLOCKED" | "READY" | "FINANCE" | "FINANCE_AGED" | "TOMORROW";
 type DashboardAccent = "today" | "agenda" | "overdue" | "to-start" | "working" | "blocked" | "ready" | "balance";
 const DASHBOARD_FOCUS_DOMINANT_THRESHOLD = 6;
+const DASHBOARD_HOME_VISIBLE_LIMIT = 2;
 
 export async function DashboardPage({
   panel,
@@ -68,7 +69,7 @@ export async function DashboardPage({
   const nextAppointment = todayAppointments[0];
   const weeklyAppointments = weekLoad.reduce((sum, day) => sum + day.appointments, 0);
   const activePanel = parseDashboardPanel(panel);
-  const activeFocus = parseDashboardFocus(focus);
+  const requestedFocus = parseDashboardFocus(focus);
   const activeDayFocus = parseDashboardDayFocus(dayFocus);
   const isFinancePanelOpen = activePanel === "FINANCE";
   const activePulse = parseDashboardPulse(pulse);
@@ -87,8 +88,6 @@ export async function DashboardPage({
   const readyOrdersToNotify = readyOrders.filter((order) => !order.readyWhatsappSentAt);
   const readyOrdersNotified = readyOrders.filter((order) => Boolean(order.readyWhatsappSentAt));
   const activeReadyMode = getDashboardReadyMode(readyMode, readyOrdersToNotify.length);
-  const currentReadyMode = activeFocus === "READY" ? activeReadyMode : undefined;
-  const readyOrdersVisible = activeReadyMode === "NOTIFIED" ? readyOrdersNotified : readyOrdersToNotify;
   const invoiceOrdersSorted = [...invoiceOrders].sort(
     (left, right) => getDashboardFinanceReferenceDate(left).getTime() - getDashboardFinanceReferenceDate(right).getTime()
   );
@@ -108,45 +107,35 @@ export async function DashboardPage({
   const currentFinanceSort = isFinancePanelOpen && activeFinanceMode === "UNPAID" ? activeFinanceSort : undefined;
   const activeMaterialsFilter = getDashboardMaterialsFilter(materials);
   const filteredPurchaseNotes = getDashboardPurchaseNotesVisible(purchaseNotes.pending, activeMaterialsFilter);
-  const visiblePurchaseNotes = filteredPurchaseNotes.slice(0, 5);
-  const financeOrdersSelected = getFinanceOrdersVisible(
-    activeFinanceMode,
-    activeFinanceBucket,
-    financePaidOrders,
-    financePartialOrders,
-    financeUnpaidOrders,
-    activeFinanceSort
-  );
-  const isFinanceAgedFocus = isFinancePanelOpen && activeFinanceMode === "PAID" && activePulse === "FINANCE_AGED";
-  const financeOrdersVisible = isFinanceAgedFocus ? stalePaidInvoiceOrders : financeOrdersSelected;
-  const financeAging = {
-    today: financeOrdersSelected.filter((order) => getDashboardDateAgeInDays(getDashboardFinanceReferenceDate(order)) === 0).length,
-    week: financeOrdersSelected.filter((order) => {
-      const age = getDashboardDateAgeInDays(getDashboardFinanceReferenceDate(order));
-      return age >= 1 && age <= 7;
-    }).length,
-    older: financeOrdersSelected.filter((order) => getDashboardDateAgeInDays(getDashboardFinanceReferenceDate(order)) > 7).length
-  };
+  const featuredPurchaseNote = getDashboardFeaturedPurchaseNote(filteredPurchaseNotes);
   const blockedCustomerOrders = blockedOrders.filter((order) => order.operationalStatus === "IN_ATTESA_APPROVAZIONE");
   const blockedProductionOrders = blockedOrders.filter((order) => order.operationalStatus !== "IN_ATTESA_APPROVAZIONE");
   const deliveredInvoiceOrders = invoiceOrders.filter((order) => order.mainPhase === "CONSEGNATO");
   const deliveredInvoiceTotalCents = deliveredInvoiceOrders.reduce((sum, order) => sum + order.totalCents, 0);
-  const deliveredInvoiceOrderIds = new Set(deliveredInvoiceOrders.map((order) => order.id));
   const tomorrowDate = getTomorrowDashboardDate();
   const lateStartOrders = toStartOrders.filter((order) => new Date(order.deliveryAt).getTime() < tomorrowDate.getTime());
   const tomorrowToStartOrders = toStartOrders.filter((order) => isTomorrowDashboardDay(order.deliveryAt));
   const tomorrowOrders = getTomorrowDashboardOrders(weekOrders, tomorrowDate);
   const tomorrowOrdersToStart = tomorrowOrders.filter((order) => order.mainPhase === "ACCETTATO");
   const tomorrowOrdersWorking = tomorrowOrders.filter((order) => order.mainPhase !== "ACCETTATO");
+  const suggestedFocus = getRecommendedDashboardFocus({
+    blockedCount: blockedOrders.length,
+    lateStartCount: lateStartOrders.length,
+    priorityCount: priorityOrders.length,
+    readyCount: readyOrders.length,
+    readyToNotifyCount: readyOrdersToNotify.length,
+    tomorrowToStartCount: tomorrowOrdersToStart.length,
+    toStartCount: toStartOrders.length
+  });
+  const activeFocus = selectedDay ? requestedFocus : focus ? requestedFocus : suggestedFocus;
+  const currentReadyMode = activeFocus === "READY" ? activeReadyMode : undefined;
+  const readyOrdersVisible = activeReadyMode === "NOTIFIED" ? readyOrdersNotified : readyOrdersToNotify;
   const lateStartOrderIds = new Set(lateStartOrders.map((order) => order.id));
-  const stalePaidInvoiceOrderIds = new Set(stalePaidInvoiceOrders.map((order) => order.id));
-  const financePaidTotalCents = financePaidOrders.reduce((sum, order) => sum + order.totalCents, 0);
-  const financePartialTotalCents = financePartialOrders.reduce((sum, order) => sum + order.totalCents, 0);
-  const financeUnpaidTotalCents = financeUnpaidOrders.reduce((sum, order) => sum + order.totalCents, 0);
   const materialsOpenCount = purchaseNotes.stats.open;
   const materialsBlockingCount = purchaseNotes.stats.blocking;
   const materialsWaitingCount = purchaseNotes.stats.waitingMaterial;
   const materialsUnlinkedCount = purchaseNotes.stats.unlinked;
+  const hasMaterialsOverview = materialsOpenCount > 0 || materialsWaitingCount > 0 || materialsUnlinkedCount > 0;
   const activeFocusOrderCount = selectedDay
     ? selectedDayOrders.length
     : activeFocus === "PRIORITY"
@@ -159,7 +148,7 @@ export async function DashboardPage({
             ? blockedCustomerOrders.length + blockedProductionOrders.length
             : readyOrdersVisible.length;
   const isDominantFocusLayout = activeFocusOrderCount > DASHBOARD_FOCUS_DOMINANT_THRESHOLD;
-  const dominantFocusVisibleLimit = isDominantFocusLayout ? Math.max(activeFocusOrderCount, DASHBOARD_FOCUS_DOMINANT_THRESHOLD + 1) : undefined;
+  const dashboardFocusVisibleLimit = DASHBOARD_HOME_VISIBLE_LIMIT;
   const links = {
     today: buildOrdersFilterHref({ preset: "TODAY" }),
     appointments: buildOrdersFilterHref({ preset: "APPOINTMENTS_TODAY" }),
@@ -177,6 +166,7 @@ export async function DashboardPage({
     financePartial: buildOrdersFilterHref({ preset: "FINANCE_PARTIAL" }),
     financeUnpaidOnly: buildOrdersFilterHref({ preset: "FINANCE_UNPAID_ONLY" }),
     financeUnpaid: buildOrdersFilterHref({ preset: "FINANCE_UNPAID" }),
+    financeAll: buildOrdersFilterHref({ invoice: "DA_FATTURARE" }),
     financeDelivered: buildOrdersFilterHref({ view: "DELIVERED", invoice: "DA_FATTURARE" }),
     tomorrow: buildOrdersFilterHref({ preset: "TOMORROW", sort: "delivery" }),
     materialsWaiting: buildOrdersFilterHref({ status: "IN_ATTESA_MATERIALE" }),
@@ -240,15 +230,12 @@ export async function DashboardPage({
       focus: "READY",
       readyMode: readyOrdersToNotify.length > 0 ? "TO_NOTIFY" : "NOTIFIED"
     }),
-    balance: buildDashboardFinanceHref(
-      true,
-      activeFocus,
-      currentReadyMode,
-      currentFinanceMode || (financePaidOrders.length > 0 ? "PAID" : "UNPAID"),
-      currentFinanceBucket,
-      currentFinanceSort,
-      "FINANCE"
-    ),
+    balance: buildDashboardStateHref({
+      anchor: "dashboard-operativa",
+      pulse: "FINANCE",
+      focus: activeFocus,
+      readyMode: currentReadyMode
+    }),
     materials: buildDashboardMaterialsHref(
       activeFocus,
       currentReadyMode,
@@ -258,27 +245,110 @@ export async function DashboardPage({
       activeMaterialsFilter
     )
   };
+  const focusGuide = getDashboardFocusGuide(suggestedFocus, {
+    blockedCount: blockedOrders.length,
+    lateStartCount: lateStartOrders.length,
+    priorityCount: priorityOrders.length,
+    readyCount: readyOrders.length,
+    readyToNotifyCount: readyOrdersToNotify.length,
+    tomorrowToStartCount: tomorrowOrdersToStart.length,
+    toStartCount: toStartOrders.length
+  });
+  const focusGuideHref =
+    suggestedFocus === "BLOCKED"
+      ? dashboardPanelLinks.blocked
+      : suggestedFocus === "TO_START"
+        ? dashboardPanelLinks.toStart
+        : suggestedFocus === "READY"
+          ? dashboardPanelLinks.ready
+          : suggestedFocus === "TOMORROW"
+            ? dashboardPanelLinks.tomorrow
+            : dashboardPanelLinks.overdue;
   const nextDeliveryDetail = nextDelivery
-    ? `${nextDelivery.customer.name} • ${formatDateTime(nextDelivery.deliveryAt)}`
+    ? `${getDisplayOrderLabel(nextDelivery.orderCode, nextDelivery.title)} • ${formatDateTime(nextDelivery.deliveryAt)}`
     : "Nessuna scadenza vicina";
   const nextAppointmentDetail = nextAppointment
-    ? `${nextAppointment.customer.name} • ${formatDateTime(nextAppointment.appointmentAt || nextAppointment.deliveryAt)}`
+    ? `${getDisplayOrderLabel(nextAppointment.orderCode, nextAppointment.title)} • ${formatDateTime(nextAppointment.appointmentAt || nextAppointment.deliveryAt)}`
     : "Nessun appuntamento oggi";
-  const nextDeliveryLabel = nextDelivery ? getDisplayOrderLabel(nextDelivery.orderCode, nextDelivery.title) : "Nessuna";
-  const nextAppointmentLabel = nextAppointment ? getDisplayOrderLabel(nextAppointment.orderCode, nextAppointment.title) : "Nessuno";
+  const nextDeliveryLabel = nextDelivery ? nextDelivery.customer.name : "Nessuna";
+  const nextAppointmentLabel = nextAppointment ? nextAppointment.customer.name : "Nessuno";
   const mobileStats = [
     { accent: "overdue", href: dashboardPanelLinks.overdue, label: "Urgenze", value: priorityOrders.length },
     { accent: "agenda", href: dashboardPanelLinks.appointments, label: "Agenda", value: todayAppointments.length },
     { accent: "to-start", href: dashboardPanelLinks.toStart, label: "Avvio", value: toStartOrders.length },
     { accent: "balance", href: dashboardPanelLinks.balance, label: "Fatture", value: invoiceOrders.length }
   ] satisfies Array<{ accent: DashboardAccent; href: string; label: string; value: number }>;
-  const dashboardAttentionGroups = [
-    materialsOpenCount > 0,
-    lateStartOrders.length > 0,
-    tomorrowToStartOrders.length > 0,
-    stalePaidInvoiceOrders.length > 0,
-    deliveredInvoiceOrders.length > 0
-  ].filter(Boolean).length;
+  const visibleMobileStats = mobileStats.filter((item) => item.value > 0);
+  const summaryMetrics = [
+    {
+      accent: "overdue" as DashboardAccent,
+      href: dashboardPanelLinks.overdue,
+      icon: <DashboardGlyph kind="alert" />,
+      label: "Urgenze",
+      pulse: "PRIORITY" as DashboardPulse,
+      tone: "danger" as const,
+      value: priorityOrders.length
+    },
+    {
+      accent: "agenda" as DashboardAccent,
+      href: links.appointments,
+      icon: <DashboardGlyph kind="calendar" />,
+      label: "Appuntamenti",
+      tone: "brand" as const,
+      value: todayAppointments.length
+    },
+    {
+      accent: "to-start" as DashboardAccent,
+      href: dashboardPanelLinks.toStart,
+      icon: <DashboardGlyph kind="play" />,
+      label: "Da avviare",
+      pulse: "TO_START" as DashboardPulse,
+      tone: "neutral" as const,
+      value: toStartOrders.length
+    },
+    {
+      accent: "balance" as DashboardAccent,
+      href: dashboardPanelLinks.balance,
+      icon: <DashboardGlyph kind="cash" />,
+      label: "Da fatturare",
+      pulse: "FINANCE" as DashboardPulse,
+      tone: "brand" as const,
+      value: invoiceOrders.length
+    }
+  ];
+  const visibleSummaryMetrics = summaryMetrics.filter((item) => item.value > 0);
+  const financeQuickActions = [
+    totalBalanceDueCents > 0
+      ? {
+          href: links.financeUnpaid,
+          key: "collect",
+          label: "Da incassare",
+          value: formatCurrency(totalBalanceDueCents)
+        }
+      : null,
+    stalePaidInvoiceOrders.length > 0
+      ? {
+          href: links.financePaidAged,
+          key: "invoice",
+          label: "Fattura ora",
+          value: stalePaidInvoiceOrders.length === 1 ? "1 ordine" : `${stalePaidInvoiceOrders.length} ordini`
+        }
+      : deliveredInvoiceOrders.length > 0
+      ? {
+          href: links.financeDelivered,
+          key: "close",
+          label: "Da chiudere",
+          value: deliveredInvoiceOrders.length === 1 ? "1 ordine" : `${deliveredInvoiceOrders.length} ordini`
+        }
+      : null
+  ].filter(
+    (item): item is {
+      href: string;
+      key: string;
+      label: string;
+      value: string;
+    } => Boolean(item)
+  );
 
   return (
     <div className="stack dashboard-page-shell">
@@ -286,22 +356,15 @@ export async function DashboardPage({
         title="Dashboard"
         action={
           <div className="dashboard-head-actions">
+            <Link className="button primary" href="/orders/new">
+              Nuovo ordine
+            </Link>
+            <Link className="button secondary" href="/quotes/new">
+              Nuovo preventivo
+            </Link>
             <Link className="button secondary" href="/customers#customers-new-entry">
               Nuovo cliente
             </Link>
-            <details className="dashboard-cta-menu">
-              <summary className="button primary">Nuovo documento</summary>
-              <div className="dashboard-cta-menu-panel">
-                <Link className="dashboard-cta-menu-link" href="/orders/new">
-                  <span className="dashboard-cta-menu-eyebrow">Operativo</span>
-                  <strong>Nuovo ordine</strong>
-                </Link>
-                <Link className="dashboard-cta-menu-link" href="/quotes/new">
-                  <span className="dashboard-cta-menu-eyebrow">Commerciale</span>
-                  <strong>Nuovo preventivo</strong>
-                </Link>
-              </div>
-            </details>
           </div>
         }
       />
@@ -328,11 +391,13 @@ export async function DashboardPage({
             </Link>
           </div>
 
-          <div className="dashboard-mobile-stats-rail" aria-label="Contatori rapidi dashboard">
-            {mobileStats.map((item) => (
-              <DashboardMobileStatChip key={item.label} accent={item.accent} href={item.href} label={item.label} value={item.value} />
-            ))}
-          </div>
+          {visibleMobileStats.length > 0 ? (
+            <div className="dashboard-mobile-stats-rail" aria-label="Contatori rapidi dashboard">
+              {visibleMobileStats.map((item) => (
+                <DashboardMobileStatChip key={item.label} accent={item.accent} href={item.href} label={item.label} value={item.value} />
+              ))}
+            </div>
+          ) : null}
         </article>
 
         <div className="dashboard-mobile-module-stack">
@@ -384,162 +449,71 @@ export async function DashboardPage({
         </div>
       </section>
 
-      <section className="grid dashboard-summary-grid">
-        <MiniMetricCard
-          accent="overdue"
-          href={dashboardPanelLinks.overdue}
-          icon={<DashboardGlyph kind="alert" />}
-          label="Urgenze"
-          pulse="PRIORITY"
-          value={priorityOrders.length}
-          tone="danger"
-        />
-        <MiniMetricCard
-          accent="agenda"
-          href={links.appointments}
-          icon={<DashboardGlyph kind="calendar" />}
-          label="Appuntamenti"
-          value={todayAppointments.length}
-          tone="brand"
-        />
-        <MiniMetricCard
-          accent="to-start"
-          href={dashboardPanelLinks.toStart}
-          icon={<DashboardGlyph kind="play" />}
-          label="Da avviare"
-          pulse="TO_START"
-          value={toStartOrders.length}
-          tone="neutral"
-        />
-        <MiniMetricCard
-          accent="balance"
-          href={dashboardPanelLinks.balance}
-          icon={<DashboardGlyph kind="cash" />}
-          label="Da fatturare"
-          pulse="FINANCE"
-          value={invoiceOrders.length}
-          tone="brand"
-        />
-      </section>
-
-      {lateStartOrders.length > 0 ||
-      tomorrowToStartOrders.length > 0 ||
-      stalePaidInvoiceOrders.length > 0 ||
-      deliveredInvoiceOrders.length > 0 ||
-      materialsOpenCount > 0 ? (
-        <section className="card card-pad dashboard-attention-card dashboard-soft-slab" aria-label="Attenzioni rapide dashboard">
-          <div className="list-header compact-section-head dashboard-attention-head">
-            <div>
-              <span className="compact-kicker">Attenzioni</span>
-              <strong>Da controllare oggi</strong>
-            </div>
-            <span className="pill">{dashboardAttentionGroups}</span>
-          </div>
-          <div className="dashboard-alert-strip">
-            {materialsOpenCount > 0 ? (
-              <Link className="dashboard-alert-chip dashboard-alert-chip-materials compact-card-link" href={dashboardPanelLinks.materials} replace scroll={false}>
-                <span className="dashboard-alert-chip-label">Materiali da ordinare</span>
-                <strong>{materialsBlockingCount > 0 ? materialsBlockingCount : materialsOpenCount}</strong>
-                <span className="dashboard-alert-chip-detail">
-                  {materialsBlockingCount > 0
-                    ? `${materialsBlockingCount} bloccanti • ${materialsOpenCount} note aperte`
-                    : materialsOpenCount === 1
-                      ? "1 nota aperta"
-                      : `${materialsOpenCount} note aperte`}
-                </span>
-              </Link>
-            ) : null}
-            {lateStartOrders.length > 0 ? (
-              <Link
-                className="dashboard-alert-chip dashboard-alert-chip-warning compact-card-link"
-                href={buildDashboardStateHref({
-                  anchor: "dashboard-focus-panel",
-                  pulse: "LATE_START",
-                  financeMode: currentFinanceMode,
-                  financeBucket: currentFinanceBucket,
-                  financeSort: currentFinanceSort,
-                  financeOpen: isFinancePanelOpen,
-                  focus: "TO_START"
-                })}
-                replace
-                scroll={false}
-              >
-                <span className="dashboard-alert-chip-label">Oggi in ritardo</span>
-                <strong>{lateStartOrders.length}</strong>
-                <span className="dashboard-alert-chip-detail">
-                  {lateStartOrders.length === 1 ? "ordine non ancora avviato" : "ordini non ancora avviati"}
-                </span>
-              </Link>
-            ) : null}
-            {tomorrowToStartOrders.length > 0 ? (
-              <Link className="dashboard-alert-chip compact-card-link" href={dashboardPanelLinks.tomorrow} replace scroll={false}>
-                <span className="dashboard-alert-chip-label">Domani da avviare</span>
-                <strong>{tomorrowToStartOrders.length}</strong>
-                <span className="dashboard-alert-chip-detail">
-                  {tomorrowToStartOrders.length === 1 ? "ordine non avviato" : "ordini non avviati"}
-                </span>
-              </Link>
-            ) : null}
-            {stalePaidInvoiceOrders.length > 0 ? (
-              <Link
-                className="dashboard-alert-chip dashboard-alert-chip-finance compact-card-link"
-                href={buildDashboardFinanceHref(
-                  true,
-                  activeFocus,
-                  currentReadyMode,
-                  "PAID",
-                  undefined,
-                  currentFinanceSort,
-                  "FINANCE_AGED"
-                )}
-                replace
-                scroll={false}
-              >
-                <span className="dashboard-alert-chip-label">Pagati non fatturati</span>
-                <strong>{stalePaidInvoiceOrders.length}</strong>
-                <span className="dashboard-alert-chip-detail">
-                  {stalePaidInvoiceOrders.length === 1 ? "ordine da oltre 7 giorni" : "ordini da oltre 7 giorni"}
-                </span>
-              </Link>
-            ) : null}
-            {deliveredInvoiceOrders.length > 0 ? (
-              <Link className="dashboard-alert-chip compact-card-link" href={links.financeDelivered} prefetch={false}>
-                <span className="dashboard-alert-chip-label">Consegnati non fatturati</span>
-                <strong>{deliveredInvoiceOrders.length}</strong>
-                <span className="dashboard-alert-chip-detail">
-                  {deliveredInvoiceOrders.length === 1 ? "ordine gia consegnato" : "ordini gia consegnati"}
-                </span>
-              </Link>
-            ) : null}
-          </div>
+      {visibleSummaryMetrics.length > 0 ? (
+        <section className={`grid dashboard-summary-grid dashboard-summary-grid-count-${Math.min(visibleSummaryMetrics.length, 4)}`}>
+          {visibleSummaryMetrics.map((item) => (
+            <MiniMetricCard
+              key={item.label}
+              accent={item.accent}
+              href={item.href}
+              icon={item.icon}
+              label={item.label}
+              pulse={item.pulse}
+              value={item.value}
+              tone={item.tone}
+            />
+          ))}
         </section>
       ) : null}
 
       <section className={`dashboard-overview-grid dashboard-overview-grid-streamlined${isDominantFocusLayout ? " is-focus-dominant" : ""}`}>
         <div className={`dashboard-main-column${isDominantFocusLayout ? " is-compressed" : ""}`}>
+          <section
+            className={`card card-pad dashboard-finance-shell dashboard-finance-shell-quick dashboard-soft-slab${pulseClass(activePulse, "FINANCE", "FINANCE_AGED")}`}
+            id="dashboard-operativa"
+          >
+            <div className="list-header compact-section-head">
+              <div>
+                <span className="compact-kicker">Da fatturare</span>
+                <h3>Fatture</h3>
+              </div>
+              <Link className="compact-link" href={links.financeAll} prefetch={false}>
+                Apri lista
+              </Link>
+            </div>
+
+            <div className="dashboard-finance-quick-row">
+              <Link className="dashboard-finance-quick-total compact-card-link" href={links.financeAll} prefetch={false}>
+                <span className="subtle">Totale da fatturare</span>
+                <strong>{formatCurrency(totalInvoicableCents)}</strong>
+                <small>{invoiceOrders.length === 1 ? "1 ordine aperto" : `${invoiceOrders.length} ordini aperti`}</small>
+              </Link>
+              {financeQuickActions.length > 0 ? (
+                <div className={`dashboard-finance-quick-actions dashboard-finance-quick-actions-count-${financeQuickActions.length}`}>
+                  {financeQuickActions.map((item) => (
+                    <Link className="dashboard-finance-quick-action compact-card-link" href={item.href} key={item.key} prefetch={false}>
+                      <span>{item.label}</span>
+                      <strong>{item.value}</strong>
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </section>
+
           <div className="compact-signal-list dashboard-priority-grid" id="dashboard-calendar-signals">
             <CompactSignal
               href={links.priorityToday}
               icon={<DashboardGlyph kind="clock" />}
               label="Prossima consegna"
               value={nextDeliveryLabel}
-              detail={nextDelivery ? `${nextDelivery.customer.name} • ${formatDateTime(nextDelivery.deliveryAt)}` : "Nessuna scadenza vicina"}
-            />
-            <CompactSignal
-              href={links.appointments}
-              icon={<DashboardGlyph kind="calendar" />}
-              label="Primo appuntamento"
-              value={nextAppointmentLabel}
-              detail={
-                nextAppointment
-                  ? `${nextAppointment.customer.name} • ${formatDateTime(nextAppointment.appointmentAt || nextAppointment.deliveryAt)}`
-                  : "Nessun appuntamento oggi"
-              }
+              detail={nextDeliveryDetail}
             />
           </div>
 
           <DashboardMaterialsCard
             activeFilter={activeMaterialsFilter}
+            featuredNote={featuredPurchaseNote}
             filterLinks={{
               all: buildDashboardMaterialsHref(
                 activeFocus,
@@ -574,252 +548,17 @@ export async function DashboardPage({
                 "UNLINKED"
               )
             }}
+            isEmpty={!hasMaterialsOverview}
             metrics={{
               open: materialsOpenCount,
               blocking: materialsBlockingCount,
               waitingMaterial: materialsWaitingCount,
               unlinked: materialsUnlinkedCount
             }}
-            notes={visiblePurchaseNotes}
             notesTotal={filteredPurchaseNotes.length}
             viewHref={links.purchaseNotes}
             waitingOrdersHref={links.materialsWaiting}
           />
-
-          <section
-            className={`card card-pad dashboard-finance-shell dashboard-soft-slab${pulseClass(activePulse, "FINANCE", "FINANCE_AGED")}`}
-            id="dashboard-operativa"
-          >
-            <div className="list-header compact-section-head">
-              <div>
-                <span className="compact-kicker">Da fatturare</span>
-              </div>
-              <Link
-                className="compact-link"
-                href={
-                  isFinancePanelOpen
-                    ? buildDashboardFinanceHref(false, activeFocus, currentReadyMode)
-                    : buildDashboardFinanceHref(
-                        true,
-                        activeFocus,
-                        currentReadyMode,
-                        currentFinanceMode || activeFinanceMode,
-                        currentFinanceBucket || activeFinanceBucket,
-                        currentFinanceSort
-                      )
-                }
-                replace
-                scroll={false}
-              >
-                {isFinancePanelOpen ? "Chiudi lista" : "Apri lista ordini"}
-              </Link>
-            </div>
-
-            <div className="dashboard-finance-summary">
-              <div className="dashboard-finance-summary-copy">
-                <strong>{formatCurrency(totalInvoicableCents)}</strong>
-                <span className="subtle">{invoiceOrders.length} ordini da fatturare</span>
-              </div>
-              <div className="dashboard-finance-summary-actions">
-                <Link
-                  className="dashboard-finance-summary-stat compact-card-link"
-                  href={buildDashboardFinanceHref(
-                    true,
-                    activeFocus,
-                    currentReadyMode,
-                    currentFinanceMode || activeFinanceMode,
-                    currentFinanceBucket || activeFinanceBucket,
-                    currentFinanceSort,
-                    "FINANCE"
-                  )}
-                  replace
-                  scroll={false}
-                >
-                  <span>Apri pannello</span>
-                  <strong>{isFinancePanelOpen ? "Aperto" : "Lista ordini"}</strong>
-                </Link>
-                <Link
-                  className="dashboard-finance-summary-stat dashboard-finance-summary-stat-admin compact-card-link"
-                  href={buildDashboardFinanceHref(true, activeFocus, currentReadyMode, "UNPAID", "ALL", currentFinanceSort, "FINANCE")}
-                  replace
-                  scroll={false}
-                >
-                  <span>Residuo da incassare</span>
-                  <strong>{formatCurrency(totalBalanceDueCents)}</strong>
-                </Link>
-                <Link className="dashboard-finance-summary-stat compact-card-link" href={links.financeDelivered} prefetch={false}>
-                  <span>Consegnati da fatturare</span>
-                  <strong>{`${deliveredInvoiceOrders.length} • ${formatCurrency(deliveredInvoiceTotalCents)}`}</strong>
-                </Link>
-              </div>
-            </div>
-
-            <div className="dashboard-finance-mode-row" aria-label="Filtro pagamenti da fatturare">
-              <Link
-                className={`dashboard-finance-mode-pill compact-card-link${activeFinanceMode === "PAID" ? " active" : ""}`}
-                data-finance-kind="paid"
-                href={buildDashboardFinanceHref(true, activeFocus, currentReadyMode, "PAID", undefined, undefined, "FINANCE")}
-                replace
-                scroll={false}
-              >
-                <span>Pagati da fatturare</span>
-                <strong>{financePaidOrders.length}</strong>
-                <small>{formatCurrency(financePaidTotalCents)}</small>
-              </Link>
-              <Link
-                className={`dashboard-finance-mode-pill compact-card-link${
-                  activeFinanceMode === "UNPAID" && activeFinanceBucket === "PARTIAL" ? " active" : ""
-                }${activeFinanceMode === "UNPAID" && activeFinanceBucket === "ALL" ? " active-split" : ""}`}
-                data-finance-kind="partial"
-                href={buildDashboardFinanceHref(true, activeFocus, currentReadyMode, "UNPAID", "PARTIAL", currentFinanceSort, "FINANCE")}
-                replace
-                scroll={false}
-              >
-                <span>Parziali</span>
-                <strong>{financePartialOrders.length}</strong>
-                <small>{formatCurrency(financePartialTotalCents)}</small>
-              </Link>
-              <Link
-                className={`dashboard-finance-mode-pill compact-card-link${
-                  activeFinanceMode === "UNPAID" && activeFinanceBucket === "UNPAID" ? " active" : ""
-                }${activeFinanceMode === "UNPAID" && activeFinanceBucket === "ALL" ? " active-split" : ""}`}
-                data-finance-kind="unpaid"
-                href={buildDashboardFinanceHref(true, activeFocus, currentReadyMode, "UNPAID", "UNPAID", currentFinanceSort, "FINANCE")}
-                replace
-                scroll={false}
-              >
-                <span>Non pagati</span>
-                <strong>{financeUnpaidOrders.length}</strong>
-                <small>{formatCurrency(financeUnpaidTotalCents)}</small>
-              </Link>
-            </div>
-
-            {activeFinanceMode === "UNPAID" ? (
-              <div className="dashboard-finance-sort-row" aria-label="Ordinamento da incassare">
-                <Link
-                  className={`dashboard-finance-sort-pill compact-card-link${activeFinanceSort === "AGE" ? " active" : ""}`}
-                  href={buildDashboardFinanceHref(true, activeFocus, currentReadyMode, "UNPAID", activeFinanceBucket, "AGE", "FINANCE")}
-                  replace
-                  scroll={false}
-                >
-                  Anzianita
-                </Link>
-                <Link
-                  className={`dashboard-finance-sort-pill compact-card-link${activeFinanceSort === "AMOUNT" ? " active" : ""}`}
-                  href={buildDashboardFinanceHref(true, activeFocus, currentReadyMode, "UNPAID", activeFinanceBucket, "AMOUNT", "FINANCE")}
-                  replace
-                  scroll={false}
-                >
-                  Importo
-                </Link>
-              </div>
-            ) : null}
-
-            <div className="dashboard-finance-aging-row" aria-label="Anzianita ordini da fatturare">
-              <span className="dashboard-finance-aging-pill">
-                <span>Oggi</span>
-                <strong>{financeAging.today}</strong>
-              </span>
-              <span className="dashboard-finance-aging-pill">
-                <span>1-7g</span>
-                <strong>{financeAging.week}</strong>
-              </span>
-              <span className="dashboard-finance-aging-pill dashboard-finance-aging-pill-alert">
-                <span>8g+</span>
-                <strong>{financeAging.older}</strong>
-              </span>
-            </div>
-
-            {isFinancePanelOpen ? (
-              <DashboardLane
-                className={`dashboard-finance-lane${pulseClass(activePulse, "FINANCE", "FINANCE_AGED")}`}
-                density="dense"
-                emptyMessage={
-                  isFinanceAgedFocus
-                    ? "Nessun ordine pagato da oltre 7 giorni ancora da fatturare."
-                    : activeFinanceMode === "PAID"
-                    ? "Nessun ordine pagato ancora da fatturare."
-                    : activeFinanceBucket === "PARTIAL"
-                      ? "Nessun ordine parziale ancora da fatturare."
-                      : activeFinanceBucket === "UNPAID"
-                        ? "Nessun ordine non pagato ancora da fatturare."
-                        : "Nessun ordine da incassare prima della fattura."
-                }
-                orders={financeOrdersVisible}
-                title={
-                  isFinanceAgedFocus
-                    ? "Pagati non fatturati oltre 7 giorni"
-                    : activeFinanceMode === "PAID"
-                    ? "Pagati da fatturare"
-                    : activeFinanceBucket === "PARTIAL"
-                      ? "Parziali da fatturare"
-                      : activeFinanceBucket === "UNPAID"
-                        ? "Non pagati da fatturare"
-                        : "Da incassare e fatturare"
-                }
-                visibleLimit={6}
-                viewHref={
-                  isFinanceAgedFocus
-                    ? links.financePaidAged
-                    : activeFinanceMode === "PAID"
-                    ? links.financePaid
-                    : activeFinanceBucket === "PARTIAL"
-                      ? links.financePartial
-                      : activeFinanceBucket === "UNPAID"
-                        ? links.financeUnpaidOnly
-                        : links.financeUnpaid
-                }
-                viewLabel="Apri lista completa"
-                itemClassName={(order) => {
-                  const classNames: string[] = [];
-
-                  if (activeFinanceMode !== "UNPAID") {
-                    if (deliveredInvoiceOrderIds.has(order.id)) {
-                      classNames.push("finance-delivered-pending");
-                    }
-
-                    if (activePulse === "FINANCE_AGED" && stalePaidInvoiceOrderIds.has(order.id)) {
-                      classNames.push("dashboard-pulse-item");
-                    }
-
-                    return classNames.join(" ") || undefined;
-                  }
-
-                  if (isDashboardFinancePartial(order.paymentStatus)) {
-                    classNames.push("finance-partial-balance");
-                  }
-
-                  if (order.balanceDueCents >= 100000) {
-                    classNames.push("finance-critical-balance");
-                  } else if (order.balanceDueCents >= 50000) {
-                    classNames.push("finance-high-balance");
-                  }
-
-                  if (deliveredInvoiceOrderIds.has(order.id)) {
-                    classNames.push("finance-delivered-pending");
-                  }
-
-                  if (activePulse === "FINANCE_AGED" && stalePaidInvoiceOrderIds.has(order.id)) {
-                    classNames.push("dashboard-pulse-item");
-                  }
-
-                  return classNames.join(" ") || undefined;
-                }}
-                renderMeta={(order) => {
-                  const referenceDate = getDashboardFinanceReferenceDate(order);
-                  const baseLabel = getInvoiceAgeLabel(referenceDate);
-                  const deliveryLabel =
-                    order.mainPhase === "CONSEGNATO" && order.deliveredAt
-                      ? ` • Consegnato ${formatCompactDate(order.deliveredAt)}`
-                      : "";
-                  const residualLabel = order.balanceDueCents > 0 ? ` • Residuo ${formatCurrency(order.balanceDueCents)}` : "";
-                  return `${baseLabel}${deliveryLabel}${residualLabel}`;
-                }}
-                renderAside={(order) => formatCurrency(order.totalCents)}
-                renderNote={(order) => `Pagamento ${paymentStatusLabels[order.paymentStatus]} • ${invoiceStatusLabels[order.invoiceStatus]}`}
-              />
-            ) : null}
-          </section>
         </div>
 
         <aside
@@ -901,7 +640,7 @@ export async function DashboardPage({
                 title={getDashboardDayFocusTitle(activeDayFocus)}
                 viewHref={`/calendar?view=day&date=${selectedDay.key}`}
                 viewLabel="Apri giornata"
-                visibleLimit={dominantFocusVisibleLimit}
+                visibleLimit={dashboardFocusVisibleLimit}
                 renderMeta={(order) => getDashboardDayOrderMeta(order, selectedDay.date)}
                 renderNote={(order) =>
                   order.appointmentNote ||
@@ -916,6 +655,17 @@ export async function DashboardPage({
             </>
           ) : (
             <>
+              <div className="dashboard-focus-guide">
+                <div>
+                  <span className="compact-kicker">Cosa faccio adesso</span>
+                  <strong>{focusGuide.title}</strong>
+                  <span className="hint">{focusGuide.detail}</span>
+                </div>
+                <Link className="dashboard-focus-guide-link" href={focusGuideHref} replace scroll={false}>
+                  {focusGuide.cta}
+                </Link>
+              </div>
+
               <nav className="dashboard-focus-switch" aria-label="Selettore focus operativo">
                 <Link
                   className={`dashboard-focus-switch-link${activeFocus === "PRIORITY" ? " active" : ""}`}
@@ -998,71 +748,83 @@ export async function DashboardPage({
               <div className="dashboard-side-pill-row" id="dashboard-production-meta">
                 {activeFocus === "BLOCKED" ? (
                   <>
-                    <Link className="dashboard-side-pill compact-card-link" href={links.blockedCustomer}>
-                      <span>Attesa cliente</span>
-                      <strong>{blockedCustomerOrders.length}</strong>
-                    </Link>
-                    <Link className="dashboard-side-pill compact-card-link" href={links.blockedProduction}>
-                      <span>Attesa produzione</span>
-                      <strong>{blockedProductionOrders.length}</strong>
-                    </Link>
+                    {blockedCustomerOrders.length > 0 ? (
+                      <Link className="dashboard-side-pill compact-card-link" href={links.blockedCustomer}>
+                        <span>Attesa cliente</span>
+                        <strong>{blockedCustomerOrders.length}</strong>
+                      </Link>
+                    ) : null}
+                    {blockedProductionOrders.length > 0 ? (
+                      <Link className="dashboard-side-pill compact-card-link" href={links.blockedProduction}>
+                        <span>Attesa produzione</span>
+                        <strong>{blockedProductionOrders.length}</strong>
+                      </Link>
+                    ) : null}
                   </>
                 ) : activeFocus === "READY" ? (
                   <>
-                    <Link
-                      className={`dashboard-side-pill dashboard-side-pill-alert compact-card-link${activeReadyMode === "TO_NOTIFY" ? " active" : ""}`}
-                      href={buildDashboardStateHref({
-                        anchor: "dashboard-focus-panel",
-                        pulse: "READY",
-                        financeOpen: isFinancePanelOpen,
-                        financeMode: currentFinanceMode,
-                        financeSort: currentFinanceSort,
-                        focus: "READY",
-                        readyMode: "TO_NOTIFY"
-                      })}
-                      replace
-                      scroll={false}
-                    >
-                      <span>Da avvisare</span>
-                      <strong>{readyOrdersToNotify.length}</strong>
-                    </Link>
-                    <Link
-                      className={`dashboard-side-pill compact-card-link${activeReadyMode === "NOTIFIED" ? " active" : ""}`}
-                      href={buildDashboardStateHref({
-                        anchor: "dashboard-focus-panel",
-                        pulse: "READY",
-                        financeOpen: isFinancePanelOpen,
-                        financeMode: currentFinanceMode,
-                        financeSort: currentFinanceSort,
-                        focus: "READY",
-                        readyMode: "NOTIFIED"
-                      })}
-                      replace
-                      scroll={false}
-                    >
-                      <span>Gia avvisati</span>
-                      <strong>{readyOrdersNotified.length}</strong>
-                    </Link>
+                    {readyOrdersToNotify.length > 0 || activeReadyMode === "TO_NOTIFY" ? (
+                      <Link
+                        className={`dashboard-side-pill dashboard-side-pill-alert compact-card-link${activeReadyMode === "TO_NOTIFY" ? " active" : ""}`}
+                        href={buildDashboardStateHref({
+                          anchor: "dashboard-focus-panel",
+                          pulse: "READY",
+                          financeOpen: isFinancePanelOpen,
+                          financeMode: currentFinanceMode,
+                          financeSort: currentFinanceSort,
+                          focus: "READY",
+                          readyMode: "TO_NOTIFY"
+                        })}
+                        replace
+                        scroll={false}
+                      >
+                        <span>Da avvisare</span>
+                        <strong>{readyOrdersToNotify.length}</strong>
+                      </Link>
+                    ) : null}
+                    {readyOrdersNotified.length > 0 || activeReadyMode === "NOTIFIED" ? (
+                      <Link
+                        className={`dashboard-side-pill compact-card-link${activeReadyMode === "NOTIFIED" ? " active" : ""}`}
+                        href={buildDashboardStateHref({
+                          anchor: "dashboard-focus-panel",
+                          pulse: "READY",
+                          financeOpen: isFinancePanelOpen,
+                          financeMode: currentFinanceMode,
+                          financeSort: currentFinanceSort,
+                          focus: "READY",
+                          readyMode: "NOTIFIED"
+                        })}
+                        replace
+                        scroll={false}
+                      >
+                        <span>Gia avvisati</span>
+                        <strong>{readyOrdersNotified.length}</strong>
+                      </Link>
+                    ) : null}
                   </>
                 ) : (
                   <>
-                    <Link
-                      className="dashboard-side-pill compact-card-link"
-                      href={buildDashboardStateHref({
-                        anchor: "dashboard-focus-panel",
-                        pulse: "BLOCKED",
-                        financeMode: currentFinanceMode,
-                        financeOpen: isFinancePanelOpen,
-                        focus: "BLOCKED"
-                      })}
-                    >
-                      <span>Sospesi</span>
-                      <strong>{blockedOrders.length}</strong>
-                    </Link>
-                    <Link className="dashboard-side-pill compact-card-link" href={dashboardPanelLinks.ready} replace scroll={false}>
-                      <span>Pronti</span>
-                      <strong>{readyOrders.length}</strong>
-                    </Link>
+                    {blockedOrders.length > 0 ? (
+                      <Link
+                        className="dashboard-side-pill compact-card-link"
+                        href={buildDashboardStateHref({
+                          anchor: "dashboard-focus-panel",
+                          pulse: "BLOCKED",
+                          financeMode: currentFinanceMode,
+                          financeOpen: isFinancePanelOpen,
+                          focus: "BLOCKED"
+                        })}
+                      >
+                        <span>Sospesi</span>
+                        <strong>{blockedOrders.length}</strong>
+                      </Link>
+                    ) : null}
+                    {readyOrders.length > 0 ? (
+                      <Link className="dashboard-side-pill compact-card-link" href={dashboardPanelLinks.ready} replace scroll={false}>
+                        <span>Pronti</span>
+                        <strong>{readyOrders.length}</strong>
+                      </Link>
+                    ) : null}
                   </>
                 )}
               </div>
@@ -1076,7 +838,7 @@ export async function DashboardPage({
                   title="Priorita oggi"
                   viewHref={links.priorityToday}
                   viewLabel="Apri lista"
-                  visibleLimit={dominantFocusVisibleLimit}
+                  visibleLimit={dashboardFocusVisibleLimit}
                   renderMeta={(order) => `Consegna ${formatDateTime(order.deliveryAt)}`}
                   renderNote={(order) => order.appointmentNote || order.notes || null}
                   renderAside={(order) => formatCurrency(order.totalCents)}
@@ -1093,7 +855,7 @@ export async function DashboardPage({
                   title="Da avviare"
                   viewHref={links.toStart}
                   viewLabel="Apri lista"
-                  visibleLimit={dominantFocusVisibleLimit}
+                  visibleLimit={dashboardFocusVisibleLimit}
                   renderMeta={(order) => `Consegna ${formatDateTime(order.deliveryAt)}`}
                   itemClassName={(order) => (activePulse === "LATE_START" && lateStartOrderIds.has(order.id) ? "dashboard-pulse-item" : undefined)}
                   id="dashboard-production-start"
@@ -1121,7 +883,7 @@ export async function DashboardPage({
                     title="Consegne di domani"
                     viewHref={links.tomorrow}
                     viewLabel="Apri lista"
-                    visibleLimit={dominantFocusVisibleLimit}
+                    visibleLimit={dashboardFocusVisibleLimit}
                     renderMeta={(order) => `Consegna ${formatDateTime(order.deliveryAt)}`}
                     renderNote={(order) => order.appointmentNote || order.notes || null}
                     renderAside={(order) => formatCurrency(order.totalCents)}
@@ -1140,7 +902,7 @@ export async function DashboardPage({
                     title="Attesa cliente"
                     viewHref={links.blockedCustomer}
                     viewLabel="Apri lista"
-                    visibleLimit={isDominantFocusLayout ? blockedCustomerOrders.length : undefined}
+                    visibleLimit={dashboardFocusVisibleLimit}
                     renderMeta={(order) => `${operationalStatusLabels[order.operationalStatus]} • Consegna ${formatDateTime(order.deliveryAt)}`}
                     renderNote={(order) => order.operationalNote || order.appointmentNote || order.notes || "In attesa di conferma o approvazione"}
                   />
@@ -1152,7 +914,7 @@ export async function DashboardPage({
                     title="Attesa produzione"
                     viewHref={links.blockedProduction}
                     viewLabel="Apri lista"
-                    visibleLimit={isDominantFocusLayout ? blockedProductionOrders.length : undefined}
+                    visibleLimit={dashboardFocusVisibleLimit}
                     renderMeta={(order) => `${operationalStatusLabels[order.operationalStatus]} • Consegna ${formatDateTime(order.deliveryAt)}`}
                     renderNote={(order) => order.operationalNote || order.notes || "Da sbloccare internamente prima della consegna"}
                   />
@@ -1170,7 +932,7 @@ export async function DashboardPage({
                   title={activeReadyMode === "TO_NOTIFY" ? "Pronti da avvisare" : "Pronti gia avvisati"}
                   viewHref={links.ready}
                   viewLabel="Apri lista"
-                  visibleLimit={dominantFocusVisibleLimit}
+                  visibleLimit={dashboardFocusVisibleLimit}
                   renderMeta={(order) =>
                     `${order.readyWhatsappSentAt ? "Avvisato" : "Da avvisare"} • Consegna ${formatDateTime(order.deliveryAt)}`
                   }
@@ -1248,11 +1010,11 @@ function DashboardLane({
                   hasWhatsapp={Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""))}
                   orderId={order.id}
                   href={`/orders/${order.id}`}
-                  code={getDisplayOrderLabel(order.orderCode, order.title)}
+                  code={order.customer.name}
                   deliveryAt={order.deliveryAt}
                   priority={order.priority}
                   readyWhatsappSentAt={order.readyWhatsappSentAt}
-                  title={order.customer.name}
+                  title={getDisplayOrderLabel(order.orderCode, order.title)}
                   meta={renderMeta(order)}
                   aside={renderAside?.(order)}
                   tone={getOrderTone(order.deliveryAt, order.mainPhase, order.paymentStatus)}
@@ -1405,150 +1167,138 @@ function CompactSignal({
 
 function DashboardMaterialsCard({
   activeFilter,
+  featuredNote,
   filterLinks,
+  isEmpty,
   metrics,
-  notes,
   notesTotal,
   viewHref,
   waitingOrdersHref
 }: {
   activeFilter: DashboardMaterialsFilter;
+  featuredNote: DashboardPurchaseNote | null;
   filterLinks: {
     all: string;
     blocking: string;
     linked: string;
     unlinked: string;
   };
+  isEmpty: boolean;
   metrics: {
     open: number;
     blocking: number;
     waitingMaterial: number;
     unlinked: number;
   };
-  notes: DashboardPurchaseNote[];
   notesTotal: number;
   viewHref: string;
   waitingOrdersHref: string;
 }) {
+  const visibleMetrics = [
+    { href: filterLinks.all, key: "open", label: "Aperte", tone: "default", value: metrics.open },
+    { href: filterLinks.blocking, key: "blocking", label: "Bloccanti", tone: "alert", value: metrics.blocking },
+    { href: waitingOrdersHref, key: "waiting", label: "In attesa materiale", tone: "orders", value: metrics.waitingMaterial },
+    { href: filterLinks.unlinked, key: "unlinked", label: "Senza ordine", tone: "default", value: metrics.unlinked }
+  ].filter((item) => item.value > 0);
+
   return (
-    <section className="card card-pad dashboard-materials-shell dashboard-soft-slab" id="dashboard-materials">
+    <section className={`card card-pad dashboard-materials-shell dashboard-soft-slab${isEmpty ? " is-empty" : ""}`} id="dashboard-materials">
       <div className="list-header compact-section-head">
         <div>
           <span className="compact-kicker">Da ordinare</span>
-          <h3>Materiali aperti</h3>
+          <h3>Materiali</h3>
         </div>
         <Link className="compact-link" href={viewHref}>
-          Apri Da ordinare
+          Apri lista
         </Link>
       </div>
 
-      <div className="dashboard-materials-metrics" aria-label="Metriche materiali da ordinare">
-        <Link className={`dashboard-materials-metric compact-card-link${activeFilter === "ALL" ? " active" : ""}`} href={filterLinks.all} replace scroll={false}>
-          <span>Aperte</span>
-          <strong>{metrics.open}</strong>
-        </Link>
-        <Link
-          className={`dashboard-materials-metric dashboard-materials-metric-alert compact-card-link${activeFilter === "BLOCKING" ? " active" : ""}`}
-          href={filterLinks.blocking}
-          replace
-          scroll={false}
-        >
-          <span>Bloccanti</span>
-          <strong>{metrics.blocking}</strong>
-        </Link>
-        <Link className="dashboard-materials-metric dashboard-materials-metric-orders compact-card-link" href={waitingOrdersHref} prefetch={false}>
-          <span>In attesa materiale</span>
-          <strong>{metrics.waitingMaterial}</strong>
-        </Link>
-        <Link
-          className={`dashboard-materials-metric compact-card-link${activeFilter === "UNLINKED" ? " active" : ""}`}
-          href={filterLinks.unlinked}
-          replace
-          scroll={false}
-        >
-          <span>Senza ordine</span>
-          <strong>{metrics.unlinked}</strong>
-        </Link>
-      </div>
+      {visibleMetrics.length > 0 ? (
+        <div className={`dashboard-materials-metrics dashboard-materials-metrics-count-${Math.min(visibleMetrics.length, 4)}`} aria-label="Metriche materiali da ordinare">
+          {visibleMetrics.map((item) => (
+            <Link
+              className={`dashboard-materials-metric${item.tone === "alert" ? " dashboard-materials-metric-alert" : ""}${
+                item.tone === "orders" ? " dashboard-materials-metric-orders" : ""
+              } compact-card-link${
+                (item.key === "open" && activeFilter === "ALL") ||
+                (item.key === "blocking" && activeFilter === "BLOCKING") ||
+                (item.key === "unlinked" && activeFilter === "UNLINKED")
+                  ? " active"
+                  : ""
+              }`}
+              href={item.href}
+              key={item.key}
+              prefetch={item.key === "waiting" ? false : undefined}
+              replace={item.key === "waiting" ? undefined : true}
+              scroll={item.key === "waiting" ? undefined : false}
+            >
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+            </Link>
+          ))}
+        </div>
+      ) : null}
 
-      <div className="dashboard-materials-filter-row" aria-label="Filtro note materiali">
-        <Link className={`dashboard-materials-filter compact-card-link${activeFilter === "ALL" ? " active" : ""}`} href={filterLinks.all} replace scroll={false}>
-          Tutti
-        </Link>
-        <Link
-          className={`dashboard-materials-filter compact-card-link${activeFilter === "BLOCKING" ? " active" : ""}`}
-          href={filterLinks.blocking}
-          replace
-          scroll={false}
-        >
-          Bloccanti
-        </Link>
-        <Link
-          className={`dashboard-materials-filter compact-card-link${activeFilter === "LINKED" ? " active" : ""}`}
-          href={filterLinks.linked}
-          replace
-          scroll={false}
-        >
-          Con ordine
-        </Link>
-        <Link
-          className={`dashboard-materials-filter compact-card-link${activeFilter === "UNLINKED" ? " active" : ""}`}
-          href={filterLinks.unlinked}
-          replace
-          scroll={false}
-        >
-          Senza ordine
-        </Link>
-      </div>
+      {featuredNote ? (
+        <article className={`dashboard-materials-featured ${getDashboardMaterialsUrgencyClassName(featuredNote.urgency)}`}>
+          <div className="dashboard-materials-featured-head">
+            <div className="dashboard-materials-featured-copy">
+              <span className="dashboard-materials-featured-eyebrow">
+                {featuredNote.urgency === "BLOCCANTE" ? "Prima da ordinare" : activeFilter === "BLOCKING" ? "Bloccante aperta" : "Prossima nota"}
+              </span>
+              <strong>{featuredNote.customerName}</strong>
+              <span className="dashboard-materials-item-meta">
+                {featuredNote.order
+                  ? `Ordine ${getDisplayOrderLabel(featuredNote.order.orderCode, featuredNote.order.title)} • ${operationalStatusLabels[featuredNote.order.operationalStatus]}`
+                  : "Nota libera"}
+              </span>
+            </div>
+            <span className={`dashboard-materials-urgency ${getDashboardMaterialsUrgencyPillClassName(featuredNote.urgency)}`}>
+              {purchaseNoteUrgencyLabels[featuredNote.urgency]}
+            </span>
+          </div>
 
-      <div className="dashboard-materials-list">
-        {notesTotal === 0 ? (
-          <div className="empty">{getDashboardMaterialsEmptyMessage(activeFilter)}</div>
-        ) : (
-          <>
-            {notes.map((note) => (
-              <article className={`dashboard-materials-item ${getDashboardMaterialsUrgencyClassName(note.urgency)}`} key={note.id}>
-                <div className="dashboard-materials-item-head">
-                  <div className="dashboard-materials-item-copy">
-                    <strong>{note.customerName}</strong>
-                    <span className="dashboard-materials-item-meta">
-                      {note.order
-                        ? `Ordine ${getDisplayOrderLabel(note.order.orderCode, note.order.title)} • ${operationalStatusLabels[note.order.operationalStatus]}`
-                        : "Nota libera"}
-                    </span>
-                  </div>
-                  <span className={`dashboard-materials-urgency ${getDashboardMaterialsUrgencyPillClassName(note.urgency)}`}>
-                    {purchaseNoteUrgencyLabels[note.urgency]}
-                  </span>
-                </div>
+          <p className="dashboard-materials-item-note">{featuredNote.content}</p>
 
-                <p className="dashboard-materials-item-note">{note.content}</p>
-
-                <div className="dashboard-materials-item-foot">
-                  <span>{getDashboardPurchaseNoteAgeLabel(note.createdAt)}</span>
-                  <div className="dashboard-materials-item-actions">
-                    {note.order ? (
-                      <Link className="compact-link" href={`/orders/${note.order.id}`}>
-                        Apri ordine
-                      </Link>
-                    ) : null}
-                    <Link className="compact-link" href={viewHref}>
-                      Apri Da ordinare
-                    </Link>
-                  </div>
-                </div>
-              </article>
-            ))}
-
-            <div className="dashboard-materials-footer">
-              <span>{notesTotal > notes.length ? `Mostrate ${notes.length} su ${notesTotal}` : `${notesTotal} note visibili`}</span>
+          <div className="dashboard-materials-item-foot">
+            <span>{getDashboardPurchaseNoteAgeLabel(featuredNote.createdAt)}</span>
+            <div className="dashboard-materials-item-actions">
+              {featuredNote.order ? (
+                <Link className="compact-link" href={`/orders/${featuredNote.order.id}`}>
+                  Apri ordine
+                </Link>
+              ) : null}
               <Link className="compact-link" href={viewHref}>
-                Vai alla lista completa
+                Apri Da ordinare
               </Link>
             </div>
-          </>
-        )}
-      </div>
+          </div>
+        </article>
+      ) : isEmpty ? (
+        <Link className="dashboard-materials-empty-shell compact-card-link" href={viewHref}>
+          <strong>Tutto in ordine</strong>
+          <span className="hint">Nessun materiale da ordinare.</span>
+        </Link>
+      ) : (
+        <div className="empty">{getDashboardMaterialsEmptyMessage(activeFilter)}</div>
+      )}
+
+      {!isEmpty ? (
+        <div className="dashboard-materials-footer">
+          <span>
+            {notesTotal === 0
+              ? "Nessuna nota aperta"
+              : featuredNote && notesTotal > 1
+                ? `+${notesTotal - 1} altre note`
+                : notesTotal === 1
+                  ? "1 nota aperta"
+                  : `${notesTotal} note aperte`}
+          </span>
+          <Link className="compact-link" href={viewHref}>
+            Vai alla lista completa
+          </Link>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -1881,32 +1631,6 @@ function getDashboardPurchaseNotesVisible(notes: DashboardPurchaseNote[], filter
   return notes;
 }
 
-function getFinanceOrdersVisible(
-  mode: DashboardFinanceMode,
-  bucket: DashboardFinanceBucket | undefined,
-  paidOrders: DashboardOrder[],
-  partialOrders: DashboardOrder[],
-  unpaidOrders: DashboardOrder[],
-  sort: DashboardFinanceSort
-) {
-  if (mode === "PAID") {
-    return paidOrders;
-  }
-
-  const orders =
-    bucket === "PARTIAL"
-      ? [...partialOrders]
-      : bucket === "UNPAID"
-        ? [...unpaidOrders]
-        : [...partialOrders, ...unpaidOrders];
-
-  if (sort === "AMOUNT") {
-    return orders.sort((left, right) => right.balanceDueCents - left.balanceDueCents);
-  }
-
-  return orders.sort((left, right) => getDashboardFinanceReferenceDate(left).getTime() - getDashboardFinanceReferenceDate(right).getTime());
-}
-
 function buildDashboardPanelHref(panel: DashboardPanel) {
   switch (panel) {
     case "PRODUCTION":
@@ -2035,20 +1759,6 @@ function getDashboardDayFocusEmptyMessage(focus: DashboardDayFocus) {
   }
 
   return "Nessun ordine o appuntamento per questo giorno.";
-}
-
-function getInvoiceAgeLabel(value: Date | string) {
-  const age = getDashboardDateAgeInDays(value);
-
-  if (age === 0) {
-    return "Da fatturare oggi";
-  }
-
-  if (age === 1) {
-    return "Da fatturare da 1 giorno";
-  }
-
-  return `Da fatturare da ${age} giorni`;
 }
 
 function getDashboardPurchaseNoteAgeLabel(value: Date | string) {
@@ -2186,6 +1896,143 @@ function buildDashboardMaterialsHref(
 
 function isDashboardFinancePartial(paymentStatus: PaymentStatus) {
   return paymentStatus === "ACCONTO" || paymentStatus === "PARZIALE";
+}
+
+function getDashboardFeaturedPurchaseNote(notes: DashboardPurchaseNote[]) {
+  return notes.find((note) => note.urgency === "BLOCCANTE") || notes[0] || null;
+}
+
+function getRecommendedDashboardFocus({
+  blockedCount,
+  lateStartCount,
+  priorityCount,
+  readyCount,
+  readyToNotifyCount,
+  tomorrowToStartCount,
+  toStartCount
+}: {
+  blockedCount: number;
+  lateStartCount: number;
+  priorityCount: number;
+  readyCount: number;
+  readyToNotifyCount: number;
+  tomorrowToStartCount: number;
+  toStartCount: number;
+}) {
+  if (lateStartCount > 0) {
+    return "TO_START" satisfies DashboardFocus;
+  }
+
+  if (blockedCount > 0) {
+    return "BLOCKED" satisfies DashboardFocus;
+  }
+
+  if (readyToNotifyCount > 0) {
+    return "READY" satisfies DashboardFocus;
+  }
+
+  if (priorityCount > 0) {
+    return "PRIORITY" satisfies DashboardFocus;
+  }
+
+  if (toStartCount > 0) {
+    return "TO_START" satisfies DashboardFocus;
+  }
+
+  if (tomorrowToStartCount > 0) {
+    return "TOMORROW" satisfies DashboardFocus;
+  }
+
+  if (readyCount > 0) {
+    return "READY" satisfies DashboardFocus;
+  }
+
+  return "PRIORITY" satisfies DashboardFocus;
+}
+
+function getDashboardFocusGuide(
+  focus: DashboardFocus,
+  {
+    blockedCount,
+    lateStartCount,
+    priorityCount,
+    readyCount,
+    readyToNotifyCount,
+    tomorrowToStartCount,
+    toStartCount
+  }: {
+    blockedCount: number;
+    lateStartCount: number;
+    priorityCount: number;
+    readyCount: number;
+    readyToNotifyCount: number;
+    tomorrowToStartCount: number;
+    toStartCount: number;
+  }
+) {
+  if (focus === "TO_START") {
+    return lateStartCount > 0
+      ? {
+          cta: "Apri avvio",
+          detail: lateStartCount === 1 ? "C'e 1 ordine gia in ritardo da avviare." : `Ci sono ${lateStartCount} ordini gia in ritardo da avviare.`,
+          title: "Avvia subito"
+        }
+      : {
+          cta: "Apri avvio",
+          detail: toStartCount === 1 ? "C'e 1 ordine in attesa di partenza." : `Ci sono ${toStartCount} ordini in attesa di partenza.`,
+          title: "Metti in lavorazione"
+        };
+  }
+
+  if (focus === "BLOCKED") {
+    return {
+      cta: "Apri sblocchi",
+      detail: blockedCount === 1 ? "C'e 1 ordine fermo che aspetta una decisione." : `Ci sono ${blockedCount} ordini fermi che aspettano una decisione.`,
+      title: "Sblocca ordini"
+    };
+  }
+
+  if (focus === "READY") {
+    return readyToNotifyCount > 0
+      ? {
+          cta: "Apri pronti",
+          detail:
+            readyToNotifyCount === 1
+              ? "C'e 1 ordine pronto e il cliente va avvisato."
+              : `Ci sono ${readyToNotifyCount} ordini pronti e i clienti vanno avvisati.`,
+          title: "Avvisa clienti"
+        }
+      : {
+          cta: "Apri pronti",
+          detail: readyCount === 1 ? "C'e 1 ordine pronto da gestire." : `Ci sono ${readyCount} ordini pronti da gestire.`,
+          title: "Gestisci pronti"
+        };
+  }
+
+  if (focus === "TOMORROW") {
+    return {
+      cta: "Apri domani",
+      detail:
+        tomorrowToStartCount === 1
+          ? "C'e 1 lavoro da preparare per domani."
+          : `Ci sono ${tomorrowToStartCount} lavori da preparare per domani.`,
+      title: "Prepara domani"
+    };
+  }
+
+  if (priorityCount > 0) {
+    return {
+      cta: "Apri priorita",
+      detail: priorityCount === 1 ? "C'e 1 consegna vicina da controllare." : `Ci sono ${priorityCount} consegne vicine da controllare.`,
+      title: "Controlla scadenze"
+    };
+  }
+
+  return {
+    cta: "Apri focus",
+    detail: "In questo momento non ci sono urgenze forti in evidenza.",
+    title: "Tutto sotto controllo"
+  };
 }
 
 function parseDashboardPulse(value?: string): DashboardPulse | null {
