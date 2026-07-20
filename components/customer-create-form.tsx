@@ -182,26 +182,31 @@ export function CustomerCreateForm({
         <label htmlFor="email">Email</label>
         <input id="email" name="email" type="email" />
       </div>
-      <div className="field wide">
-        <label htmlFor="pec">PEC</label>
-        <input id="pec" name="pec" type="email" />
-      </div>
-      <div className="field">
-        <label htmlFor="vatNumber">P. IVA</label>
-        <input id="vatNumber" name="vatNumber" />
-      </div>
-      <div className="field">
-        <label htmlFor="taxCode">Codice fiscale</label>
-        <input id="taxCode" name="taxCode" />
-      </div>
-      <div className="field">
-        <label htmlFor="uniqueCode">Codice univoco (CU)</label>
-        <input id="uniqueCode" name="uniqueCode" />
-      </div>
-      <div className="field full">
-        <label htmlFor="notes">Note</label>
-        <textarea id="notes" name="notes" />
-      </div>
+      <details className="customer-form-extra-fields">
+        <summary>Altri dati facoltativi</summary>
+        <div className="customer-form-extra-grid">
+          <div className="field wide">
+            <label htmlFor="pec">PEC</label>
+            <input id="pec" name="pec" type="email" />
+          </div>
+          <div className="field">
+            <label htmlFor="vatNumber">P. IVA</label>
+            <input id="vatNumber" name="vatNumber" />
+          </div>
+          <div className="field">
+            <label htmlFor="taxCode">Codice fiscale</label>
+            <input id="taxCode" name="taxCode" />
+          </div>
+          <div className="field">
+            <label htmlFor="uniqueCode">Codice univoco (CU)</label>
+            <input id="uniqueCode" name="uniqueCode" />
+          </div>
+          <div className="field full">
+            <label htmlFor="notes">Note</label>
+            <textarea id="notes" name="notes" />
+          </div>
+        </div>
+      </details>
       <div className="button-row customers-entry-actions">
         <button className="primary" type="submit">
           Salva cliente

@@ -3804,7 +3804,8 @@ export async function getCustomerById(id: string) {
           mainPhase: true,
           operationalStatus: true,
           paymentStatus: true,
-          totalCents: true
+          totalCents: true,
+          balanceDueCents: true
         },
         orderBy: [{ createdAt: "desc" }]
       },

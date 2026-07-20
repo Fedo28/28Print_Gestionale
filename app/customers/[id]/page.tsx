@@ -30,17 +30,33 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
   const customerOrders = customer.orders.filter((order) => !order.isQuote);
   const customerQuotes = customer.orders.filter((order) => order.isQuote);
   const pendingNotes = customer.purchaseNotes.filter((note) => !note.completedAt);
-  const completedNotes = customer.purchaseNotes.filter((note) => Boolean(note.completedAt));
   const canDeleteCustomer = customer.orders.length === 0 && customer.billboardBookings.length === 0;
   const lastCustomerUpdate = recentActivity[0]?.createdAt || customer.updatedAt;
-  const contactChips = [
-    customer.phone ? customer.phone : null,
-    customer.whatsapp && customer.whatsapp !== customer.phone ? `WA ${customer.whatsapp}` : null,
-    customer.email ? customer.email : null,
-    customer.pec ? `PEC ${customer.pec}` : null,
-    customer.vatNumber ? `P. IVA ${customer.vatNumber}` : null,
-    customer.taxCode ? `CF ${customer.taxCode}` : null
-  ].filter((value): value is string => Boolean(value));
+  const activeOrdersCount = customerOrders.filter((order) => order.mainPhase !== "CONSEGNATO").length;
+  const outstandingBalanceCents = customerOrders.reduce((total, order) => total + order.balanceDueCents, 0);
+  const contactActions = [
+    customer.phone
+      ? {
+          href: `tel:${customer.phone.replace(/[^\d+]/g, "")}`,
+          label: customer.phone,
+          kind: "phone"
+        }
+      : null,
+    customer.whatsapp
+      ? {
+          href: `https://wa.me/${customer.whatsapp.replace(/[^\d]/g, "")}`,
+          label: `WhatsApp ${customer.whatsapp}`,
+          kind: "whatsapp"
+        }
+      : null,
+    customer.email
+      ? {
+          href: `mailto:${customer.email}`,
+          label: customer.email,
+          kind: "email"
+        }
+      : null
+  ].filter((entry): entry is { href: string; label: string; kind: "phone" | "whatsapp" | "email" } => Boolean(entry));
 
   return (
     <div className="stack customer-detail-shell">
@@ -66,7 +82,7 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
             <span className="pill">{customerTypeLabels[customer.type]}</span>
             <strong>{customer.name}</strong>
             <span className="subtle">
-              {contactChips[0] || "Nessun contatto rapido disponibile"} • Aggiornato il {formatDateTime(lastCustomerUpdate)}
+              {contactActions.length > 0 ? "Contatti rapidi disponibili qui sotto." : "Aggiungi un contatto per raggiungerlo piu velocemente."} Aggiornato il {formatDateTime(lastCustomerUpdate)}
             </span>
           </div>
           <div className="customer-detail-overview-actions">
@@ -79,40 +95,48 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
             <Link className="compact-link" href="#customer-purchase-notes-panel">
               Da ordinare
             </Link>
-            <Link className="compact-link" href="#customer-billboards-panel">
-              Cartelloni
-            </Link>
-            <Link className="compact-link" href="/activity/trash" prefetch={false}>
-              Cestino
+            {customer.billboardBookings.length > 0 ? (
+              <Link className="compact-link" href="#customer-billboards-panel">
+                Cartelloni
+              </Link>
+            ) : null}
+            <Link className="compact-link" href="#customer-history-panel">
+              Storico
             </Link>
           </div>
         </div>
 
         <div className="customer-detail-stat-grid">
           <div className="customer-detail-stat">
-            <span>Ordini</span>
-            <strong>{customerOrders.length}</strong>
+            <span>Ordini aperti</span>
+            <strong>{activeOrdersCount}</strong>
+          </div>
+          <div className="customer-detail-stat">
+            <span>Da incassare</span>
+            <strong>{formatCurrency(outstandingBalanceCents)}</strong>
           </div>
           <div className="customer-detail-stat">
             <span>Preventivi</span>
             <strong>{customerQuotes.length}</strong>
           </div>
           <div className="customer-detail-stat">
-            <span>Da ordinare aperti</span>
+            <span>Da ordinare</span>
             <strong>{pendingNotes.length}</strong>
-          </div>
-          <div className="customer-detail-stat">
-            <span>Cartelloni</span>
-            <strong>{customer.billboardBookings.length}</strong>
           </div>
         </div>
 
         <div className="customer-detail-contact-row">
-          {contactChips.length > 0 ? (
-            contactChips.map((chip) => (
-              <span className="customer-detail-contact-chip" key={chip}>
-                {chip}
-              </span>
+          {contactActions.length > 0 ? (
+            contactActions.map((contact) => (
+              <a
+                className={`customer-detail-contact-chip customer-detail-contact-chip-${contact.kind}`}
+                href={contact.href}
+                key={contact.href}
+                rel={contact.kind === "whatsapp" ? "noreferrer" : undefined}
+                target={contact.kind === "whatsapp" ? "_blank" : undefined}
+              >
+                {contact.label}
+              </a>
             ))
           ) : (
             <span className="customer-detail-contact-chip is-muted">Completa i recapiti per trovarlo e contattarlo piu velocemente.</span>
@@ -156,26 +180,31 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
               <label htmlFor="email">Email</label>
               <input defaultValue={customer.email || ""} id="email" name="email" type="email" />
             </div>
-            <div className="field wide">
-              <label htmlFor="pec">PEC</label>
-              <input defaultValue={customer.pec || ""} id="pec" name="pec" type="email" />
-            </div>
-            <div className="field">
-              <label htmlFor="vatNumber">P. IVA</label>
-              <input defaultValue={customer.vatNumber || ""} id="vatNumber" name="vatNumber" />
-            </div>
-            <div className="field">
-              <label htmlFor="taxCode">Codice fiscale</label>
-              <input defaultValue={customer.taxCode || ""} id="taxCode" name="taxCode" />
-            </div>
-            <div className="field">
-              <label htmlFor="uniqueCode">Codice univoco (CU)</label>
-              <input defaultValue={customer.uniqueCode || ""} id="uniqueCode" name="uniqueCode" />
-            </div>
-            <div className="field full">
-              <label htmlFor="notes">Note</label>
-              <textarea defaultValue={customer.notes || ""} id="notes" name="notes" />
-            </div>
+            <details className="customer-form-extra-fields">
+              <summary>Altri dati</summary>
+              <div className="customer-form-extra-grid">
+                <div className="field wide">
+                  <label htmlFor="pec">PEC</label>
+                  <input defaultValue={customer.pec || ""} id="pec" name="pec" type="email" />
+                </div>
+                <div className="field">
+                  <label htmlFor="vatNumber">P. IVA</label>
+                  <input defaultValue={customer.vatNumber || ""} id="vatNumber" name="vatNumber" />
+                </div>
+                <div className="field">
+                  <label htmlFor="taxCode">Codice fiscale</label>
+                  <input defaultValue={customer.taxCode || ""} id="taxCode" name="taxCode" />
+                </div>
+                <div className="field">
+                  <label htmlFor="uniqueCode">Codice univoco (CU)</label>
+                  <input defaultValue={customer.uniqueCode || ""} id="uniqueCode" name="uniqueCode" />
+                </div>
+                <div className="field full">
+                  <label htmlFor="notes">Note</label>
+                  <textarea defaultValue={customer.notes || ""} id="notes" name="notes" />
+                </div>
+              </div>
+            </details>
             <div className="button-row customer-form-actions">
               <button className="primary" type="submit">
                 Salva modifiche

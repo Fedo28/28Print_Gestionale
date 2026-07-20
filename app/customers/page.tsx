@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 type Props = {
   searchParams?: {
     type?: string;
+    new?: string;
   };
 };
 
@@ -30,22 +31,8 @@ export default async function CustomersPage({ searchParams }: Props) {
       allCustomers.filter((customer) => customer.type === value).length
     ])
   ) as Record<keyof typeof customerTypeLabels, number>;
-  const customersWithOrdersCount = allCustomers.filter((customer) => customer.orders.length > 0).length;
   const activeTypeLabel = filters.type === "ALL" ? "Tutti i clienti" : customerTypeLabels[filters.type];
-  const typeSummaryCards = [
-    {
-      key: "ALL" as const,
-      label: "Rubrica completa",
-      value: allCustomers.length,
-      href: buildCustomersFilterHref({ type: "ALL" })
-    },
-    ...Object.entries(customerTypeLabels).map(([value, label]) => ({
-      key: value as keyof typeof customerTypeLabels,
-      label,
-      value: customerTypeCounts[value as keyof typeof customerTypeLabels],
-      href: buildCustomersFilterHref({ type: value as keyof typeof customerTypeLabels })
-    }))
-  ];
+  const shouldOpenNewCustomer = searchParams?.new === "1";
   const typeTabs = [
     {
       key: "ALL" as const,
@@ -67,30 +54,12 @@ export default async function CustomersPage({ searchParams }: Props) {
         title="Clienti"
         action={
           <div className="button-row customers-page-header-actions">
-            <Link className="button primary" href="#customers-new-entry">
+            <Link className="button primary" href="/customers?new=1#customers-new-entry">
               Nuovo cliente
             </Link>
           </div>
         }
       />
-
-      <section className="customers-overview-grid" aria-label="Panoramica clienti">
-        {typeSummaryCards.map((card) => (
-          <Link
-            className={`customers-overview-card compact-card-link${filters.type === card.key ? " active" : ""}`}
-            href={card.href}
-            key={card.key}
-            prefetch={false}
-          >
-            <span className="customers-overview-card-kicker">{card.label}</span>
-            <strong>{card.value}</strong>
-          </Link>
-        ))}
-        <article className="customers-overview-note">
-          <span className="customers-overview-card-kicker">Storico ordini</span>
-          <strong>{customersWithOrdersCount}</strong>
-        </article>
-      </section>
 
       <div className="customers-page-grid">
         <section className="card card-pad customers-directory-card">
@@ -121,18 +90,22 @@ export default async function CustomersPage({ searchParams }: Props) {
           <CustomersDirectory customers={customers} />
         </section>
 
-        <aside className="card card-pad customers-entry-card" id="customers-new-entry">
-          <div className="list-header customers-entry-head">
+        <details className="card card-pad customers-entry-card customers-entry-disclosure" id="customers-new-entry" open={shouldOpenNewCustomer}>
+          <summary className="customers-entry-summary">
             <div>
               <span className="compact-kicker">Nuova anagrafica</span>
-              <h3>Inserisci cliente</h3>
+              <strong>Inserisci cliente</strong>
+              <span className="subtle">Apri solo quando serve.</span>
             </div>
+            <span className="pill">Apri</span>
+          </summary>
+          <div className="customers-entry-body">
+            <CustomerCreateForm
+              action={createCustomerAction}
+              typeOptions={Object.entries(customerTypeLabels).map(([value, label]) => ({ value, label }))}
+            />
           </div>
-          <CustomerCreateForm
-            action={createCustomerAction}
-            typeOptions={Object.entries(customerTypeLabels).map(([value, label]) => ({ value, label }))}
-          />
-        </aside>
+        </details>
       </div>
     </div>
   );

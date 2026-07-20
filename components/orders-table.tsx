@@ -2,7 +2,7 @@
 
 import type { InvoiceStatus, MainPhase, OperationalStatus, PaymentStatus, Priority } from "@prisma/client";
 import Link from "next/link";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { MarkOrderInvoicedButton } from "@/components/mark-order-invoiced-button";
 import { OrdersBulkToolbar } from "@/components/orders-bulk-toolbar";
 import { QuickOrderControlForms, QuickOrderTriggerButton } from "@/components/quick-order-controls";
@@ -42,7 +42,7 @@ type OrderRow = {
 };
 
 function getCustomerContact(customer: { phone?: string | null; whatsapp?: string | null }) {
-  return customer.phone?.trim() || customer.whatsapp?.trim() || "Telefono non inserito";
+  return customer.phone?.trim() || customer.whatsapp?.trim() || null;
 }
 
 function getPartialDeliveryMeta(items: Array<{ deliveredAt?: Date | string | null }>) {
@@ -63,6 +63,36 @@ function SortGlyph({ active, direction }: { active: boolean; direction: OrderSor
   );
 }
 
+function OrderPrimaryAction({
+  hasWhatsapp,
+  href,
+  invoiceStatus,
+  mainPhase,
+  orderId,
+  readyWhatsappSentAt
+}: {
+  hasWhatsapp: boolean;
+  href: string;
+  invoiceStatus: InvoiceStatus;
+  mainPhase: MainPhase;
+  orderId: string;
+  readyWhatsappSentAt?: Date | string | null;
+}) {
+  if (mainPhase === "SVILUPPO_COMPLETATO" && hasWhatsapp) {
+    return <ReadyWhatsAppButton compact hasPhone={hasWhatsapp} notifiedAt={readyWhatsappSentAt} orderId={orderId} showLabel />;
+  }
+
+  if ((mainPhase === "SVILUPPO_COMPLETATO" || mainPhase === "CONSEGNATO") && invoiceStatus === "DA_FATTURARE") {
+    return <MarkOrderInvoicedButton compact invoiceStatus={invoiceStatus} orderId={orderId} showLabel />;
+  }
+
+  return (
+    <Link className="button ghost orders-row-open-button" href={href}>
+      Apri
+    </Link>
+  );
+}
+
 export function OrdersTable({
   orders,
   view = "ACTIVE",
@@ -78,16 +108,15 @@ export function OrdersTable({
 }) {
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
-  const selectAllRef = useRef<HTMLInputElement>(null);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
   const deliveryColumnLabel = view === "DELIVERED" ? "Consegnato" : "Consegna";
   const sortableHeaders: Array<{ field: OrderSortField; label: string }> = [
-    { field: "customer", label: "Cliente" },
-    { field: "order", label: "Ordine" },
+    { field: "customer", label: "Cliente e lavoro" },
     { field: "delivery", label: deliveryColumnLabel },
-    { field: "priority", label: "Priorita" },
     { field: "status", label: "Stato" },
-    { field: "amount", label: "Importi" }
+    { field: "amount", label: "Saldo" }
   ];
+  const tableColumnCount = sortableHeaders.length + 1;
 
   function buildSortHref(field: OrderSortField) {
     const nextDirection = sortField === field && sortDirection === "asc" ? "desc" : "asc";
@@ -99,17 +128,10 @@ export function OrdersTable({
   }
 
   const allSelected = orders.length > 0 && selectedOrderIds.length === orders.length;
-  const hasPartialSelection = selectedOrderIds.length > 0 && !allSelected;
 
   useEffect(() => {
     setSelectedOrderIds((current) => current.filter((orderId) => orders.some((order) => order.id === orderId)));
   }, [orders]);
-
-  useEffect(() => {
-    if (selectAllRef.current) {
-      selectAllRef.current.indeterminate = hasPartialSelection;
-    }
-  }, [hasPartialSelection]);
 
   function toggleOrderSelection(orderId: string) {
     setSelectedOrderIds((current) =>
@@ -121,22 +143,41 @@ export function OrdersTable({
     setSelectedOrderIds((current) => (current.length === orders.length ? [] : orders.map((order) => order.id)));
   }
 
+  function toggleSelectionMode() {
+    setIsSelectionMode((current) => {
+      if (current) {
+        setSelectedOrderIds([]);
+      }
+      return !current;
+    });
+  }
+
   return (
     <div className="stack orders-table-shell">
+      <div className="orders-list-selection-bar">
+        <span className="hint">
+          {isSelectionMode
+            ? selectedOrderIds.length > 0
+              ? `${selectedOrderIds.length} selezionati`
+              : "Scegli gli ordini da aggiornare insieme."
+            : "Per aggiornare piu ordini insieme, attiva la selezione."}
+        </span>
+        <div className="orders-list-selection-actions">
+          {isSelectionMode ? (
+            <button className="button ghost orders-selection-button" onClick={toggleAllSelections} type="button">
+              {allSelected ? "Nessuno" : "Tutti"}
+            </button>
+          ) : null}
+          <button className="button ghost orders-selection-button" onClick={toggleSelectionMode} type="button">
+            {isSelectionMode ? "Fine" : "Seleziona"}
+          </button>
+        </div>
+      </div>
       <OrdersBulkToolbar onClearSelection={() => setSelectedOrderIds([])} selectedOrderIds={selectedOrderIds} />
 
       <table className="orders-table">
         <thead>
           <tr>
-            <th className="orders-table-select-column">
-              <input
-                aria-label={allSelected ? "Deseleziona tutti gli ordini" : "Seleziona tutti gli ordini"}
-                checked={allSelected}
-                onChange={toggleAllSelections}
-                ref={selectAllRef}
-                type="checkbox"
-              />
-            </th>
             {sortableHeaders.map((header) => {
               const isActive = sortField === header.field;
 
@@ -154,13 +195,13 @@ export function OrdersTable({
                 </th>
               );
             })}
-            <th>Azioni</th>
+            <th>Adesso</th>
           </tr>
         </thead>
         <tbody>
           {orders.length === 0 ? (
             <tr>
-              <td colSpan={8}>
+              <td colSpan={tableColumnCount}>
                 <div className="empty">Nessun ordine trovato.</div>
               </td>
             </tr>
@@ -191,23 +232,27 @@ export function OrdersTable({
                     className={`${isOpen ? "order-row-open" : ""}${isSelected ? " order-row-selected" : ""}${priorityToneClass ? ` order-row-${priorityToneClass}` : ""}${whatsappNotified ? " order-row-whatsapp-notified" : ""}`}
                     key={order.id}
                   >
-                    <td className="orders-table-select-column" data-label="Selezione">
-                      <input
-                        aria-label={`Seleziona ${displayLabel}`}
-                        checked={isSelected}
-                        onChange={() => toggleOrderSelection(order.id)}
-                        type="checkbox"
-                      />
-                    </td>
-                    <td data-label="Cliente">
+                    <td data-label="Cliente e lavoro">
                       <div className="order-mobile-card">
-                        <div className="order-mobile-card-head">
+                        <div className="order-mobile-card-summary">
+                          <div className="order-mobile-card-head">
                           <div className="order-inline-head order-inline-head-spread">
-                            <div className="order-mobile-card-copy">
-                              <Link href={`/orders/${order.id}`}>
-                                <div className="order-code order-display-title">{order.customer.name}</div>
-                              </Link>
-                              <div className="subtle order-entry-meta">{customerContact}</div>
+                            <div className="order-list-customer-group">
+                              {isSelectionMode ? (
+                                <input
+                                  aria-label={`Seleziona ${order.customer.name}`}
+                                  checked={isSelected}
+                                  className="orders-row-selection-input"
+                                  onChange={() => toggleOrderSelection(order.id)}
+                                  type="checkbox"
+                                />
+                              ) : null}
+                              <div className="order-mobile-card-copy">
+                                <Link href={`/orders/${order.id}`}>
+                                  <div className="order-code order-display-title">{order.customer.name}</div>
+                                </Link>
+                                {customerContact ? <div className="subtle order-entry-meta">{customerContact}</div> : null}
+                              </div>
                             </div>
                             <QuickOrderTriggerButton
                               ariaControls={panelId}
@@ -219,11 +264,12 @@ export function OrdersTable({
                             <strong>{formatCurrency(order.totalCents)}</strong>
                             <span>Residuo {formatCurrency(order.balanceDueCents)}</span>
                           </div>
-                        </div>
+                          </div>
 
-                        <div className="order-mobile-card-customer">
-                          <strong>{displayLabel}</strong>
-                          {entryMeta ? <span>{entryMeta}</span> : null}
+                          <div className="order-mobile-card-customer">
+                            <strong>{displayLabel}</strong>
+                            {entryMeta ? <span>{entryMeta}</span> : null}
+                          </div>
                         </div>
 
                         <div className="order-mobile-card-meta">
@@ -238,13 +284,13 @@ export function OrdersTable({
                             <strong>{priorityLabels[order.priority]}</strong>
                           </div>
                           <div className="order-mobile-card-actions">
-                            <MarkOrderInvoicedButton compact invoiceStatus={order.invoiceStatus} orderId={order.id} />
-                            <ReadyWhatsAppButton
-                              compact
-                              disabled={order.mainPhase !== "SVILUPPO_COMPLETATO"}
-                              hasPhone={order.hasWhatsapp}
-                              notifiedAt={order.readyWhatsappSentAt}
+                            <OrderPrimaryAction
+                              hasWhatsapp={order.hasWhatsapp}
+                              href={`/orders/${order.id}`}
+                              invoiceStatus={order.invoiceStatus}
+                              mainPhase={order.mainPhase}
                               orderId={order.id}
+                              readyWhatsappSentAt={order.readyWhatsappSentAt}
                             />
                           </div>
                         </div>
@@ -266,22 +312,32 @@ export function OrdersTable({
 
                       <div className="order-desktop-cell">
                         <div className="order-inline-head order-inline-head-spread">
-                          <Link href={`/orders/${order.id}`}>
-                            <div className="order-code order-display-title">{order.customer.name}</div>
-                          </Link>
+                          <div className="order-list-customer-group">
+                            {isSelectionMode ? (
+                              <input
+                                aria-label={`Seleziona ${order.customer.name}`}
+                                checked={isSelected}
+                                className="orders-row-selection-input"
+                                onChange={() => toggleOrderSelection(order.id)}
+                                type="checkbox"
+                              />
+                            ) : null}
+                            <div>
+                              <Link href={`/orders/${order.id}`}>
+                                <div className="order-code order-display-title">{order.customer.name}</div>
+                              </Link>
+                              <Link className="subtle order-entry-meta order-list-work-link" href={`/orders/${order.id}`}>
+                                {displayLabel}
+                              </Link>
+                              {customerContact ? <div className="subtle order-entry-meta">{customerContact}</div> : null}
+                            </div>
+                          </div>
                           <QuickOrderTriggerButton
                             ariaControls={panelId}
                             isOpen={isOpen}
                             onClick={() => setOpenOrderId((current) => (current === order.id ? null : order.id))}
                           />
                         </div>
-                        <div className="subtle order-entry-meta">{customerContact}</div>
-                      </div>
-                    </td>
-                    <td data-label="Ordine">
-                      <div className="order-desktop-cell">
-                        <div className="order-code order-display-title">{displayLabel}</div>
-                        {entryMeta ? <div className="subtle order-entry-meta">{entryMeta}</div> : null}
                       </div>
                     </td>
                     <td
@@ -294,9 +350,6 @@ export function OrdersTable({
                         {view === "DELIVERED" && order.deliveredAt ? <span>Prevista {formatDateTime(order.deliveryAt)}</span> : null}
                       </div>
                     </td>
-                    <td data-label="Priorita">
-                      <span className={`order-priority-chip${priorityToneClass ? ` ${priorityToneClass}` : ""}`}>{priorityLabels[order.priority]}</span>
-                    </td>
                     <td data-label="Stato">
                       <StatusPills
                         hideNeutralStatus
@@ -307,26 +360,26 @@ export function OrdersTable({
                       />
                       {partialDelivery.isPartial ? <div className="subtle order-partial-delivery-note">{`Parziale ${partialDelivery.deliveredCount}/${partialDelivery.totalCount}`}</div> : null}
                     </td>
-                    <td data-label="Importi">
-                      <div className="strong">{formatCurrency(order.totalCents)}</div>
-                      <div className="subtle">Residuo {formatCurrency(order.balanceDueCents)}</div>
+                    <td className={order.balanceDueCents > 0 ? "orders-table-balance-due" : "orders-table-balance-settled"} data-label="Saldo">
+                      <div className="strong">{order.balanceDueCents > 0 ? formatCurrency(order.balanceDueCents) : "Pagato"}</div>
+                      <div className="subtle">{order.balanceDueCents > 0 ? "Da incassare" : "Saldo chiuso"}</div>
                     </td>
-                    <td className="orders-table-actions-cell" data-label="Azioni">
+                    <td className="orders-table-actions-cell" data-label="Adesso">
                       <div className="orders-table-action-buttons">
-                        <MarkOrderInvoicedButton compact invoiceStatus={order.invoiceStatus} orderId={order.id} />
-                        <ReadyWhatsAppButton
-                          compact
-                          disabled={order.mainPhase !== "SVILUPPO_COMPLETATO"}
-                          hasPhone={order.hasWhatsapp}
-                          notifiedAt={order.readyWhatsappSentAt}
+                        <OrderPrimaryAction
+                          hasWhatsapp={order.hasWhatsapp}
+                          href={`/orders/${order.id}`}
+                          invoiceStatus={order.invoiceStatus}
+                          mainPhase={order.mainPhase}
                           orderId={order.id}
+                          readyWhatsappSentAt={order.readyWhatsappSentAt}
                         />
                       </div>
                     </td>
                   </tr>
                   {isOpen ? (
                     <tr className="order-row-details">
-                      <td colSpan={8}>
+                      <td colSpan={tableColumnCount}>
                         <div className="order-row-panel" id={panelId}>
                           <QuickOrderControlForms
                             hasWhatsapp={order.hasWhatsapp}

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { Priority } from "@prisma/client";
+import { confirmQuoteAction } from "@/app/actions";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { priorityLabels } from "@/lib/constants";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import { getDisplayOrderLabel } from "@/lib/order-display";
@@ -29,6 +31,25 @@ function SortGlyph({ active, direction }: { active: boolean; direction: OrderSor
   );
 }
 
+function QuotePrimaryAction({ quoteId, schedulePending }: { quoteId: string; schedulePending: boolean }) {
+  if (schedulePending) {
+    return (
+      <Link className="button ghost quote-primary-action" href={`/orders/${quoteId}?needsScheduling=1&edit=1#order-edit-panel`}>
+        Definisci data
+      </Link>
+    );
+  }
+
+  return (
+    <form action={confirmQuoteAction}>
+      <input name="orderId" type="hidden" value={quoteId} />
+      <ConfirmSubmitButton className="button primary quote-primary-action" confirmMessage="Confermare questo preventivo come ordine?">
+        Conferma
+      </ConfirmSubmitButton>
+    </form>
+  );
+}
+
 export function QuotesTable({
   quotes,
   sortField,
@@ -41,11 +62,9 @@ export function QuotesTable({
   buildSortHref: (field: OrderSortField) => string;
 }) {
   const sortableHeaders: Array<{ field: OrderSortField; label: string }> = [
-    { field: "customer", label: "Cliente" },
-    { field: "order", label: "Preventivo" },
+    { field: "customer", label: "Cliente e preventivo" },
     { field: "delivery", label: "Consegna stimata" },
-    { field: "priority", label: "Priorita" },
-    { field: "amount", label: "Importi" }
+    { field: "amount", label: "Totale" }
   ];
 
   return (
@@ -64,13 +83,13 @@ export function QuotesTable({
               </th>
             );
           })}
-          <th>Azioni</th>
+          <th>Adesso</th>
         </tr>
       </thead>
       <tbody>
         {quotes.length === 0 ? (
           <tr>
-            <td colSpan={6}>
+              <td colSpan={4}>
               <div className="empty">Nessun preventivo trovato.</div>
             </td>
           </tr>
@@ -78,34 +97,27 @@ export function QuotesTable({
           quotes.map((quote) => {
             const priorityToneClass = getPriorityToneClass(quote.priority);
             const displayLabel = getDisplayOrderLabel(quote.orderCode, quote.title);
-            const secondaryLabel = quote.title?.trim() && quote.title.trim() !== displayLabel ? quote.title.trim() : null;
             return (
             <tr className={`quote-row ${priorityToneClass}`} key={quote.id}>
-              <td data-label="Cliente">
-                <strong>{quote.customer.name}</strong>
-                <div className="subtle">{quote.customer.phone || "Telefono non inserito"}</div>
-              </td>
-              <td data-label="Preventivo">
-                <div className="order-code">{displayLabel}</div>
-                {secondaryLabel ? <div className="subtle">{secondaryLabel}</div> : null}
+              <td data-label="Cliente e preventivo">
+                <Link className="quote-customer-link" href={`/orders/${quote.id}`}>
+                  <strong>{quote.customer.name}</strong>
+                  <span>{displayLabel}</span>
+                  {quote.customer.phone ? <small>{quote.customer.phone}</small> : null}
+                </Link>
               </td>
               <td className={`quotes-table-delivery-cell ${priorityToneClass}`} data-label="Consegna stimata">
                 <div className={`order-deadline-chip ${priorityToneClass}${quote.schedulePending ? " delivered" : ""}`}>
                   <strong>{quote.schedulePending ? "Da definire" : formatDateTime(quote.deliveryAt)}</strong>
-                  <span>{quote.schedulePending ? "Pianificazione" : "Stimata"}</span>
+                  <span>{quote.schedulePending ? "Pianificazione" : priorityLabels[quote.priority]}</span>
                 </div>
               </td>
-              <td data-label="Priorita">
-                <span className={`order-priority-chip ${priorityToneClass}`}>{priorityLabels[quote.priority]}</span>
-              </td>
-              <td data-label="Importi">
+              <td data-label="Totale">
                 <div className="strong">{formatCurrency(quote.totalCents)}</div>
-                <div className="subtle">Residuo {formatCurrency(quote.balanceDueCents)}</div>
+                <div className="subtle">Preventivo</div>
               </td>
-              <td className="quotes-table-actions-cell" data-label="Azioni">
-                <Link className="button ghost" href={`/orders/${quote.id}`}>
-                  Apri scheda
-                </Link>
+              <td className="quotes-table-actions-cell" data-label="Adesso">
+                <QuotePrimaryAction quoteId={quote.id} schedulePending={quote.schedulePending} />
               </td>
             </tr>
           )})
