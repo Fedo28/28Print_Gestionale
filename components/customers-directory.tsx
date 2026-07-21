@@ -32,6 +32,7 @@ export function CustomersDirectory({ customers }: { customers: CustomerDirectory
           ...customer,
           orderCount: customer.orders.length
         }))}
+        helperText="Puoi scrivere anche solo una parte o commettere qualche errore: i nomi più simili vengono mostrati per primi."
         label="Cerca cliente"
         onQueryChange={(value) => {
           setQuery(value);
@@ -41,7 +42,7 @@ export function CustomersDirectory({ customers }: { customers: CustomerDirectory
           setQuery(customer.name);
           setHighlightedCustomerId(customer.id);
         }}
-        placeholder="Es. Rossi, +39 333..., info@azienda.it, pec@azienda.it, IT123..."
+        placeholder="Nome anche approssimativo, telefono, email, P.IVA..."
         query={query}
         selectedCustomerId={highlightedCustomerId}
       />

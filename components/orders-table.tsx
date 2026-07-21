@@ -8,6 +8,7 @@ import { OrdersBulkToolbar } from "@/components/orders-bulk-toolbar";
 import { QuickOrderControlForms, QuickOrderTriggerButton } from "@/components/quick-order-controls";
 import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
 import { StatusPills } from "@/components/status-pills";
+import { getOrderBalanceDisplay, isOrderPricingPending } from "@/lib/order-finance";
 import { getDisplayOrderLabel } from "@/lib/order-display";
 import { priorityLabels } from "@/lib/constants";
 import { formatCurrency, formatDateTime } from "@/lib/format";
@@ -218,6 +219,8 @@ export function OrdersTable({
               const deliveredLabel = order.deliveredAt ? formatDateTime(order.deliveredAt) : formatDateTime(order.deliveryAt);
               const whatsappNotified = order.mainPhase === "SVILUPPO_COMPLETATO" && Boolean(order.readyWhatsappSentAt);
               const partialDelivery = getPartialDeliveryMeta(order.items);
+              const balanceDisplay = getOrderBalanceDisplay(order);
+              const pricingPending = isOrderPricingPending(order);
               const deliveryPrimaryLabel = view === "DELIVERED" ? deliveredLabel : formatDateTime(order.deliveryAt);
               const deliverySecondaryLabel =
                 view === "DELIVERED"
@@ -261,8 +264,14 @@ export function OrdersTable({
                             />
                           </div>
                           <div className="order-mobile-card-total">
-                            <strong>{formatCurrency(order.totalCents)}</strong>
-                            <span>Residuo {formatCurrency(order.balanceDueCents)}</span>
+                            <strong>{pricingPending ? "Da preventivare" : formatCurrency(order.totalCents)}</strong>
+                            <span>
+                              {pricingPending
+                                ? "Prezzo da definire"
+                                : order.balanceDueCents > 0
+                                  ? `Residuo ${formatCurrency(order.balanceDueCents)}`
+                                  : "Saldo chiuso"}
+                            </span>
                           </div>
                           </div>
 
@@ -360,9 +369,18 @@ export function OrdersTable({
                       />
                       {partialDelivery.isPartial ? <div className="subtle order-partial-delivery-note">{`Parziale ${partialDelivery.deliveredCount}/${partialDelivery.totalCount}`}</div> : null}
                     </td>
-                    <td className={order.balanceDueCents > 0 ? "orders-table-balance-due" : "orders-table-balance-settled"} data-label="Saldo">
-                      <div className="strong">{order.balanceDueCents > 0 ? formatCurrency(order.balanceDueCents) : "Pagato"}</div>
-                      <div className="subtle">{order.balanceDueCents > 0 ? "Da incassare" : "Saldo chiuso"}</div>
+                    <td
+                      className={
+                        balanceDisplay.state === "pricing-pending"
+                          ? "orders-table-balance-pending"
+                          : balanceDisplay.state === "due"
+                            ? "orders-table-balance-due"
+                            : "orders-table-balance-settled"
+                      }
+                      data-label="Saldo"
+                    >
+                      <div className="strong">{balanceDisplay.primaryLabel}</div>
+                      <div className="subtle">{balanceDisplay.secondaryLabel}</div>
                     </td>
                     <td className="orders-table-actions-cell" data-label="Adesso">
                       <div className="orders-table-action-buttons">

@@ -28,6 +28,34 @@ const customers = [
   }
 ];
 
+const fuzzyCustomers = [
+  ...customers,
+  {
+    id: "3",
+    name: "LA BOTTEGA DEL FIORE EVENTI SRLS",
+    phone: null,
+    email: "labottegadelfiore@example.com",
+    pec: null,
+    whatsapp: null,
+    taxCode: "13094361006",
+    vatNumber: "13094361006",
+    uniqueCode: "G9HZJRW",
+    type: "AZIENDA" as const
+  },
+  {
+    id: "4",
+    name: "AUTOCARROZZERIA PANETTI S.R.L. SEMPLIFICATA",
+    phone: null,
+    email: null,
+    pec: null,
+    whatsapp: null,
+    taxCode: "13147651007",
+    vatNumber: "13147651007",
+    uniqueCode: null,
+    type: "AZIENDA" as const
+  }
+];
+
 describe("customer search", () => {
   it("normalizes accents and casing", () => {
     expect(normalizeCustomerSearchValue("  Àziènda Rossi ")).toBe("azienda rossi");
@@ -47,6 +75,16 @@ describe("customer search", () => {
     expect(rankCustomers(customers, "RSSMRA80A01H501Z").map((customer) => customer.id)).toEqual(["1"]);
     expect(rankCustomers(customers, "IT12345678901").map((customer) => customer.id)).toEqual(["2"]);
     expect(rankCustomers(customers, "ABC1234").map((customer) => customer.id)).toEqual(["2"]);
+  });
+
+  it("suggests company names when the query contains typing errors", () => {
+    expect(rankCustomers(fuzzyCustomers, "botega flore").map((customer) => customer.id)).toEqual(["3"]);
+    expect(rankCustomers(fuzzyCustomers, "autocarrozeria paneti").map((customer) => customer.id)).toEqual(["4"]);
+    expect(rankCustomers(fuzzyCustomers, "oficina rosi").map((customer) => customer.id)).toEqual(["2"]);
+  });
+
+  it("handles adjacent transposed letters", () => {
+    expect(rankCustomers(fuzzyCustomers, "offciina rossi").map((customer) => customer.id)).toEqual(["2"]);
   });
 
   it("returns no score for non matching customers", () => {

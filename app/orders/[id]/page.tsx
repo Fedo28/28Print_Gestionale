@@ -42,6 +42,7 @@ import {
   purchaseNoteUrgencyLabels
 } from "@/lib/constants";
 import { formatCurrency, formatDateTime, formatQuantity, toDateTimeLocalInput } from "@/lib/format";
+import { isOrderPricingPending } from "@/lib/order-finance";
 import { getDisplayOrderLabel } from "@/lib/order-display";
 import { buildOrdersFilterHref } from "@/lib/order-filters";
 import { parseOrderMaterialNoteContent } from "@/lib/order-material-note";
@@ -88,6 +89,7 @@ export default async function OrderDetailPage({
   const appointmentNoteOptions = getAppointmentNoteOptions(order.appointmentNote);
   const deliveredItemsCount = order.items.filter((item) => Boolean(item.deliveredAt)).length;
   const hasPartialDelivery = deliveredItemsCount > 0 && deliveredItemsCount < order.items.length;
+  const pricingPending = isOrderPricingPending(order);
   const editPanelHref = `/orders/${order.id}?edit=1#order-edit-panel`;
   const deliveryTitle = order.mainPhase === "CONSEGNATO" && order.deliveredAt ? "Consegnato" : "Consegna";
   const visiblePhase = normalizeMainPhaseForWorkflow(order.mainPhase);
@@ -97,10 +99,15 @@ export default async function OrderDetailPage({
       : order.mainPhase === "CONSEGNATO" && order.deliveredAt
         ? formatDateTime(order.deliveredAt)
         : formatDateTime(order.deliveryAt);
-  const mobilePaymentSummary =
-    order.balanceDueCents > 0 ? `Residuo ${formatCurrency(order.balanceDueCents)}` : "Pagato";
+  const mobilePaymentSummary = pricingPending
+    ? "Da preventivare"
+    : order.balanceDueCents > 0
+      ? `Residuo ${formatCurrency(order.balanceDueCents)}`
+      : "Pagato";
   const accountingSummary =
-    activePayments.length === 0
+    pricingPending
+      ? "Nessun movimento registrato • Prezzo da definire"
+      : activePayments.length === 0
       ? `Nessun movimento registrato • Residuo ${formatCurrency(order.balanceDueCents)}`
       : `${activePayments.length} movimenti • Pagato ${formatCurrency(order.paidCents)} • Residuo ${formatCurrency(order.balanceDueCents)}`;
   const operationalStatusSummary =
@@ -122,13 +129,18 @@ export default async function OrderDetailPage({
       : order.paymentStatus === "NON_PAGATO"
         ? "is-coral"
         : "is-amber";
-  const totalToneClass = order.balanceDueCents > 0 ? "is-slate" : "is-teal";
+  const totalToneClass = pricingPending ? "is-amber" : order.balanceDueCents > 0 ? "is-slate" : "is-teal";
   const workflowSummary = hasPartialDelivery ? `Parziale ${deliveredItemsCount}/${order.items.length}` : operationalStatusSummary;
   const paymentSummary =
-    order.balanceDueCents > 0
+    pricingPending
+      ? `${invoiceStatusLabels[order.invoiceStatus]} • Prezzo da definire`
+      : order.balanceDueCents > 0
       ? `${invoiceStatusLabels[order.invoiceStatus]} • Residuo ${formatCurrency(order.balanceDueCents)}`
       : `${invoiceStatusLabels[order.invoiceStatus]} • Saldo chiuso`;
-  const totalSummary = `Pagato ${formatCurrency(order.paidCents)} • Acconto ${formatCurrency(order.depositCents)}`;
+  const totalSummary = pricingPending
+    ? `Prezzo da definire • Acconto ${formatCurrency(order.depositCents)}`
+    : `Pagato ${formatCurrency(order.paidCents)} • Acconto ${formatCurrency(order.depositCents)}`;
+  const totalHeadline = pricingPending ? "Da preventivare" : formatCurrency(order.totalCents);
   const materialSummary = activeMaterialNote
     ? "Nota materiale attiva"
     : latestMaterialNote?.completedAt
@@ -492,7 +504,7 @@ export default async function OrderDetailPage({
 
         <Link className={`order-detail-kpi-card ${totalToneClass}`} href="#order-detail-cashflow">
           <span className="order-detail-kpi-label">Totale ordine</span>
-          <strong className="order-detail-kpi-value">{formatCurrency(order.totalCents)}</strong>
+          <strong className="order-detail-kpi-value">{totalHeadline}</strong>
           <span className="order-detail-kpi-meta">{totalSummary}</span>
         </Link>
       </div>
@@ -603,11 +615,7 @@ export default async function OrderDetailPage({
             <div className="order-detail-disclosure-copy">
               <span className="compact-kicker">Finanza</span>
               <h3>Incassi</h3>
-              <span className="subtle payment-summary-desktop">
-                {activePayments.length === 0
-                  ? `Nessun movimento • Residuo ${formatCurrency(order.balanceDueCents)}`
-                  : `${activePayments.length} movimenti • Pagato ${formatCurrency(order.paidCents)} • Residuo ${formatCurrency(order.balanceDueCents)}`}
-              </span>
+              <span className="subtle payment-summary-desktop">{accountingSummary}</span>
               <span className="subtle payment-summary-mobile">{mobilePaymentSummary}</span>
             </div>
             <span className="action-icon-button" aria-hidden="true">
@@ -617,7 +625,7 @@ export default async function OrderDetailPage({
           <div className="order-detail-accounting-grid order-detail-cashflow-stats">
             <span className="order-detail-accounting-stat">
               <span className="subtle">Totale</span>
-              <strong>{formatCurrency(order.totalCents)}</strong>
+              <strong>{pricingPending ? "Da preventivare" : formatCurrency(order.totalCents)}</strong>
             </span>
             <span className="order-detail-accounting-stat">
               <span className="subtle">Acconto</span>
@@ -629,14 +637,16 @@ export default async function OrderDetailPage({
             </span>
             <span className="order-detail-accounting-stat">
               <span className="subtle">Residuo</span>
-              <strong>{formatCurrency(order.balanceDueCents)}</strong>
+              <strong>{pricingPending ? "Prezzo da definire" : formatCurrency(order.balanceDueCents)}</strong>
             </span>
           </div>
           <OrderPaymentEntryForm orderId={order.id} />
 
           <div className="mini-list">
             {activePayments.length === 0 ? (
-              <div className="empty">Nessun pagamento registrato.</div>
+              <div className="empty">
+                {pricingPending ? "Nessun pagamento registrato: prezzo ancora da definire." : "Nessun pagamento registrato."}
+              </div>
             ) : (
               activePayments.map((payment) => (
                 <article className="mini-item payment-entry-item" key={payment.id}>
