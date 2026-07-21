@@ -1517,6 +1517,9 @@ export function OrderForm({
           : isQuoteMode
             ? "Crea preventivo"
             : "Crea ordine";
+  const desktopSubmitLabel = isQuoteMode ? "Crea preventivo" : "Crea ordine";
+  const desktopSubmitAndContinueLabel = isQuoteMode ? "Crea e nuovo preventivo" : "Crea e nuovo ordine";
+  const mobileSubmitAndContinueLabel = "Crea e nuovo";
   const mobileItemsPreview = items
     .map((item) => ({
       label: item.label.trim() || item.serviceQuery.trim(),
@@ -2999,9 +3002,26 @@ export function OrderForm({
             Svuota bozza
           </button>
         ) : null}
-        <button className="primary" disabled={!hasChosenInvoiceStatus} type="submit">
-          {isQuoteMode ? "Crea preventivo" : "Crea ordine"}
-        </button>
+        <div className="button-row order-submit-action-cluster">
+          <button
+            className="secondary"
+            disabled={!hasChosenInvoiceStatus}
+            name="postSubmitAction"
+            type="submit"
+            value="new"
+          >
+            {desktopSubmitAndContinueLabel}
+          </button>
+          <button
+            className="primary"
+            disabled={!hasChosenInvoiceStatus}
+            name="postSubmitAction"
+            type="submit"
+            value="detail"
+          >
+            {desktopSubmitLabel}
+          </button>
+        </div>
       </div>
 
       <div className="order-mobile-footer">
@@ -3010,7 +3030,7 @@ export function OrderForm({
           <strong>{MOBILE_ORDER_STEPS[mobileStepIndex].label}</strong>
           <span className="subtle">{`${filledRows} righe compilate • ${formatCurrency(previewTotalCents)}`}</span>
         </div>
-        <div className="order-mobile-footer-actions">
+        <div className={`order-mobile-footer-actions${mobileStep === "review" ? " is-review-step" : ""}`}>
           <button
             className="ghost undo-action-button"
             disabled={!canUndoOrderForm}
@@ -3044,9 +3064,26 @@ export function OrderForm({
             Indietro
           </button>
           {mobileStep === "review" ? (
-            <button className="primary" disabled={!hasChosenInvoiceStatus} type="submit">
-              {mobileContinueLabel}
-            </button>
+            <>
+              <button
+                className="secondary"
+                disabled={!hasChosenInvoiceStatus}
+                name="postSubmitAction"
+                type="submit"
+                value="new"
+              >
+                {mobileSubmitAndContinueLabel}
+              </button>
+              <button
+                className="primary"
+                disabled={!hasChosenInvoiceStatus}
+                name="postSubmitAction"
+                type="submit"
+                value="detail"
+              >
+                {mobileContinueLabel}
+              </button>
+            </>
           ) : (
             <button
               className="primary"

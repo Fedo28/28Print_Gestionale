@@ -159,6 +159,27 @@ function parseOrderFormInput(formData: FormData, options?: { forceQuote?: boolea
   };
 }
 
+function parsePostSubmitAction(formData: FormData) {
+  return String(formData.get("postSubmitAction") || "").trim() === "new" ? "new" : "detail";
+}
+
+function buildNextOrderEntryHref(options: {
+  isQuote: boolean;
+  customerId?: string | null;
+  continuation: "created" | "updated";
+}) {
+  const basePath = options.isQuote ? "/quotes/new" : "/orders/new";
+  const params = new URLSearchParams();
+
+  if (options.customerId) {
+    params.set("customerId", options.customerId);
+  }
+
+  params.set("continuation", options.continuation);
+
+  return `${basePath}?${params.toString()}`;
+}
+
 const purchaseNoteAuditSelect = {
   id: true,
   customerId: true,
@@ -644,6 +665,7 @@ export async function deleteCustomerAction(formData: FormData) {
 
 export async function createOrderAction(formData: FormData) {
   await requireAuth();
+  const postSubmitAction = parsePostSubmitAction(formData);
   const input = parseOrderFormInput(formData);
   const order = await createOrder(input);
 
@@ -651,15 +673,38 @@ export async function createOrderAction(formData: FormData) {
   if (input.materialNote) {
     revalidateLinkedPurchaseNoteSurfaces(order.id);
   }
+
+  if (postSubmitAction === "new") {
+    redirect(
+      buildNextOrderEntryHref({
+        isQuote: false,
+        customerId: order.customerId,
+        continuation: "created"
+      })
+    );
+  }
+
   redirect(`/orders/${order.id}`);
 }
 
 export async function createQuoteAction(formData: FormData) {
   await requireAuth();
+  const postSubmitAction = parsePostSubmitAction(formData);
   const input = parseOrderFormInput(formData, { forceQuote: true });
   const order = await createOrder(input);
 
   revalidateOperationalSurfaces(order.id);
+
+  if (postSubmitAction === "new") {
+    redirect(
+      buildNextOrderEntryHref({
+        isQuote: true,
+        customerId: order.customerId,
+        continuation: "created"
+      })
+    );
+  }
+
   redirect(`/orders/${order.id}`);
 }
 
@@ -667,7 +712,8 @@ export async function updateOrderAction(formData: FormData) {
   await requireAuth();
   const id = String(formData.get("id") || "");
   const isQuote = parseBooleanFlag(formData.get("isQuote"));
-  await updateOrder({
+  const postSubmitAction = parsePostSubmitAction(formData);
+  const order = await updateOrder({
     id,
     title: String(formData.get("title") || ""),
     deliveryAt: isQuote
@@ -681,6 +727,16 @@ export async function updateOrderAction(formData: FormData) {
   });
 
   revalidateOperationalSurfaces(id);
+
+  if (postSubmitAction === "new") {
+    redirect(
+      buildNextOrderEntryHref({
+        isQuote: order.isQuote,
+        customerId: order.customerId,
+        continuation: "updated"
+      })
+    );
+  }
 }
 
 export async function updateOrderStatusAction(formData: FormData) {

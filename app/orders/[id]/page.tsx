@@ -296,9 +296,14 @@ export default async function OrderDetailPage({
                 <textarea defaultValue={order.notes || ""} id="notes" name="notes" rows={4} />
               </div>
               <div className="button-row order-detail-submit-row">
-                <button className="primary" type="submit">
-                  Aggiorna ordine
-                </button>
+                <div className="button-row order-submit-action-cluster">
+                  <button className="secondary" name="postSubmitAction" type="submit" value="new">
+                    {order.isQuote ? "Aggiorna e nuovo preventivo" : "Aggiorna e nuovo ordine"}
+                  </button>
+                  <button className="primary" name="postSubmitAction" type="submit" value="detail">
+                    {order.isQuote ? "Aggiorna preventivo" : "Aggiorna ordine"}
+                  </button>
+                </div>
               </div>
             </form>
           </section>

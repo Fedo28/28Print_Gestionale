@@ -7391,9 +7391,16 @@ button.danger {
   margin-top: -2px;
 }
 
-.order-desktop-submit-row .primary {
-  min-width: 220px;
+.order-submit-action-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
   margin-left: auto;
+}
+
+.order-desktop-submit-row .order-submit-action-cluster .primary {
+  min-width: 220px;
 }
 
 .toggle-field {
@@ -9810,7 +9817,7 @@ button.action-icon-button {
   justify-content: flex-end;
 }
 
-.order-detail-submit-row button:last-child {
+.order-detail-submit-row > button:last-child {
   margin-left: auto;
 }
 
@@ -12107,6 +12114,11 @@ textarea:focus-visible {
     min-width: 0;
   }
 
+  .order-submit-action-cluster {
+    width: 100%;
+    margin-left: 0;
+  }
+
   .order-detail-submit-row button,
   .order-item-delivery-action button {
     width: 100%;
@@ -12771,6 +12783,10 @@ textarea:focus-visible {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-gap: 10px;
     gap: 10px;
+  }
+
+  .order-mobile-footer-actions.is-review-step {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .order-mobile-footer button {
@@ -19080,6 +19096,17 @@ button.theme-toggle.toolbar-theme-toggle,
     background: #f2f6fb;
   }
 
+  .order-entry-page-shell .order-entry-followup-banner {
+    border-color: rgba(47, 173, 114, 0.24);
+    background:
+      linear-gradient(180deg, rgba(236, 250, 242, 0.98), rgba(248, 252, 250, 0.99)),
+      #f4fbf7;
+  }
+
+  .order-entry-page-shell .order-entry-followup-banner strong {
+    color: #1f6c4a;
+  }
+
   .order-entry-page-shell .order-draft-banner .button-row {
     gap: 10px;
   }
@@ -19166,7 +19193,11 @@ button.theme-toggle.toolbar-theme-toggle,
     padding: 14px 16px;
   }
 
-  .order-entry-page-shell .order-desktop-submit-row .primary {
+  .order-entry-page-shell .order-submit-action-cluster {
+    gap: 10px;
+  }
+
+  .order-entry-page-shell .order-desktop-submit-row .order-submit-action-cluster .primary {
     min-width: 180px;
   }
 
@@ -23003,6 +23034,8 @@ body.purchase-note-drawer-open {
 }
 
 .order-item-advanced-panel {
+  grid-column: 1 / -1;
+  width: 100%;
   border: 1px solid rgba(221, 229, 240, 0.96);
   border-radius: 20px;
   background: rgba(248, 250, 254, 0.72);
