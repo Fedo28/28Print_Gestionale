@@ -5522,6 +5522,14 @@ button.danger {
   color: var(--brand-dark);
 }
 
+/* The quick actions glyph should sit directly on every order card. */
+.compact-order-item-dashboard .quick-order-trigger,
+.compact-order-item-dashboard .quick-order-trigger.active {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
 .quick-order-trigger .glyph {
   display: block;
   width: 20px;
