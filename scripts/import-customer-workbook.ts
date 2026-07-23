@@ -8,9 +8,19 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 loadEnvConfig(projectRoot);
 
 const prisma = new PrismaClient();
-const sourcePath = "/private/tmp/merge-clienti-019f846b/customer-import-source.json";
-const planPath = "/private/tmp/merge-clienti-019f846b/customer-import-plan.json";
-const resultPath = "/private/tmp/merge-clienti-019f846b/customer-import-result.json";
+const defaultRunDir = "/private/tmp/merge-clienti-019f846b";
+
+function getArgument(name: string, fallback: string) {
+  const inlinePrefix = `${name}=`;
+  const inline = process.argv.find((argument) => argument.startsWith(inlinePrefix));
+  if (inline) return inline.slice(inlinePrefix.length);
+  const index = process.argv.indexOf(name);
+  return index >= 0 && process.argv[index + 1] ? process.argv[index + 1] : fallback;
+}
+
+const sourcePath = getArgument("--source", path.join(defaultRunDir, "customer-import-source.json"));
+const planPath = getArgument("--plan", path.join(defaultRunDir, "customer-import-plan.json"));
+const resultPath = getArgument("--result", path.join(defaultRunDir, "customer-import-result.json"));
 const commit = process.argv.includes("--commit");
 const verify = process.argv.includes("--verify");
 
