@@ -21821,6 +21821,8 @@ body.purchase-note-drawer-open {
 .orders-page-filters-card {
   display: grid;
   gap: 18px;
+  overflow: visible;
+  z-index: 20;
 }
 
 .orders-primary-tabs {

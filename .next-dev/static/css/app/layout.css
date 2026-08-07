@@ -22300,6 +22300,8 @@ body.purchase-note-drawer-open {
   display: grid;
   grid-gap: 18px;
   gap: 18px;
+  overflow: visible;
+  z-index: 20;
 }
 
 .orders-primary-tabs {
