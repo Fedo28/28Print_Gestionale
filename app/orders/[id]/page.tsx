@@ -44,7 +44,6 @@ import {
 } from "@/lib/constants";
 import { formatCurrency, formatDateTime, formatQuantity, toDateTimeLocalInput } from "@/lib/format";
 import { isOrderPricingPending } from "@/lib/order-finance";
-import { getDisplayOrderLabel } from "@/lib/order-display";
 import { canConvertOrderToQuote, getOrderToQuoteDisabledReason } from "@/lib/order-quote";
 import { buildOrdersFilterHref } from "@/lib/order-filters";
 import { parseOrderMaterialNoteContent } from "@/lib/order-material-note";
@@ -204,8 +203,7 @@ export default async function OrderDetailPage({
   return (
     <div className="stack order-detail-page-shell">
       <PageHeader
-        description={getDisplayOrderLabel(order.orderCode, order.title)}
-        title={order.customer.name}
+        title={order.title}
         titleAction={<OrderEditToggleButton targetId="order-edit-panel" />}
         action={
           <div className="order-detail-header-actions order-detail-header-actions-simple">

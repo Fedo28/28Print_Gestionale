@@ -4859,6 +4859,109 @@ button.danger {
   gap: 16px;
 }
 
+.billboard-multi-select-search input {
+  min-height: 48px;
+}
+
+.billboard-multi-select-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-gap: 10px;
+  gap: 10px;
+  max-height: 360px;
+  padding: 2px 6px 2px 2px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.billboard-multi-select-option {
+  display: flex;
+  min-width: 0;
+  min-height: 76px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #d8e2eb;
+  border-radius: 16px;
+  background: #ffffff;
+  color: #253b5d;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.billboard-multi-select-option:hover,
+.billboard-multi-select-option:focus-visible {
+  border-color: #bfcbd8;
+  background: #f9fbfd;
+}
+
+.billboard-multi-select-option.is-selected {
+  border-color: #625bea;
+  background: #eeedff;
+  box-shadow: inset 0 0 0 1px rgba(98, 91, 234, 0.14);
+}
+
+.billboard-multi-select-option.is-blocked:not(.is-selected) {
+  border-color: #e4d9dc;
+  background: #f5f1f2;
+  color: #8b747a;
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.billboard-multi-select-copy {
+  display: grid;
+  min-width: 0;
+  grid-gap: 4px;
+  gap: 4px;
+}
+
+.billboard-multi-select-copy strong,
+.billboard-multi-select-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.billboard-multi-select-copy strong {
+  font-size: 0.86rem;
+}
+
+.billboard-multi-select-copy span {
+  color: #718096;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.billboard-multi-select-status {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: #edf5f0;
+  color: #2f7653;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.billboard-multi-select-option.is-selected .billboard-multi-select-status {
+  background: #625bea;
+  color: #ffffff;
+}
+
+.billboard-multi-select-option.is-blocked:not(.is-selected) .billboard-multi-select-status {
+  background: #eadfe2;
+  color: #8d6570;
+}
+
+.billboard-multi-select-empty {
+  min-height: 72px;
+}
+
 .billboard-selected-asset-card,
 .billboard-target-card {
   gap: 14px;
@@ -4890,6 +4993,17 @@ button.danger {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .billboard-multi-select-grid {
+    grid-template-columns: minmax(0, 1fr);
+    max-height: 420px;
+  }
+
+  .billboard-multi-select-option {
+    min-height: 68px;
+  }
 }
 
 .billboard-monitor-slot-grid {

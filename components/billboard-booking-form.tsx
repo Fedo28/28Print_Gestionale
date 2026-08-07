@@ -8,19 +8,20 @@ import {
   deleteBillboardBookingAction,
   updateBillboardBookingAction
 } from "@/app/actions";
-import {
-  BillboardAssetAutocomplete,
-  BillboardAssetAutocompleteOption
-} from "@/components/billboard-asset-autocomplete";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { CustomerAutocomplete, CustomerAutocompleteOption } from "@/components/customer-autocomplete";
 import { UndoButtonContent } from "@/components/undo-button-content";
 import { useUndoHistory } from "@/components/use-undo-history";
+import { rankBillboardAssets } from "@/lib/billboard-asset-search";
 import { billboardAssetKindLabels, customerTypeLabels } from "@/lib/constants";
 import { formatCurrency } from "@/lib/format";
 
-type BillboardAssetOption = BillboardAssetAutocompleteOption & {
+type BillboardAssetOption = {
+  id: string;
+  code: string;
+  name: string;
   kind: BillboardAssetKind;
+  location?: string | null;
 };
 
 type BillboardBookingSnapshot = {
@@ -73,12 +74,25 @@ type BillboardBookingUndoSnapshot = {
   noteInput: string;
 };
 
-function SubmitButton({ disabled = false, mode }: { disabled?: boolean; mode: BillboardBookingFormMode }) {
+function SubmitButton({
+  disabled = false,
+  mode,
+  selectionCount
+}: {
+  disabled?: boolean;
+  mode: BillboardBookingFormMode;
+  selectionCount: number;
+}) {
   const { pending } = useFormStatus();
+  const idleLabel = mode === "update"
+    ? "Salva modifiche"
+    : selectionCount > 1
+      ? `Prenota ${selectionCount} plance`
+      : "Salva prenotazione";
 
   return (
     <button className="primary" disabled={pending || disabled} type="submit">
-      {pending ? "Salvataggio..." : mode === "update" ? "Salva modifiche" : "Salva prenotazione"}
+      {pending ? "Salvataggio..." : idleLabel}
     </button>
   );
 }
@@ -180,6 +194,8 @@ export function BillboardBookingForm({
   const selectedTargets = selectedTargetIds
     .map((targetId) => assets.find((asset) => asset.id === targetId) || null)
     .filter((asset): asset is BillboardAssetOption => asset !== null);
+  const selectedMonitorTargets = selectedTargets.filter((asset) => asset.kind === "MONITOR");
+  const visibleAssets = useMemo(() => rankBillboardAssets(assets, assetQuery), [assetQuery, assets]);
   const trimmedCustomerQuery = customerQuery.trim();
   const hasSelectedDates = Boolean(startDate && endDate);
   const pricePreviewCents = parseMoneyDraftToCents(priceInput);
@@ -360,7 +376,24 @@ export function BillboardBookingForm({
       return next;
     });
 
-    setAssetQuery("");
+  }
+
+  function removeAssetSelection(assetId: string) {
+    setSelectedTargetIds((current) => current.filter((targetId) => targetId !== assetId));
+    setSelectedMonitorSlots((current) => {
+      const next = { ...current };
+      delete next[assetId];
+      return next;
+    });
+  }
+
+  function toggleAssetSelection(asset: BillboardAssetOption) {
+    if (mode === "create" && selectedTargetIds.includes(asset.id)) {
+      removeAssetSelection(asset.id);
+      return;
+    }
+
+    applyAssetSelection(asset);
   }
 
   const conflictingTargetIds = new Set(
@@ -664,32 +697,66 @@ export function BillboardBookingForm({
         <div className="mini-item billboard-target-picker field full">
           <div className="list-header">
             <div>
-              <strong>{mode === "update" ? "Plancia" : "Impianti"}</strong>
+              <strong>Plance</strong>
             </div>
             <span className="pill status">
-              {selectedTargets.length} {mode === "update" ? "selezionata" : "selezionati"}
+              {selectedTargets.length} {selectedTargets.length === 1 ? "selezionata" : "selezionate"}
             </span>
           </div>
 
-          <BillboardAssetAutocomplete
-            assets={assets}
-            disabled={!hasSelectedDates}
-            emptyMessage="Nessun impianto trovato."
-            label={mode === "update" ? "Sostituisci impianto" : "Aggiungi impianto"}
-            onQueryChange={(value) => {
-              setAssetQuery(value);
-            }}
-            onSelect={(asset) => {
-              applyAssetSelection(asset);
-            }}
-            placeholder=""
-            query={assetQuery}
-            showMeta={false}
-          />
+          {hasSelectedDates ? (
+            <>
+              <div className="field full billboard-multi-select-search">
+                <label htmlFor="billboardAssetSearch">Cerca plancia</label>
+                <input
+                  autoComplete="off"
+                  id="billboardAssetSearch"
+                  onChange={(event) => setAssetQuery(event.target.value)}
+                  spellCheck={false}
+                  value={assetQuery}
+                />
+              </div>
+              {visibleAssets.length > 0 ? (
+                <div className="billboard-multi-select-grid" aria-label="Seleziona plance">
+                  {visibleAssets.map((asset) => {
+                    const isSelected = selectedTargetIds.includes(asset.id);
+                    const isBlocked = isTargetBlocked(asset);
+                    const availableMonitorSlots = asset.kind === "MONITOR" ? getAvailableMonitorSlots(asset.id).length : 0;
+                    const availabilityLabel = isBlocked
+                      ? "Occupata"
+                      : isSelected
+                        ? "Selezionata"
+                        : asset.kind === "MONITOR"
+                          ? `${availableMonitorSlots} slot liberi`
+                          : "Libera";
 
-          {selectedTargets.length > 0 ? (
+                    return (
+                      <button
+                        aria-pressed={isSelected}
+                        className={`billboard-multi-select-option${isSelected ? " is-selected" : ""}${isBlocked ? " is-blocked" : ""}`}
+                        disabled={isBlocked && !isSelected}
+                        key={asset.id}
+                        onClick={() => toggleAssetSelection(asset)}
+                        type="button"
+                      >
+                        <span className="billboard-multi-select-copy">
+                          <strong>{asset.name}</strong>
+                          <span>{asset.code}</span>
+                        </span>
+                        <span className="billboard-multi-select-status">{availabilityLabel}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="empty billboard-multi-select-empty">Nessuna plancia</div>
+              )}
+            </>
+          ) : null}
+
+          {selectedMonitorTargets.length > 0 ? (
             <div className="billboard-target-list">
-              {selectedTargets.map((asset) => {
+              {selectedMonitorTargets.map((asset) => {
                 const overlappingBookings = getOverlappingBookings(asset.id);
                 const isBlocked = conflictingTargetIds.has(asset.id);
                 const availableSlots = getAvailableMonitorSlots(asset.id);
@@ -709,12 +776,7 @@ export function BillboardBookingForm({
                         className="ghost"
                         onClick={(event) => {
                           event.preventDefault();
-                          setSelectedTargetIds((current) => current.filter((targetId) => targetId !== asset.id));
-                          setSelectedMonitorSlots((current) => {
-                            const next = { ...current };
-                            delete next[asset.id];
-                            return next;
-                          });
+                          removeAssetSelection(asset.id);
                         }}
                         type="button"
                       >
@@ -825,7 +887,7 @@ export function BillboardBookingForm({
             </span>
           </div>
           <div className="billboard-booking-financials">
-            <span>Impianti {selectedTargets.length}</span>
+            <span>Plance {selectedTargets.length}</span>
             <span>Valore totale {formatCurrency(totalValuePreviewCents)}</span>
             <span>Incassato totale {formatCurrency(totalPaidPreviewCents)}</span>
             <span>Residuo totale {formatCurrency(totalBalancePreviewCents)}</span>
@@ -865,6 +927,7 @@ export function BillboardBookingForm({
           <SubmitButton
             disabled={!hasSelectedDates || selectedTargets.length === 0 || hasBlockingTargetConflict}
             mode={mode}
+            selectionCount={selectedTargets.length}
           />
         </div>
       </form>
