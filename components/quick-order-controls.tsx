@@ -1,17 +1,20 @@
 "use client";
 
-import { MainPhase, OperationalStatus } from "@prisma/client";
+import { InvoiceStatus, MainPhase, OperationalStatus } from "@prisma/client";
 import { useEffect, useRef, useState } from "react";
 import {
   quickUpdateOperationalStatusAction,
   quickUpdatePhaseAction,
   quickUpdateQuoteFlagAction
 } from "@/app/actions";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
 import { mainPhaseLabels, normalizeMainPhaseForWorkflow, operationalStatusLabels } from "@/lib/constants";
+import { canConvertOrderToQuote, getOrderToQuoteDisabledReason } from "@/lib/order-quote";
 import { getSelectablePhaseTargets } from "@/lib/order-phase-transitions";
 
 export type QuickOrderControlProps = {
+  invoiceStatus?: InvoiceStatus;
   orderId: string;
   phase: MainPhase;
   status: OperationalStatus;
@@ -54,6 +57,7 @@ export function QuickOrderTriggerButton({
 }
 
 export function QuickOrderControlForms({
+  invoiceStatus,
   orderId,
   phase,
   status,
@@ -66,9 +70,14 @@ export function QuickOrderControlForms({
 }: Omit<QuickOrderControlProps, "align">) {
   const phaseFormRef = useRef<HTMLFormElement>(null);
   const statusFormRef = useRef<HTMLFormElement>(null);
-  const quoteFormRef = useRef<HTMLFormElement>(null);
   const visiblePhase = normalizeMainPhaseForWorkflow(phase);
   const selectablePhases = getSelectablePhaseTargets(phase);
+  const quoteConversionState = invoiceStatus
+    ? {
+        canConvert: canConvertOrderToQuote({ isQuote, invoiceStatus, mainPhase: phase }),
+        disabledReason: getOrderToQuoteDisabledReason({ isQuote, invoiceStatus, mainPhase: phase })
+      }
+    : null;
 
   return (
     <div className="quick-order-controls">
@@ -117,23 +126,24 @@ export function QuickOrderControlForms({
       ) : null}
 
       {includeQuote ? (
-        <form action={quickUpdateQuoteFlagAction} ref={quoteFormRef}>
-          <input name="orderId" type="hidden" value={orderId} />
-          <label className="quick-order-label" htmlFor={`quick-quote-${orderId}`}>
-            Tipo
-          </label>
-          <select
-            aria-label="Tipo ordine"
-            className="quick-select"
-            defaultValue={isQuote ? "true" : "false"}
-            id={`quick-quote-${orderId}`}
-            name="isQuote"
-            onChange={() => quoteFormRef.current?.requestSubmit()}
-          >
-            <option value="false">Ordine</option>
-            <option value="true">Preventivo</option>
-          </select>
-        </form>
+        quoteConversionState?.canConvert ? (
+          <form action={quickUpdateQuoteFlagAction}>
+            <input name="orderId" type="hidden" value={orderId} />
+            <input name="isQuote" type="hidden" value="true" />
+            <span className="quick-order-label">Tipo</span>
+            <ConfirmSubmitButton
+              className="button ghost quick-order-action-button"
+              confirmMessage="Trasformare questo ordine in preventivo? Verra escluso dal flusso operativo finche non lo confermi di nuovo come ordine."
+            >
+              Trasforma in preventivo
+            </ConfirmSubmitButton>
+          </form>
+        ) : quoteConversionState?.disabledReason ? (
+          <div className="quick-order-status-card" role="note">
+            <span className="quick-order-label">Tipo</span>
+            <div className="quick-order-note">{quoteConversionState.disabledReason}</div>
+          </div>
+        ) : null
       ) : null}
 
       {showWhatsapp && phase === "SVILUPPO_COMPLETATO" ? (
@@ -146,6 +156,7 @@ export function QuickOrderControlForms({
 }
 
 export function QuickOrderControls({
+  invoiceStatus,
   orderId,
   phase,
   status,
@@ -196,6 +207,7 @@ export function QuickOrderControls({
           <QuickOrderControlForms
             hasWhatsapp={hasWhatsapp}
             includeQuote={includeQuote}
+            invoiceStatus={invoiceStatus}
             isQuote={isQuote}
             orderId={orderId}
             phase={phase}

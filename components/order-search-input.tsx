@@ -143,18 +143,15 @@ export function OrderSearchInput({
       {showSuggestions ? (
         <div className="filters-search-suggestions" aria-label="Suggerimenti ricerca">
           {query.trim().length < 2 ? (
-            <div className="mini-item filters-search-empty">
-              <p className="subtle">Scrivi almeno 2 caratteri e ti suggerisco subito i record piu vicini.</p>
-            </div>
+            null
           ) : isLoading ? (
             <div className="mini-item filters-search-empty">
-              <p className="subtle">Sto cercando anche con maiuscole, minuscole e scritte non perfette.</p>
+              <p className="subtle">Ricerca in corso...</p>
             </div>
           ) : suggestions.length > 0 ? (
             <>
               <div className="filters-search-meta">
                 <span className="subtle">{suggestions.length} suggerimenti rapidi</span>
-                <span className="subtle">Invio o Cerca filtrano la lista, un click apre la scheda</span>
               </div>
               {suggestions.map((item) => (
                 <button
@@ -171,7 +168,7 @@ export function OrderSearchInput({
             </>
           ) : (
             <div className="mini-item filters-search-empty">
-              <p className="subtle">Nessun suggerimento trovato. Prova con una parte del codice, del cliente o del telefono.</p>
+              <p className="subtle">Nessun risultato.</p>
             </div>
           )}
         </div>

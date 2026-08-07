@@ -59,7 +59,7 @@ export default async function StaffSettingsPage({
           <div className="subtle">
             {searchParams.invite === "sent"
               ? "Invito email inviato subito."
-              : "Profilo pronto. Se la mail automatica non e attiva, trovi la bozza invito qui sotto."}
+              : "Profilo pronto."}
           </div>
         </div>
       ) : null}
@@ -68,21 +68,14 @@ export default async function StaffSettingsPage({
         <article className="card card-pad compact-metric compact-metric-neutral">
           <span className="compact-metric-label">Utenti attivi</span>
           <strong>{readyUsers}</strong>
-          <span className="hint">Profili staff pronti all'accesso</span>
         </article>
         <article className="card card-pad compact-metric compact-metric-brand">
           <span className="compact-metric-label">Admin</span>
           <strong>{adminUsers}</strong>
-          <span className="hint">Profili con permessi completi</span>
         </article>
         <article className="card card-pad compact-metric compact-metric-warning">
           <span className="compact-metric-label">Inviti da finalizzare</span>
           <strong>{pendingInviteUsers}</strong>
-          <span className="hint">
-            {mailDelivery.enabled
-              ? "Le nuove profilazioni provano a inviare subito la mail."
-              : "Il link e pronto, ma serve configurare il provider mail per l'invio automatico."}
-          </span>
         </article>
       </section>
 
@@ -91,7 +84,6 @@ export default async function StaffSettingsPage({
           <div className="list-header">
             <div>
               <h3>Nuovo profilo</h3>
-              <p className="card-muted">Crea il profilo collega e prepara nickname e credenziali iniziali.</p>
             </div>
           </div>
           <StaffProfileForm />
@@ -101,10 +93,6 @@ export default async function StaffSettingsPage({
           <div className="list-header">
             <div>
               <h3>Invito email</h3>
-              <p className="card-muted">
-                Puoi personalizzare oggetto, testo e dominio del link. La profilazione usera questa bozza anche per
-                l'invio automatico quando il provider mail e attivo.
-              </p>
             </div>
             <div className="staff-user-pills">
               <span className={`pill ${inviteConfig.accessLoginUrl ? "status" : "warning"}`}>
@@ -142,7 +130,6 @@ export default async function StaffSettingsPage({
         <div className="list-header">
           <div>
             <h3>Staff registrato</h3>
-            <p className="card-muted">Elenco profili gia creati, con stato reale del link e dell'invio mail.</p>
           </div>
         </div>
 

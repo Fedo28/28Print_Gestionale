@@ -292,7 +292,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             </svg>
             <span className="mobile-search-trigger-copy">
               <span className="mobile-search-trigger-label">Cerca</span>
-              <span className="mobile-search-trigger-hint">Ordini, clienti, cartelloni</span>
             </span>
           </button>
 
@@ -331,7 +330,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="mobile-search-head">
               <div>
                 <strong>Ricerca</strong>
-                <div className="subtle">Trova ordini, clienti, preventivi, impianti e catalogo.</div>
               </div>
               <button
                 aria-label="Chiudi ricerca"

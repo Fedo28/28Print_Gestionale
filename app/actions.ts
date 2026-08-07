@@ -2,7 +2,12 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { createBillboardBookings, parseBillboardBookingDate } from "@/lib/billboards";
+import {
+  createBillboardBookings,
+  deleteBillboardBooking,
+  parseBillboardBookingDate,
+  updateBillboardBooking
+} from "@/lib/billboards";
 import {
   parseCustomerType,
   parseBooleanFlag,
@@ -363,6 +368,16 @@ async function getPurchaseNoteAuditRecord(noteId: string) {
   return prisma.purchaseNote.findUnique({
     where: { id: noteId },
     select: purchaseNoteAuditSelect
+  });
+}
+
+async function getBillboardBookingAuditRecord(bookingId: string) {
+  return prisma.billboardBooking.findUnique({
+    where: { id: bookingId },
+    include: {
+      customer: true,
+      billboardAsset: true
+    }
   });
 }
 
@@ -1225,13 +1240,14 @@ export async function createBillboardBookingAction(formData: FormData) {
     .filter(Boolean);
   const monitorSlotsByAssetId = parseBillboardMonitorSlots(formData.get("monitorSlotsPayload")?.toString() || null);
   const customerId = String(formData.get("customerId") || "").trim();
+  const customer = parseBillboardBookingCustomerInput(formData);
 
   if (billboardAssetIds.length === 0) {
     throw new Error("Seleziona almeno un impianto pubblicitario.");
   }
 
-  if (!customerId) {
-    throw new Error("Seleziona un cliente.");
+  if (!customerId && !customer.name) {
+    throw new Error("Seleziona un cliente o inseriscine uno nuovo.");
   }
 
   const startsAt = parseBillboardBookingDate(formData.get("startsAt")?.toString() || null, "Data inizio");
@@ -1244,7 +1260,8 @@ export async function createBillboardBookingAction(formData: FormData) {
     const bookings = await createBillboardBookings({
       billboardAssetIds,
       monitorSlotsByAssetId,
-      customerId,
+      customerId: customerId || undefined,
+      customer,
       startsAt,
       endsAt,
       priceCents,
@@ -1274,6 +1291,88 @@ export async function createBillboardBookingAction(formData: FormData) {
   }
 }
 
+export async function updateBillboardBookingAction(formData: FormData) {
+  const session = await requireAuth();
+  const bookingId = String(formData.get("bookingId") || "").trim();
+  const billboardAssetId = String(formData.get("billboardAssetId") || "").trim();
+  const customerId = String(formData.get("customerId") || "").trim();
+  const customer = parseBillboardBookingCustomerInput(formData);
+  const startsAt = parseBillboardBookingDate(formData.get("startsAt")?.toString() || null, "Data inizio");
+  const endsAt = parseBillboardBookingDate(formData.get("endsAt")?.toString() || null, "Data fine");
+  const priceCents = parseCurrencyToCents(formData.get("price")?.toString() || null);
+  const paidCents = parseCurrencyToCents(formData.get("paid")?.toString() || null);
+  const note = String(formData.get("note") || "");
+  const previous = await getBillboardBookingAuditRecord(bookingId);
+  const monitorSlotsByAssetId = parseBillboardMonitorSlots(formData.get("monitorSlotsPayload")?.toString() || null);
+  const monitorSlot = monitorSlotsByAssetId[billboardAssetId];
+
+  if (!bookingId) {
+    throw new Error("Prenotazione non trovata.");
+  }
+
+  if (!billboardAssetId) {
+    throw new Error("Seleziona un impianto pubblicitario.");
+  }
+
+  if (!customerId && !customer.name) {
+    throw new Error("Seleziona un cliente o inseriscine uno nuovo.");
+  }
+
+  const booking = await updateBillboardBooking({
+    id: bookingId,
+    billboardAssetId,
+    monitorSlot: typeof monitorSlot === "number" ? monitorSlot : null,
+    customerId: customerId || undefined,
+    customer,
+    startsAt,
+    endsAt,
+    priceCents,
+    paidCents,
+    note
+  });
+
+  await writeAuditLog({
+    actionType: "UPDATED",
+    actorUserId: session.userId,
+    entityId: booking.id,
+    entityLabel: booking.billboardAsset.name,
+    entityType: "BILLBOARD_BOOKING",
+    title: "Prenotazione cartellone aggiornata",
+    details: `${booking.customer.name} • ${formatDateKey(booking.startsAt)} - ${formatDateKey(booking.endsAt)}${booking.monitorSlot ? ` • Slot ${booking.monitorSlot}` : ""}`,
+    snapshotBefore: previous ? buildBillboardBookingAuditSnapshot(previous) : undefined,
+    snapshotAfter: buildBillboardBookingAuditSnapshot(booking)
+  });
+
+  revalidateBillboardSurfaces();
+  redirect(`/billboards?date=${formatDateKey(booking.startsAt)}`);
+}
+
+export async function deleteBillboardBookingAction(formData: FormData) {
+  const session = await requireAuth();
+  const bookingId = String(formData.get("bookingId") || "").trim();
+  const previous = await getBillboardBookingAuditRecord(bookingId);
+
+  if (!bookingId || !previous) {
+    throw new Error("Prenotazione non trovata.");
+  }
+
+  const deleted = await deleteBillboardBooking(bookingId);
+
+  await writeAuditLog({
+    actionType: "DELETED",
+    actorUserId: session.userId,
+    entityId: deleted.id,
+    entityLabel: deleted.billboardAsset.name,
+    entityType: "BILLBOARD_BOOKING",
+    title: "Prenotazione cartellone eliminata",
+    details: `${deleted.customer.name} • ${formatDateKey(deleted.startsAt)} - ${formatDateKey(deleted.endsAt)}${deleted.monitorSlot ? ` • Slot ${deleted.monitorSlot}` : ""}`,
+    snapshotBefore: buildBillboardBookingAuditSnapshot(previous)
+  });
+
+  revalidateBillboardSurfaces();
+  redirect(`/billboards?date=${formatDateKey(deleted.startsAt)}`);
+}
+
 function parseBillboardMonitorSlots(raw: string | null) {
   if (!raw || !raw.trim()) {
     return {};
@@ -1296,6 +1395,21 @@ function parseBillboardMonitorSlots(raw: string | null) {
   } catch {
     return {};
   }
+}
+
+function parseBillboardBookingCustomerInput(formData: FormData) {
+  return {
+    type: parseCustomerType(formData.get("customerType")?.toString() || null),
+    name: String(formData.get("customerName") || "").trim(),
+    phone: String(formData.get("customerPhone") || "").trim(),
+    whatsapp: String(formData.get("customerWhatsapp") || "").trim(),
+    email: String(formData.get("customerEmail") || "").trim(),
+    pec: String(formData.get("customerPec") || "").trim(),
+    taxCode: String(formData.get("customerTaxCode") || "").trim(),
+    vatNumber: String(formData.get("customerVatNumber") || "").trim(),
+    uniqueCode: String(formData.get("customerUniqueCode") || "").trim(),
+    notes: String(formData.get("customerNotes") || "").trim()
+  };
 }
 
 export async function createServiceAction(formData: FormData) {

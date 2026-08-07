@@ -26,11 +26,11 @@ type CustomerAutocompleteProps = {
   onSelect: (customer: CustomerAutocompleteOption) => void;
   label: string;
   placeholder: string;
-  helperText?: string;
   selectedCustomerId?: string | null;
   emptyMessage?: string;
   maxSuggestions?: number;
   disabled?: boolean;
+  required?: boolean;
 };
 
 export function CustomerAutocomplete({
@@ -40,11 +40,11 @@ export function CustomerAutocomplete({
   onSelect,
   label,
   placeholder,
-  helperText,
   selectedCustomerId,
-  emptyMessage = "Nessun cliente trovato. Continua a scrivere o inseriscilo come nuovo.",
+  emptyMessage = "Nessun cliente trovato.",
   maxSuggestions = 6,
-  disabled = false
+  disabled = false,
+  required = false
 }: CustomerAutocompleteProps) {
   const [isFocused, setIsFocused] = useState(false);
   const deferredQuery = useDeferredValue(query);
@@ -56,7 +56,10 @@ export function CustomerAutocomplete({
 
   return (
     <div className="field full customer-autocomplete-field">
-      <label htmlFor={inputId}>{label}</label>
+      <label htmlFor={inputId}>
+        {label}
+        {required ? <span aria-hidden="true" className="required-field-mark">*</span> : null}
+      </label>
       <input
         autoComplete="off"
         disabled={disabled}
@@ -71,15 +74,10 @@ export function CustomerAutocomplete({
           }
         }}
         placeholder={placeholder}
+        required={required}
         spellCheck={false}
         value={query}
       />
-      {helperText ? (
-        <div className="customer-autocomplete-meta">
-          <p className="hint customer-autocomplete-hint">{helperText}</p>
-        </div>
-      ) : null}
-
       {showSuggestions ? (
         suggestionResults.length > 0 ? (
           <div className="customer-autocomplete-suggestions" aria-label="Suggerimenti clienti">

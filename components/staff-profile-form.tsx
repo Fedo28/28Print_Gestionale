@@ -52,7 +52,6 @@ export function StaffProfileForm() {
             required
             spellCheck={false}
           />
-          <p className="hint">Solo minuscole, numeri, punto, trattino o underscore.</p>
         </div>
 
         <div className="field wide">
@@ -63,7 +62,6 @@ export function StaffProfileForm() {
         <div className="field full">
           <label htmlFor="staff-password">Password iniziale</label>
           <input id="staff-password" name="password" required type="password" />
-          <p className="hint">La imposti tu in profilazione. Dopo il primo accesso il collega puo personalizzare il nickname dalle impostazioni.</p>
         </div>
 
         <div className="button-row">

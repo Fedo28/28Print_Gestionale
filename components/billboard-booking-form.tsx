@@ -1,13 +1,18 @@
 "use client";
 
-import { BillboardAssetKind } from "@prisma/client";
+import { BillboardAssetKind, CustomerType } from "@prisma/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { createBillboardBookingAction } from "@/app/actions";
+import {
+  createBillboardBookingAction,
+  deleteBillboardBookingAction,
+  updateBillboardBookingAction
+} from "@/app/actions";
 import {
   BillboardAssetAutocomplete,
   BillboardAssetAutocompleteOption
 } from "@/components/billboard-asset-autocomplete";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { CustomerAutocomplete, CustomerAutocompleteOption } from "@/components/customer-autocomplete";
 import { UndoButtonContent } from "@/components/undo-button-content";
 import { useUndoHistory } from "@/components/use-undo-history";
@@ -27,11 +32,38 @@ type BillboardBookingSnapshot = {
   endsAt: string;
 };
 
+type BillboardBookingFormMode = "create" | "update";
+
+type BillboardBookingFormDefaultBooking = {
+  id: string;
+  billboardAssetId: string;
+  customerId: string;
+  customerName: string;
+  monitorSlot?: number | null;
+  startsAt: string;
+  endsAt: string;
+  priceInput: string;
+  paidInput: string;
+  note: string;
+};
+
+type BillboardInlineCustomerDraft = {
+  type: CustomerType;
+  phone: string;
+  whatsapp: string;
+  email: string;
+  pec: string;
+  taxCode: string;
+  vatNumber: string;
+  uniqueCode: string;
+  notes: string;
+};
+
 type BillboardBookingUndoSnapshot = {
   customerQuery: string;
   selectedCustomerId: string;
+  customerDraft: BillboardInlineCustomerDraft;
   assetQuery: string;
-  selectedAssetId: string;
   selectedTargetIds: string[];
   selectedMonitorSlots: Record<string, number>;
   startDate: string;
@@ -41,12 +73,12 @@ type BillboardBookingUndoSnapshot = {
   noteInput: string;
 };
 
-function SubmitButton({ disabled = false }: { disabled?: boolean }) {
+function SubmitButton({ disabled = false, mode }: { disabled?: boolean; mode: BillboardBookingFormMode }) {
   const { pending } = useFormStatus();
 
   return (
     <button className="primary" disabled={pending || disabled} type="submit">
-      {pending ? "Salvataggio..." : "Salva prenotazione"}
+      {pending ? "Salvataggio..." : mode === "update" ? "Salva modifiche" : "Salva prenotazione"}
     </button>
   );
 }
@@ -61,35 +93,76 @@ function getPreferredCustomerSecondaryContact(
   customer: Pick<CustomerAutocompleteOption, "email" | "whatsapp" | "phone">
 ) {
   const primaryContact = customer.phone?.trim() || customer.whatsapp?.trim() || "";
-  return customer.email?.trim() || (customer.whatsapp?.trim() && customer.whatsapp?.trim() !== primaryContact ? customer.whatsapp.trim() : "") || "Nessun contatto secondario";
+  return (
+    customer.email?.trim() ||
+    (customer.whatsapp?.trim() && customer.whatsapp?.trim() !== primaryContact ? customer.whatsapp.trim() : "") ||
+    "Nessun contatto secondario"
+  );
+}
+
+function createEmptyInlineCustomerDraft(type: CustomerType = "PUBBLICO"): BillboardInlineCustomerDraft {
+  return {
+    type,
+    phone: "",
+    whatsapp: "",
+    email: "",
+    pec: "",
+    taxCode: "",
+    vatNumber: "",
+    uniqueCode: "",
+    notes: ""
+  };
 }
 
 export function BillboardBookingForm({
   customers,
   assets,
   existingBookings,
-  defaultStartDate,
-  defaultEndDate,
-  defaultAsset = null
+  defaultStartDate = "",
+  defaultEndDate = "",
+  defaultAsset = null,
+  defaultBooking = null,
+  mode = "create"
 }: {
   customers: CustomerAutocompleteOption[];
   assets: BillboardAssetOption[];
   existingBookings: BillboardBookingSnapshot[];
-  defaultStartDate: string;
-  defaultEndDate: string;
+  defaultStartDate?: string;
+  defaultEndDate?: string;
   defaultAsset?: BillboardAssetOption | null;
+  defaultBooking?: BillboardBookingFormDefaultBooking | null;
+  mode?: BillboardBookingFormMode;
 }) {
-  const [customerQuery, setCustomerQuery] = useState("");
-  const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const initialSelectedCustomer =
+    defaultBooking?.customerId ? customers.find((customer) => customer.id === defaultBooking.customerId) || null : null;
+  const initialTargetIds = Array.from(
+    new Set(
+      [
+        defaultBooking?.billboardAssetId || "",
+        !defaultBooking && defaultAsset ? defaultAsset.id : ""
+      ].filter(Boolean)
+    )
+  );
+  const ignoredBookingId = mode === "update" ? defaultBooking?.id || null : null;
+  const [customerQuery, setCustomerQuery] = useState(defaultBooking?.customerName || "");
+  const [selectedCustomerId, setSelectedCustomerId] = useState(defaultBooking?.customerId || "");
+  const [customerDraft, setCustomerDraft] = useState<BillboardInlineCustomerDraft>(
+    createEmptyInlineCustomerDraft(initialSelectedCustomer?.type || "PUBBLICO")
+  );
   const [assetQuery, setAssetQuery] = useState("");
-  const [selectedAssetId, setSelectedAssetId] = useState("");
-  const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>(defaultAsset ? [defaultAsset.id] : []);
-  const [selectedMonitorSlots, setSelectedMonitorSlots] = useState<Record<string, number>>({});
-  const [startDate, setStartDate] = useState(defaultStartDate);
-  const [endDate, setEndDate] = useState(defaultEndDate);
-  const [priceInput, setPriceInput] = useState("");
-  const [paidInput, setPaidInput] = useState("");
-  const [noteInput, setNoteInput] = useState("");
+  const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>(initialTargetIds);
+  const [selectedMonitorSlots, setSelectedMonitorSlots] = useState<Record<string, number>>(
+    defaultBooking?.billboardAssetId && defaultBooking.monitorSlot
+      ? {
+          [defaultBooking.billboardAssetId]: defaultBooking.monitorSlot
+        }
+      : {}
+  );
+  const [startDate, setStartDate] = useState(defaultBooking?.startsAt || defaultStartDate);
+  const [endDate, setEndDate] = useState(defaultBooking?.endsAt || defaultEndDate);
+  const [priceInput, setPriceInput] = useState(defaultBooking?.priceInput || "");
+  const [paidInput, setPaidInput] = useState(defaultBooking?.paidInput || "");
+  const [noteInput, setNoteInput] = useState(defaultBooking?.note || "");
   const undoSeededRef = useRef(false);
   const undoRestoringRef = useRef(false);
   const bookingUndo = useUndoHistory<BillboardBookingUndoSnapshot>({
@@ -104,13 +177,13 @@ export function BillboardBookingForm({
     record: recordBookingUndo
   } = bookingUndo;
   const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId) || null;
-  const selectedAsset = assets.find((asset) => asset.id === selectedAssetId) || null;
   const selectedTargets = selectedTargetIds
     .map((targetId) => assets.find((asset) => asset.id === targetId) || null)
     .filter((asset): asset is BillboardAssetOption => asset !== null);
+  const trimmedCustomerQuery = customerQuery.trim();
+  const hasSelectedDates = Boolean(startDate && endDate);
   const pricePreviewCents = parseMoneyDraftToCents(priceInput);
   const paidPreviewCents = parseMoneyDraftToCents(paidInput);
-  const balancePreviewCents = Math.max(0, pricePreviewCents - paidPreviewCents);
   const totalValuePreviewCents = pricePreviewCents * selectedTargets.length;
   const totalPaidPreviewCents = paidPreviewCents * selectedTargets.length;
   const totalBalancePreviewCents = Math.max(0, totalValuePreviewCents - totalPaidPreviewCents);
@@ -119,8 +192,8 @@ export function BillboardBookingForm({
     return {
       customerQuery,
       selectedCustomerId,
+      customerDraft: { ...customerDraft },
       assetQuery,
-      selectedAssetId,
       selectedTargetIds: [...selectedTargetIds],
       selectedMonitorSlots: { ...selectedMonitorSlots },
       startDate,
@@ -135,8 +208,8 @@ export function BillboardBookingForm({
     undoRestoringRef.current = true;
     setCustomerQuery(snapshot.customerQuery);
     setSelectedCustomerId(snapshot.selectedCustomerId);
+    setCustomerDraft({ ...snapshot.customerDraft });
     setAssetQuery(snapshot.assetQuery);
-    setSelectedAssetId(snapshot.selectedAssetId);
     setSelectedTargetIds([...snapshot.selectedTargetIds]);
     setSelectedMonitorSlots({ ...snapshot.selectedMonitorSlots });
     setStartDate(snapshot.startDate);
@@ -169,9 +242,13 @@ export function BillboardBookingForm({
   }, [existingBookings]);
 
   function getOverlappingBookings(assetId: string) {
+    if (!hasSelectedDates) {
+      return [];
+    }
+
     const bookings = bookingsByAsset.get(assetId) || [];
     return bookings
-      .filter((booking) => rangesOverlap(booking.startsAt, booking.endsAt, startDate, endDate))
+      .filter((booking) => booking.id !== ignoredBookingId && rangesOverlap(booking.startsAt, booking.endsAt, startDate, endDate))
       .sort(
         (left, right) =>
           new Date(left.startsAt).getTime() - new Date(right.startsAt).getTime() ||
@@ -213,12 +290,16 @@ export function BillboardBookingForm({
   }
 
   function getAvailableMonitorSlots(assetId: string) {
+    if (!hasSelectedDates) {
+      return [1, 2, 3, 4, 5, 6];
+    }
+
     const occupied = getMonitorSlotMap(assetId);
     return [1, 2, 3, 4, 5, 6].filter((slot) => !occupied.has(slot));
   }
 
   function buildSlots(asset: BillboardAssetOption) {
-    if (asset.kind !== "MONITOR") {
+    if (asset.kind !== "MONITOR" || !hasSelectedDates) {
       return [];
     }
 
@@ -226,30 +307,72 @@ export function BillboardBookingForm({
     return Array.from({ length: 6 }, (_, index) => slotMap.get(index + 1) || null);
   }
 
-  const selectedAssetOccupancy = selectedAsset ? getOverlappingBookings(selectedAsset.id) : [];
-  const selectedAssetCapacity = selectedAsset ? getAssetCapacity(selectedAsset.kind) : 0;
-  const selectedAssetHasFreeCapacity =
-    selectedAsset ? selectedAssetOccupancy.length < selectedAssetCapacity : false;
-  const selectedAssetAvailableSlots = selectedAsset?.kind === "MONITOR" ? getAvailableMonitorSlots(selectedAsset.id) : [];
-  const selectedAssetAlreadyAdded = selectedAsset ? selectedTargetIds.includes(selectedAsset.id) : false;
+  function isTargetBlocked(asset: BillboardAssetOption) {
+    if (!hasSelectedDates) {
+      return false;
+    }
+
+    const overlappingBookings = getOverlappingBookings(asset.id);
+    if (asset.kind !== "MONITOR") {
+      return overlappingBookings.length >= getAssetCapacity(asset.kind);
+    }
+
+    const availableSlots = getAvailableMonitorSlots(asset.id);
+    const chosenSlot = selectedMonitorSlots[asset.id];
+
+    if (!chosenSlot) {
+      return availableSlots.length === 0;
+    }
+
+    return !availableSlots.includes(chosenSlot);
+  }
+
+  function applyAssetSelection(asset: BillboardAssetOption) {
+    setSelectedTargetIds((current) => {
+      if (mode === "update") {
+        return [asset.id];
+      }
+
+      if (current.includes(asset.id)) {
+        return current;
+      }
+
+      return [...current, asset.id];
+    });
+
+    setSelectedMonitorSlots((current) => {
+      const next = mode === "update" ? {} : { ...current };
+
+      if (asset.kind === "MONITOR") {
+        const availableSlots = getAvailableMonitorSlots(asset.id);
+        const currentSlot = current[asset.id];
+        if (typeof currentSlot === "number" && availableSlots.includes(currentSlot)) {
+          next[asset.id] = currentSlot;
+        } else if (availableSlots[0]) {
+          next[asset.id] = availableSlots[0];
+        } else {
+          delete next[asset.id];
+        }
+      } else {
+        delete next[asset.id];
+      }
+
+      return next;
+    });
+
+    setAssetQuery("");
+  }
+
   const conflictingTargetIds = new Set(
-    selectedTargets
-      .filter((asset) => {
-        const overlapping = getOverlappingBookings(asset.id);
-        if (asset.kind !== "MONITOR") {
-          return overlapping.length >= getAssetCapacity(asset.kind);
-        }
-
-        const chosenSlot = selectedMonitorSlots[asset.id];
-        if (!chosenSlot) {
-          return getAvailableMonitorSlots(asset.id).length === 0;
-        }
-
-        return !getAvailableMonitorSlots(asset.id).includes(chosenSlot);
-      })
-      .map((asset) => asset.id)
+    hasSelectedDates ? selectedTargets.filter((asset) => isTargetBlocked(asset)).map((asset) => asset.id) : []
   );
-  const hasBlockingTargetConflict = conflictingTargetIds.size > 0;
+  const hasBlockingTargetConflict = hasSelectedDates && conflictingTargetIds.size > 0;
+
+  useEffect(() => {
+    if (selectedCustomerId && !selectedCustomer) {
+      setSelectedCustomerId("");
+    }
+  }, [selectedCustomer, selectedCustomerId]);
 
   useEffect(() => {
     const snapshot = captureUndoSnapshot();
@@ -267,6 +390,7 @@ export function BillboardBookingForm({
     recordBookingUndo(snapshot);
   }, [
     assetQuery,
+    customerDraft,
     customerQuery,
     endDate,
     noteInput,
@@ -274,393 +398,489 @@ export function BillboardBookingForm({
     priceInput,
     recordBookingUndo,
     resetBookingUndo,
-    selectedAssetId,
     selectedCustomerId,
     selectedMonitorSlots,
     selectedTargetIds,
     startDate
   ]);
 
+  function findExactCustomerMatch(value: string) {
+    const normalizedValue = value.trim().toLocaleLowerCase("it-IT");
+    if (!normalizedValue) {
+      return null;
+    }
+
+    return (
+      customers.find((customer) => customer.name.trim().toLocaleLowerCase("it-IT") === normalizedValue) || null
+    );
+  }
+
+  function clearSelectedCustomer() {
+    setSelectedCustomerId("");
+    setCustomerQuery("");
+    setCustomerDraft((current) => createEmptyInlineCustomerDraft(current.type));
+  }
+
+  const activeAction = mode === "update" ? updateBillboardBookingAction : createBillboardBookingAction;
+
   return (
-    <form action={createBillboardBookingAction} className="form-grid billboard-booking-form" encType="multipart/form-data">
-      <input name="customerId" type="hidden" value={selectedCustomerId} />
-      {selectedTargetIds.map((targetId) => (
-        <input key={targetId} name="billboardAssetIds" type="hidden" value={targetId} />
-      ))}
-      <input name="monitorSlotsPayload" type="hidden" value={JSON.stringify(selectedMonitorSlots)} />
+    <div className="stack">
+      <form action={activeAction} className="form-grid billboard-booking-form">
+        {mode === "update" && defaultBooking ? (
+          <>
+            <input name="bookingId" type="hidden" value={defaultBooking.id} />
+            <input name="billboardAssetId" type="hidden" value={selectedTargets[0]?.id || ""} />
+          </>
+        ) : (
+          selectedTargetIds.map((targetId) => (
+            <input key={targetId} name="billboardAssetIds" type="hidden" value={targetId} />
+          ))
+        )}
+        <input name="customerId" type="hidden" value={selectedCustomerId} />
+        <input name="monitorSlotsPayload" type="hidden" value={JSON.stringify(selectedMonitorSlots)} />
 
-      <CustomerAutocomplete
-        customers={customers}
-        emptyMessage="Cliente non trovato. Crealo prima nella sezione clienti, poi torna qui per prenotare."
-        label="Cliente"
-        onQueryChange={(value) => {
-          setCustomerQuery(value);
-          if (selectedCustomerId) {
-            setSelectedCustomerId("");
-          }
-        }}
-        onSelect={(customer) => {
-          setSelectedCustomerId(customer.id);
-          setCustomerQuery(customer.name);
-        }}
-        placeholder=""
-        query={customerQuery}
-        selectedCustomerId={selectedCustomerId}
-      />
-
-      {selectedCustomer ? (
-        <div className="mini-item customer-selection-card field full">
-          <div className="list-header">
-            <div>
-              <strong>{selectedCustomer.name}</strong>
-              <div className="subtle">{customerTypeLabels[selectedCustomer.type]}</div>
-            </div>
-            <button
-              className="ghost"
-              onClick={(event) => {
-                event.preventDefault();
-                setSelectedCustomerId("");
-                setCustomerQuery("");
-              }}
-              type="button"
-            >
-              Cambia cliente
-            </button>
-          </div>
-          <div className="subtle">{getPreferredCustomerPrimaryContact(selectedCustomer)}</div>
-          <div className="subtle">{getPreferredCustomerSecondaryContact(selectedCustomer)}</div>
-        </div>
-      ) : null}
-
-      <div className="mini-item billboard-target-picker field full">
-        <div className="list-header">
-          <div>
-            <strong>Impianti</strong>
-          </div>
-          <span className="pill status">{selectedTargets.length} selezionati</span>
+        <div className="field billboard-booking-date-field">
+          <label htmlFor="startsAt">Dal</label>
+          <input
+            className="date-time-input"
+            id="startsAt"
+            name="startsAt"
+            onChange={(event) => setStartDate(event.target.value)}
+            required
+            type="date"
+            value={startDate}
+          />
         </div>
 
-        <BillboardAssetAutocomplete
-          assets={assets}
-          emptyMessage="Nessun impianto corrisponde a questa ricerca. Prova con cartellone, monitor, vela o il codice impianto."
-          label="Aggiungi impianto"
+        <div className="field billboard-booking-date-field">
+          <label htmlFor="endsAt">Al</label>
+          <input
+            className="date-time-input"
+            id="endsAt"
+            name="endsAt"
+            onChange={(event) => setEndDate(event.target.value)}
+            required
+            type="date"
+            value={endDate}
+          />
+        </div>
+
+        <CustomerAutocomplete
+          customers={customers}
+          emptyMessage="Cliente non trovato."
+          label="Cliente"
           onQueryChange={(value) => {
-            setAssetQuery(value);
-            if (selectedAssetId) {
-              setSelectedAssetId("");
+            const exactMatch = findExactCustomerMatch(value);
+            if (exactMatch) {
+              setSelectedCustomerId(exactMatch.id);
+              setCustomerQuery(exactMatch.name);
+              return;
+            }
+
+            setCustomerQuery(value);
+            if (selectedCustomerId) {
+              setSelectedCustomerId("");
             }
           }}
-          onSelect={(asset) => {
-            setSelectedAssetId(asset.id);
-            setAssetQuery(asset.name);
+          onSelect={(customer) => {
+            setSelectedCustomerId(customer.id);
+            setCustomerQuery(customer.name);
+            setCustomerDraft((current) => ({
+              ...createEmptyInlineCustomerDraft(customer.type),
+              type: current.type
+            }));
           }}
           placeholder=""
-          query={assetQuery}
-          selectedAssetId={selectedAssetId}
-          showMeta={false}
+          query={customerQuery}
+          selectedCustomerId={selectedCustomerId}
         />
 
-        <div className="billboard-selected-asset-actions billboard-selected-asset-actions-inline">
-          <button
-            className="primary"
-            disabled={!selectedAsset || !selectedAssetHasFreeCapacity || selectedAssetAlreadyAdded}
-            onClick={(event) => {
-              event.preventDefault();
-              if (!selectedAsset || selectedAssetAlreadyAdded || !selectedAssetHasFreeCapacity) {
-                return;
-              }
-
-              setSelectedTargetIds((current) => [...current, selectedAsset.id]);
-              if (selectedAsset.kind === "MONITOR") {
-                const preferredSlot =
-                  selectedMonitorSlots[selectedAsset.id] || selectedAssetAvailableSlots[0] || 1;
-                setSelectedMonitorSlots((current) => ({
-                  ...current,
-                  [selectedAsset.id]: preferredSlot
-                }));
-              }
-              setSelectedAssetId("");
-              setAssetQuery("");
-            }}
-            type="button"
-          >
-            {selectedAsset
-              ? selectedAssetAlreadyAdded
-                ? "Impianto gia inserito"
-                : selectedAssetHasFreeCapacity
-                  ? "Aggiungi impianto"
-                  : selectedAsset.kind === "MONITOR"
-                    ? "Monitor pieno"
-                    : "Impianto occupato"
-              : "Seleziona un impianto"}
-          </button>
-        </div>
-
-        {selectedAsset ? (
-          <div className="mini-item customer-selection-card billboard-selected-asset-card">
+        {selectedCustomer ? (
+          <div className="mini-item customer-selection-card field full">
             <div className="list-header">
               <div>
-                <strong>{selectedAsset.name}</strong>
-                <div className="subtle">
-                  {selectedAsset.code} • {billboardAssetKindLabels[selectedAsset.kind]}
+                <strong>{selectedCustomer.name}</strong>
+                <div className="subtle">{customerTypeLabels[selectedCustomer.type]}</div>
+              </div>
+              <button
+                className="ghost"
+                onClick={(event) => {
+                  event.preventDefault();
+                  clearSelectedCustomer();
+                }}
+                type="button"
+              >
+                Crea nuovo
+              </button>
+            </div>
+            <div className="subtle">{getPreferredCustomerPrimaryContact(selectedCustomer)}</div>
+            <div className="subtle">{getPreferredCustomerSecondaryContact(selectedCustomer)}</div>
+          </div>
+        ) : (
+          <>
+            <input name="customerName" type="hidden" value={trimmedCustomerQuery} />
+            <div className="field">
+              <label htmlFor="customerType">Tipo cliente</label>
+              <select
+                id="customerType"
+                name="customerType"
+                onChange={(event) =>
+                  setCustomerDraft((current) => ({
+                    ...current,
+                    type: event.target.value as CustomerType
+                  }))
+                }
+                value={customerDraft.type}
+              >
+                {Object.entries(customerTypeLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="customerPhone">Telefono</label>
+              <input
+                id="customerPhone"
+                name="customerPhone"
+                onChange={(event) =>
+                  setCustomerDraft((current) => ({
+                    ...current,
+                    phone: event.target.value
+                  }))
+                }
+                value={customerDraft.phone}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="customerWhatsapp">WhatsApp</label>
+              <input
+                id="customerWhatsapp"
+                name="customerWhatsapp"
+                onChange={(event) =>
+                  setCustomerDraft((current) => ({
+                    ...current,
+                    whatsapp: event.target.value
+                  }))
+                }
+                value={customerDraft.whatsapp}
+              />
+            </div>
+            <details className="field full order-advanced-disclosure">
+              <summary>Info avanzate</summary>
+              <div className="form-grid order-advanced-grid">
+                <div className="field wide">
+                  <label htmlFor="customerEmail">Email</label>
+                  <input
+                    id="customerEmail"
+                    name="customerEmail"
+                    onChange={(event) =>
+                      setCustomerDraft((current) => ({
+                        ...current,
+                        email: event.target.value
+                      }))
+                    }
+                    type="email"
+                    value={customerDraft.email}
+                  />
+                </div>
+                <div className="field wide">
+                  <label htmlFor="customerPec">PEC</label>
+                  <input
+                    id="customerPec"
+                    name="customerPec"
+                    onChange={(event) =>
+                      setCustomerDraft((current) => ({
+                        ...current,
+                        pec: event.target.value
+                      }))
+                    }
+                    type="email"
+                    value={customerDraft.pec}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="customerVatNumber">P. IVA</label>
+                  <input
+                    id="customerVatNumber"
+                    name="customerVatNumber"
+                    onChange={(event) =>
+                      setCustomerDraft((current) => ({
+                        ...current,
+                        vatNumber: event.target.value
+                      }))
+                    }
+                    value={customerDraft.vatNumber}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="customerTaxCode">Codice fiscale</label>
+                  <input
+                    id="customerTaxCode"
+                    name="customerTaxCode"
+                    onChange={(event) =>
+                      setCustomerDraft((current) => ({
+                        ...current,
+                        taxCode: event.target.value
+                      }))
+                    }
+                    value={customerDraft.taxCode}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="customerUniqueCode">Codice univoco (CU)</label>
+                  <input
+                    id="customerUniqueCode"
+                    name="customerUniqueCode"
+                    onChange={(event) =>
+                      setCustomerDraft((current) => ({
+                        ...current,
+                        uniqueCode: event.target.value
+                      }))
+                    }
+                    value={customerDraft.uniqueCode}
+                  />
                 </div>
               </div>
-              <div className="billboard-selected-asset-actions">
-                <button
-                  className="ghost"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    setSelectedAssetId("");
-                    setAssetQuery("");
-                  }}
-                  type="button"
-                >
-                  Cambia
-                </button>
-              </div>
+            </details>
+            <div className="field full">
+              <label htmlFor="customerNotes">Note cliente</label>
+              <textarea
+                id="customerNotes"
+                name="customerNotes"
+                onChange={(event) =>
+                  setCustomerDraft((current) => ({
+                    ...current,
+                    notes: event.target.value
+                  }))
+                }
+                value={customerDraft.notes}
+              />
             </div>
-            <div className="subtle">{selectedAsset.location || "Luogo da definire"}</div>
-            {selectedAsset.kind === "MONITOR" ? (
-              <>
-                <div className="billboard-monitor-slot-picker">
-                  {[1, 2, 3, 4, 5, 6].map((slot) => {
-                    const slotBooking = buildSlots(selectedAsset)[slot - 1];
-                    const isAvailable = !slotBooking;
-                    const isSelected = (selectedMonitorSlots[selectedAsset.id] || selectedAssetAvailableSlots[0] || 1) === slot;
-                    return (
+          </>
+        )}
+
+        <div className="mini-item billboard-target-picker field full">
+          <div className="list-header">
+            <div>
+              <strong>{mode === "update" ? "Plancia" : "Impianti"}</strong>
+            </div>
+            <span className="pill status">
+              {selectedTargets.length} {mode === "update" ? "selezionata" : "selezionati"}
+            </span>
+          </div>
+
+          <BillboardAssetAutocomplete
+            assets={assets}
+            disabled={!hasSelectedDates}
+            emptyMessage="Nessun impianto trovato."
+            label={mode === "update" ? "Sostituisci impianto" : "Aggiungi impianto"}
+            onQueryChange={(value) => {
+              setAssetQuery(value);
+            }}
+            onSelect={(asset) => {
+              applyAssetSelection(asset);
+            }}
+            placeholder=""
+            query={assetQuery}
+            showMeta={false}
+          />
+
+          {selectedTargets.length > 0 ? (
+            <div className="billboard-target-list">
+              {selectedTargets.map((asset) => {
+                const overlappingBookings = getOverlappingBookings(asset.id);
+                const isBlocked = conflictingTargetIds.has(asset.id);
+                const availableSlots = getAvailableMonitorSlots(asset.id);
+                const chosenSlot = selectedMonitorSlots[asset.id] || availableSlots[0] || 1;
+                const occupiedSlots = asset.kind === "MONITOR" ? overlappingBookings.length : overlappingBookings.length > 0 ? 1 : 0;
+
+                return (
+                  <article className="mini-item billboard-target-card" key={asset.id}>
+                    <div className="list-header">
+                      <div>
+                        <strong>{asset.name}</strong>
+                        <div className="subtle">
+                          {asset.code} • {billboardAssetKindLabels[asset.kind]}
+                        </div>
+                      </div>
                       <button
-                        className={`billboard-monitor-slot-choice${isSelected ? " is-selected" : ""}${isAvailable ? "" : " is-disabled"}`}
-                        disabled={!isAvailable}
-                        key={`${selectedAsset.id}-slot-${slot}`}
+                        className="ghost"
                         onClick={(event) => {
                           event.preventDefault();
-                          if (!isAvailable) {
-                            return;
-                          }
-                          setSelectedMonitorSlots((current) => ({ ...current, [selectedAsset.id]: slot }));
+                          setSelectedTargetIds((current) => current.filter((targetId) => targetId !== asset.id));
+                          setSelectedMonitorSlots((current) => {
+                            const next = { ...current };
+                            delete next[asset.id];
+                            return next;
+                          });
                         }}
                         type="button"
                       >
-                        Slot {slot}
+                        {mode === "update" ? "Svuota" : "Rimuovi"}
                       </button>
-                    );
-                  })}
-                </div>
-                <div className="billboard-monitor-slot-grid">
-                  {buildSlots(selectedAsset).map((slot, index) => (
-                    <div className={`billboard-monitor-slot${slot ? " is-occupied" : " is-free"}`} key={`${selectedAsset.id}-${index + 1}`}>
-                      <span className="billboard-monitor-slot-index">Slot {index + 1}</span>
-                      <strong>{slot ? slot.customerName : "Libero"}</strong>
                     </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <div className="billboard-target-availability">
-                {selectedAssetHasFreeCapacity ? (
-                  <span className="pill status">Disponibile nel periodo</span>
-                ) : (
-                  <span className="pill warning">Gia occupato nel periodo</span>
-                )}
-              </div>
-            )}
-          </div>
-        ) : null}
+                    <div className="subtle">{asset.location || "Luogo da definire"}</div>
 
-        {selectedTargets.length > 0 ? (
-          <div className="billboard-target-list">
-            {selectedTargets.map((asset) => {
-              const overlappingBookings = getOverlappingBookings(asset.id);
-              const capacity = getAssetCapacity(asset.kind);
-              const remaining = Math.max(0, capacity - overlappingBookings.length);
-              const isBlocked = conflictingTargetIds.has(asset.id);
-              const chosenSlot = selectedMonitorSlots[asset.id] || getAvailableMonitorSlots(asset.id)[0] || 1;
-
-              return (
-                <article className="mini-item billboard-target-card" key={asset.id}>
-                  <div className="list-header">
-                    <div>
-                      <strong>{asset.name}</strong>
-                      <div className="subtle">
-                        {asset.code} • {billboardAssetKindLabels[asset.kind]}
-                      </div>
-                    </div>
-                    <button
-                      className="ghost"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        setSelectedTargetIds((current) => current.filter((targetId) => targetId !== asset.id));
-                        setSelectedMonitorSlots((current) => {
-                          const next = { ...current };
-                          delete next[asset.id];
-                          return next;
-                        });
-                      }}
-                      type="button"
-                    >
-                      Rimuovi
-                    </button>
-                  </div>
-                  {asset.kind === "MONITOR" ? (
-                    <>
-                      <div className="billboard-target-availability">
-                        <span className={`pill ${isBlocked ? "warning" : "status"}`}>
-                          Occupati {overlappingBookings.length}/6
-                        </span>
-                        <span className={`pill ${remaining > 0 ? "status" : "warning"}`}>Liberi {remaining}</span>
-                        <span className="pill">Slot scelto {chosenSlot}</span>
-                      </div>
-                      <div className="billboard-monitor-slot-picker compact">
-                        {[1, 2, 3, 4, 5, 6].map((slot) => {
-                          const slotBooking = buildSlots(asset)[slot - 1];
-                          const isAvailable = !slotBooking;
-                          const isSelected = chosenSlot === slot;
-                          return (
-                            <button
-                              className={`billboard-monitor-slot-choice${isSelected ? " is-selected" : ""}${isAvailable ? "" : " is-disabled"}`}
-                              disabled={!isAvailable}
-                              key={`${asset.id}-selected-slot-${slot}`}
-                              onClick={(event) => {
-                                event.preventDefault();
-                                if (!isAvailable) {
-                                  return;
-                                }
-                                setSelectedMonitorSlots((current) => ({ ...current, [asset.id]: slot }));
-                              }}
-                              type="button"
-                            >
-                              {slot}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <div className="billboard-monitor-slot-grid compact">
-                        {buildSlots(asset).map((slot, index) => (
-                          <div className={`billboard-monitor-slot${slot ? " is-occupied" : " is-free"}`} key={`${asset.id}-selected-${index + 1}`}>
-                            <span className="billboard-monitor-slot-index">{index + 1}</span>
-                            <strong>{slot ? slot.customerName : "Libero"}</strong>
+                    {hasSelectedDates ? (
+                      asset.kind === "MONITOR" ? (
+                        <>
+                          <div className="billboard-target-availability">
+                            <span className={`pill ${isBlocked ? "warning" : "status"}`}>Occupati {occupiedSlots}/6</span>
+                            <span className={`pill ${availableSlots.length > 0 ? "status" : "warning"}`}>
+                              Liberi {Math.max(0, 6 - occupiedSlots)}
+                            </span>
+                            <span className="pill">Slot scelto {chosenSlot}</span>
                           </div>
-                        ))}
+                          <div className="billboard-monitor-slot-picker compact">
+                            {[1, 2, 3, 4, 5, 6].map((slot) => {
+                              const slotBooking = buildSlots(asset)[slot - 1];
+                              const isAvailable = !slotBooking;
+                              const isSelected = chosenSlot === slot;
+                              return (
+                                <button
+                                  className={`billboard-monitor-slot-choice${isSelected ? " is-selected" : ""}${isAvailable ? "" : " is-disabled"}`}
+                                  disabled={!isAvailable}
+                                  key={`${asset.id}-slot-${slot}`}
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    if (!isAvailable) {
+                                      return;
+                                    }
+                                    setSelectedMonitorSlots((current) => ({ ...current, [asset.id]: slot }));
+                                  }}
+                                  type="button"
+                                >
+                                  {slot}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <div className="billboard-monitor-slot-grid compact">
+                            {buildSlots(asset).map((slot, index) => (
+                              <div className={`billboard-monitor-slot${slot ? " is-occupied" : " is-free"}`} key={`${asset.id}-${index + 1}`}>
+                                <span className="billboard-monitor-slot-index">{index + 1}</span>
+                                <strong>{slot ? slot.customerName : "Libero"}</strong>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="billboard-target-availability">
+                          <span className={`pill ${isBlocked ? "warning" : "status"}`}>
+                            {isBlocked ? "Gia occupato nel periodo" : "Disponibile nel periodo"}
+                          </span>
+                        </div>
+                      )
+                    ) : null}
+
+                    {hasSelectedDates && overlappingBookings.length > 0 ? (
+                      <div className="subtle">
+                        {asset.kind === "MONITOR"
+                          ? `Nel periodo sono gia presenti: ${overlappingBookings.map((booking) => booking.customerName).join(" • ")}`
+                          : `Occupato da ${overlappingBookings[0]?.customerName || "un altro cliente"} nel periodo selezionato.`}
                       </div>
-                    </>
-                  ) : (
-                    <div className="billboard-target-availability">
-                      <span className={`pill ${overlappingBookings.length > 0 ? "warning" : "status"}`}>
-                        {overlappingBookings.length > 0 ? "Gia occupato" : "Disponibile"}
-                      </span>
-                    </div>
-                  )}
-                </article>
-              );
-            })}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="field billboard-booking-date-field">
-        <label htmlFor="startsAt">Dal</label>
-        <input
-          className="date-time-input"
-          id="startsAt"
-          name="startsAt"
-          onChange={(event) => setStartDate(event.target.value)}
-          required
-          type="date"
-          value={startDate}
-        />
-      </div>
-
-      <div className="field billboard-booking-date-field">
-        <label htmlFor="endsAt">Al</label>
-        <input
-          className="date-time-input"
-          id="endsAt"
-          name="endsAt"
-          onChange={(event) => setEndDate(event.target.value)}
-          required
-          type="date"
-          value={endDate}
-        />
-      </div>
-
-      <div className="field billboard-booking-money-field">
-        <label htmlFor="price">Valore per impianto</label>
-        <input
-          className="currency-input"
-          id="price"
-          inputMode="decimal"
-          name="price"
-          onChange={(event) => setPriceInput(event.target.value)}
-          type="text"
-          value={priceInput}
-        />
-      </div>
-
-      <div className="field billboard-booking-money-field">
-        <label htmlFor="paid">Incassato per impianto</label>
-        <input
-          className="currency-input"
-          id="paid"
-          inputMode="decimal"
-          name="paid"
-          onChange={(event) => setPaidInput(event.target.value)}
-          type="text"
-          value={paidInput}
-        />
-      </div>
-
-      <div className="mini-item billboard-booking-balance-card field full">
-        <div className="list-header">
-          <div>
-            <strong>Riepilogo</strong>
-          </div>
-          <span className={`pill ${totalBalancePreviewCents > 0 ? "warning" : "status"}`}>
-            Saldo totale {formatCurrency(totalBalancePreviewCents)}
-          </span>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
-        <div className="billboard-booking-financials">
-          <span>Impianti {selectedTargets.length}</span>
-          <span>Valore totale {formatCurrency(totalValuePreviewCents)}</span>
-          <span>Incassato totale {formatCurrency(totalPaidPreviewCents)}</span>
-          <span>Residuo totale {formatCurrency(totalBalancePreviewCents)}</span>
+
+        <div className="field billboard-booking-money-field">
+          <label htmlFor="price">Valore per impianto</label>
+          <input
+            className="currency-input"
+            id="price"
+            inputMode="decimal"
+            name="price"
+            onChange={(event) => setPriceInput(event.target.value)}
+            type="text"
+            value={priceInput}
+          />
         </div>
-        {hasBlockingTargetConflict ? (
-          <div className="subtle">
-            Almeno un impianto selezionato non e piu disponibile nel periodo scelto. Rimuovilo o cambia date.
+
+        <div className="field billboard-booking-money-field">
+          <label htmlFor="paid">Incassato per impianto</label>
+          <input
+            className="currency-input"
+            id="paid"
+            inputMode="decimal"
+            name="paid"
+            onChange={(event) => setPaidInput(event.target.value)}
+            type="text"
+            value={paidInput}
+          />
+        </div>
+
+        <div className="mini-item billboard-booking-balance-card field full">
+          <div className="list-header">
+            <div>
+              <strong>Riepilogo</strong>
+            </div>
+            <span className={`pill ${totalBalancePreviewCents > 0 ? "warning" : "status"}`}>
+              Saldo totale {formatCurrency(totalBalancePreviewCents)}
+            </span>
           </div>
-        ) : null}
-      </div>
+          <div className="billboard-booking-financials">
+            <span>Impianti {selectedTargets.length}</span>
+            <span>Valore totale {formatCurrency(totalValuePreviewCents)}</span>
+            <span>Incassato totale {formatCurrency(totalPaidPreviewCents)}</span>
+            <span>Residuo totale {formatCurrency(totalBalancePreviewCents)}</span>
+          </div>
+          {hasBlockingTargetConflict ? (
+            <div className="subtle">Impianto non disponibile nel periodo selezionato.</div>
+          ) : null}
+        </div>
 
-      <div className="field full">
-        <label htmlFor="note">Note</label>
-        <textarea id="note" name="note" onChange={(event) => setNoteInput(event.target.value)} value={noteInput} />
-      </div>
+        <div className="field full">
+          <label htmlFor="note">Note</label>
+          <textarea id="note" name="note" onChange={(event) => setNoteInput(event.target.value)} value={noteInput} />
+        </div>
 
-      <div className="button-row billboard-booking-submit-row">
-        <button
-          className="ghost undo-action-button"
-          disabled={!canUndoBooking}
-          onClick={(event) => {
-            event.preventDefault();
-            if (!canUndoBooking) {
-              return;
-            }
-            if (!window.confirm("Vuoi annullare l'ultima modifica della prenotazione?")) {
-              return;
-            }
-            const snapshot = undoBooking();
-            if (!snapshot) {
-              return;
-            }
-            restoreUndoSnapshot(snapshot);
-          }}
-          type="button"
-        >
-          <UndoButtonContent count={canUndoBooking ? undoBookingCount : undefined} label="Indietro" />
-        </button>
-        <SubmitButton disabled={selectedTargets.length === 0 || hasBlockingTargetConflict} />
-      </div>
-    </form>
+        <div className="button-row billboard-booking-submit-row">
+          <button
+            className="ghost undo-action-button"
+            disabled={!canUndoBooking}
+            onClick={(event) => {
+              event.preventDefault();
+              if (!canUndoBooking) {
+                return;
+              }
+              if (!window.confirm("Vuoi annullare l'ultima modifica della prenotazione?")) {
+                return;
+              }
+              const snapshot = undoBooking();
+              if (!snapshot) {
+                return;
+              }
+              restoreUndoSnapshot(snapshot);
+            }}
+            type="button"
+          >
+            <UndoButtonContent count={canUndoBooking ? undoBookingCount : undefined} label="Indietro" />
+          </button>
+          <SubmitButton
+            disabled={!hasSelectedDates || selectedTargets.length === 0 || hasBlockingTargetConflict}
+            mode={mode}
+          />
+        </div>
+      </form>
+
+      {mode === "update" && defaultBooking ? (
+        <form action={deleteBillboardBookingAction} className="billboard-booking-delete-form">
+          <input name="bookingId" type="hidden" value={defaultBooking.id} />
+          <ConfirmSubmitButton
+            className="button danger"
+            confirmMessage="Vuoi eliminare questa plancia prenotata? L'operazione non puo essere annullata."
+          >
+            Elimina plancia
+          </ConfirmSubmitButton>
+        </form>
+      ) : null}
+    </div>
   );
 }
 

@@ -95,7 +95,6 @@ export default async function CustomersPage({ searchParams }: Props) {
             <div>
               <span className="compact-kicker">Nuova anagrafica</span>
               <strong>Inserisci cliente</strong>
-              <span className="subtle">Apri solo quando serve.</span>
             </div>
             <span className="pill">Apri</span>
           </summary>

@@ -100,7 +100,6 @@ export function OrdersRecentActivity({
         <div className="list-header">
           <div>
             <h3>Ultimi cambi fatturazione</h3>
-            <p className="card-muted">Dal piu recente al meno recente. Se trovi un clic sbagliato puoi annullarlo da qui.</p>
           </div>
         </div>
         <RecentOrderActivityList
@@ -114,7 +113,6 @@ export function OrdersRecentActivity({
         <div className="list-header">
           <div>
             <h3>Ultime modifiche ordini</h3>
-            <p className="card-muted">Qui sotto trovi gli altri cambi recenti, cosi l'ultima operazione resta sempre rintracciabile.</p>
           </div>
         </div>
         <RecentOrderActivityList

@@ -122,8 +122,10 @@ describe("order domain", () => {
   });
 
   it("supports dashboard presets for filtered dashboard navigation", () => {
+    expect(parseDashboardPreset("TO_DO")).toBe("TO_DO");
     expect(parseDashboardPreset("OVERDUE")).toBe("OVERDUE");
     expect(parseDashboardPreset("UNKNOWN")).toBe("ALL");
+    expect(buildOrdersFilterHref({ preset: "TO_DO" })).toBe("/orders?preset=TO_DO");
     expect(buildOrdersFilterHref({ preset: "BLOCKED" })).toBe("/orders?preset=BLOCKED");
   });
 

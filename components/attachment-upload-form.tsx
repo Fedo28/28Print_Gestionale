@@ -262,10 +262,7 @@ export function AttachmentUploadForm({
             ref={fileInputRef}
             type="file"
           />
-          <strong>Trascina qui i file oppure tocca per sceglierli</strong>
-          <span className="subtle">
-            Upload {useDirectUpload ? "diretto" : "server"} • fino a {formatAttachmentMaxSize()} per file
-          </span>
+          <strong>Allegati</strong>
         </label>
 
         {queuedAttachments.length > 0 ? (
@@ -332,10 +329,6 @@ export function AttachmentUploadForm({
         </div>
       </form>
 
-      <p className="hint">
-        Carica PDF, immagini e file di lavorazione senza lasciare la scheda ordine. I file salgono uno dopo l'altro
-        per evitare blocchi.
-      </p>
       {successMessage ? <div className="mini-item">{successMessage}</div> : null}
       {error ? <div className="empty">{error}</div> : null}
     </div>

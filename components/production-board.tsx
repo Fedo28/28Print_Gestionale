@@ -21,17 +21,17 @@ type ProductionTarget = "PLANNING" | "WORKING" | "READY" | "BLOCKED";
 
 const VISIBLE_ORDERS_PER_QUEUE = 6;
 
-const queueDetails: Record<QueueKey, { title: string; description: string }> = {
-  planning: { title: "Da avviare", description: "Ordini pronti da iniziare" },
-  working: { title: "In lavorazione", description: "Produzione attiva" },
-  blocked: { title: "Sospesi", description: "Da sbloccare" },
-  ready: { title: "Pronti", description: "Da ritirare o avvisare" }
+const queueDetails: Record<QueueKey, { title: string }> = {
+  planning: { title: "Da avviare" },
+  working: { title: "In lavorazione" },
+  blocked: { title: "Sospesi" },
+  ready: { title: "Pronti" }
 };
 
-const suspensionOptions: Array<{ status: OperationalStatus; label: string; detail: string }> = [
-  { status: "IN_ATTESA_FILE", label: "Mi manca un file", detail: "Aspetto un file o una correzione" },
-  { status: "IN_ATTESA_MATERIALE", label: "Mi manca materiale", detail: "Serve materiale prima di continuare" },
-  { status: "IN_ATTESA_APPROVAZIONE", label: "Aspetto il cliente", detail: "Aspetto conferma o approvazione" }
+const suspensionOptions: Array<{ status: OperationalStatus; label: string }> = [
+  { status: "IN_ATTESA_FILE", label: "Mi manca un file" },
+  { status: "IN_ATTESA_MATERIALE", label: "Mi manca materiale" },
+  { status: "IN_ATTESA_APPROVAZIONE", label: "Aspetto il cliente" }
 ];
 
 function getPhaseQueue(order: ProductionOrder): Exclude<QueueKey, "blocked"> {
@@ -244,7 +244,6 @@ function ProductionLane({
       <div className="list-header">
         <div>
           <h3>{details.title}</h3>
-          <p className="card-muted">{details.description}</p>
         </div>
         <span className="pill">{orders.length}</span>
       </div>
@@ -302,9 +301,7 @@ function SuspensionDialog({
         <div>
           <span className="compact-kicker">Sospendi ordine</span>
           <h3 id="production-suspension-title">{order.customer.name}</h3>
-          <p className="hint">
-            {getDisplayOrderLabel(order.orderCode, order.title)}. Scegli cosa manca: l’ordine resterà qui finché non lo riprendi.
-          </p>
+          <p className="hint">{getDisplayOrderLabel(order.orderCode, order.title)}</p>
         </div>
 
         <div className="production-suspension-options">
@@ -316,14 +313,13 @@ function SuspensionDialog({
               type="button"
             >
               <strong>{option.label}</strong>
-              <span>{option.detail}</span>
             </button>
           ))}
         </div>
 
         <label className="field production-suspension-detail">
-          <span>Dettaglio facoltativo</span>
-          <input onChange={(event) => onDetailChange(event.target.value)} placeholder="Es. attendo il logo corretto" value={detail} />
+          <span>Dettaglio</span>
+          <input onChange={(event) => onDetailChange(event.target.value)} value={detail} />
         </label>
 
         <div className="button-row production-suspension-actions">
@@ -478,13 +474,6 @@ export function ProductionBoard({ queues }: { queues: Awaited<ReturnType<typeof 
   return (
     <>
       <div className="production-board" aria-label="Bacheca produzione">
-        <div className="production-board-hint">
-          <span className="production-drag-handle" aria-hidden="true">
-            <DragGlyph />
-          </span>
-          Trascina un ordine nella colonna successiva. Per sospenderlo, trascinalo in Sospesi.
-        </div>
-
         <div className="grid grid-2 production-board-grid">
           {(Object.keys(queueDetails) as QueueKey[]).map((queue) => (
             <ProductionLane

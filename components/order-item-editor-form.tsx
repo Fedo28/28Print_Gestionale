@@ -8,7 +8,6 @@ import { useUndoHistory } from "@/components/use-undo-history";
 import { normalizeCatalogServiceSearchValue, rankCatalogServices } from "@/lib/catalog-search";
 import { formatCurrency } from "@/lib/format";
 import { getTieredUnitPrice, parseFlexibleAdjustmentInput, parseQuantityValue, usesLineTotalQuantityTiers } from "@/lib/pricing";
-import { formatServiceUnitPriceLabel, formatServiceUnitShortLabel } from "@/lib/service-units";
 
 type OrderItemEditorService = Pick<ServiceCatalog, "id" | "code" | "name" | "basePriceCents" | "quantityTiers" | "unit">;
 
@@ -309,7 +308,7 @@ export function OrderItemEditorForm({
         <div className="order-item-service-search-meta">
           <span className="subtle">
             {selectedService
-              ? `${selectedService.code || "Senza codice"} • ${formatCurrency(selectedService.basePriceCents)} • ${formatServiceUnitPriceLabel(selectedService.unit)}`
+              ? formatCurrency(selectedService.basePriceCents)
               : "Vuoto = voce libera"}
           </span>
           {selectedService || serviceQuery ? (
@@ -335,11 +334,8 @@ export function OrderItemEditorForm({
                 >
                   <span className="order-line-suggestion-main">
                     <strong className="order-line-suggestion-title">{service.name}</strong>
-                    <span className="order-line-suggestion-meta">
-                      {service.code || "Senza codice"} • {formatCurrency(service.basePriceCents)} • {formatServiceUnitPriceLabel(service.unit)}
-                    </span>
+                    <span className="order-line-suggestion-meta">{formatCurrency(service.basePriceCents)}</span>
                   </span>
-                  <span className="order-line-suggestion-badge">{formatServiceUnitShortLabel(service.unit)}</span>
                 </button>
               ))}
             </div>

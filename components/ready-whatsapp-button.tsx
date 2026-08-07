@@ -25,7 +25,7 @@ export function ReadyWhatsAppButton({
   const hasAlreadyNotified = Boolean(notifiedAt);
   const isDisabled = disabled || !hasPhone || isPending;
   const title = disabled
-    ? "Disponibile solo quando l'ordine e pronto."
+    ? "Ordine non pronto."
     : !hasPhone
       ? "Manca un numero cliente valido."
       : hasAlreadyNotified
@@ -71,7 +71,7 @@ export function ReadyWhatsAppButton({
       </button>
       {!compact && message ? <p className="hint">{message}</p> : null}
       {!compact && !message && hasAlreadyNotified ? <p className="hint">{`Avvisato il ${formatDateTime(notifiedAt!)}`}</p> : null}
-      {!compact && !disabled && !hasPhone ? <p className="hint">Manca un numero cliente valido: aggiorna telefono o WhatsApp.</p> : null}
+      {!compact && !disabled && !hasPhone ? <p className="hint">Numero cliente non disponibile.</p> : null}
     </div>
   );
 }

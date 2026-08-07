@@ -67,7 +67,6 @@ export function OrderPrintBrandMenu({ orderId }: { orderId: string }) {
             role="menuitem"
           >
             <strong>28 Print</strong>
-            <span>Usa il logo standard gia salvato</span>
           </Link>
           <Link
             className="print-brand-option"
@@ -77,7 +76,6 @@ export function OrderPrintBrandMenu({ orderId }: { orderId: string }) {
             role="menuitem"
           >
             <strong>PR adv</strong>
-            <span>Usa il logo allegato PR adv</span>
           </Link>
         </div>
       ) : null}

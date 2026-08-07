@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 
 export function PageHeader({
   title,
-  description,
   action,
   titleAction
 }: {
@@ -18,7 +17,6 @@ export function PageHeader({
           <h2>{title}</h2>
           {titleAction ? <div className="page-head-title-action">{titleAction}</div> : null}
         </div>
-        {description ? <p>{description}</p> : null}
       </div>
       {action ? <div className="page-head-action">{action}</div> : null}
     </header>

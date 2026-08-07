@@ -7,7 +7,7 @@ export function PrintOrderActions({ backHref, brandLabel }: { backHref: string; 
     <section aria-label="Azioni anteprima di stampa" className="print-preview-actions">
       <div className="print-preview-actions-copy">
         <strong>Anteprima pronta</strong>
-        <span>Logo selezionato: {brandLabel}. Controlla il foglio e poi apri la stampa.</span>
+        <span>Logo selezionato: {brandLabel}</span>
       </div>
       <div className="button-row">
         <button className="button primary" onClick={() => window.print()} type="button">

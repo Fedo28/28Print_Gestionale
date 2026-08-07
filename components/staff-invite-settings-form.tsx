@@ -55,7 +55,6 @@ export function StaffInviteSettingsForm({
       {state.successMessage ? (
         <div className="mini-item">
           <strong>{state.successMessage}</strong>
-          <div className="subtle">La prossima profilazione usera subito questa bozza.</div>
         </div>
       ) : null}
 
@@ -68,9 +67,6 @@ export function StaffInviteSettingsForm({
             name="accessBaseUrl"
             placeholder="https://gestionale.azienda.it"
           />
-          <p className="hint">
-            Facoltativo. Se lo lasci vuoto continuo a usare il dominio del deploy attuale.
-          </p>
         </div>
 
         <div className="field full">
@@ -81,10 +77,6 @@ export function StaffInviteSettingsForm({
         <div className="field full">
           <label htmlFor="staff-invite-template">Bozza messaggio</label>
           <textarea defaultValue={template} id="staff-invite-template" name="template" required rows={8} />
-          <p className="hint">
-            Puoi usare i placeholder <code>{"{nome_staff}"}</code>, <code>{"{nickname}"}</code> e{" "}
-            <code>{"{access_url}"}</code>.
-          </p>
         </div>
 
         <div className="button-row">

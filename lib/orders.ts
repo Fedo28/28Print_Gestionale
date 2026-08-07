@@ -22,6 +22,7 @@ import {
   phaseOrder
 } from "@/lib/constants";
 import { getDisplayOrderLabel } from "@/lib/order-display";
+import { getOrderToQuoteDisabledReason } from "@/lib/order-quote";
 import { canTransitionPhase } from "@/lib/order-phase-transitions";
 import { formatCompactDate, formatCurrency, formatDateKey, formatQuantity, formatWeekdayLabel } from "@/lib/format";
 import { comparePriorityDesc, computeAutomaticPriority } from "@/lib/priorities";
@@ -1027,6 +1028,13 @@ function getQuoteTransitionPatch(currentIsQuote: boolean, nextIsQuote: boolean) 
   };
 }
 
+function assertCanConvertOrderToQuote(order: { isQuote: boolean; invoiceStatus: InvoiceStatus; mainPhase: MainPhase }) {
+  const reason = getOrderToQuoteDisabledReason(order);
+  if (reason) {
+    throw new Error(reason);
+  }
+}
+
 function toSnapshotDateValue(value: Date | string | null | undefined) {
   if (!value) {
     return null;
@@ -1497,6 +1505,10 @@ export async function updateOrder(input: UpdateOrderInput) {
     const hasScheduling = Boolean(nextDeliveryAt || appointmentAt);
     const schedulePending = nextIsQuote && !hasScheduling;
 
+    if (nextIsQuote && !order.isQuote) {
+      assertCanConvertOrderToQuote(order);
+    }
+
     if (!nextIsQuote && !hasScheduling) {
       throw new Error("Per confermare come ordine devi impostare una consegna oppure un appuntamento.");
     }
@@ -1896,6 +1908,10 @@ export async function restoreOrderHistoryEntry(orderId: string, historyId: strin
         if (duplicate) {
           throw new Error("Il titolo salvato nello storico e oggi gia usato da un altro ordine.");
         }
+      }
+
+      if (snapshotBefore.isQuote && !order.isQuote) {
+        assertCanConvertOrderToQuote(order);
       }
 
       const updated = await tx.order.update({
@@ -2700,6 +2716,10 @@ export async function updateOrderQuoteFlag(orderId: string, isQuote: boolean) {
     throw new Error("Ordine non trovato.");
   }
 
+  if (isQuote && !order.isQuote) {
+    assertCanConvertOrderToQuote(order);
+  }
+
   if (!isQuote && order.schedulePending && !order.appointmentAt) {
     throw new Error("Definisci prima una consegna oppure un appuntamento per confermare il preventivo come ordine.");
   }
@@ -3375,6 +3395,10 @@ async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
   const presetWhere =
     isDeliveredView
       ? {}
+      : filters.preset === "TO_DO"
+      ? {
+          mainPhase: { notIn: ["CONSEGNATO", "SVILUPPO_COMPLETATO"] as MainPhase[] }
+        }
       : filters.preset === "TODAY"
       ? {
           mainPhase: { notIn: ["CONSEGNATO", "SVILUPPO_COMPLETATO"] as MainPhase[] },
@@ -3657,8 +3681,7 @@ export async function getOrdersTabCounts(filters: {
   quote?: QuoteFilter;
 }) {
   const tabDefinitions = [
-    { key: "ACTIVE_ALL", view: "ACTIVE" as OrderListView, preset: "ALL" as DashboardPreset },
-    { key: "TODAY", view: "ACTIVE" as OrderListView, preset: "PRIORITY_TODAY" as DashboardPreset },
+    { key: "TO_DO", view: "ACTIVE" as OrderListView, preset: "TO_DO" as DashboardPreset },
     { key: "TO_START", view: "ACTIVE" as OrderListView, preset: "TO_START" as DashboardPreset },
     { key: "WORKING", view: "ACTIVE" as OrderListView, preset: "WORKING" as DashboardPreset },
     { key: "BLOCKED", view: "ACTIVE" as OrderListView, preset: "BLOCKED" as DashboardPreset },

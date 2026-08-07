@@ -10,7 +10,18 @@ export async function GET(request: NextRequest) {
   }
 
   const query = request.nextUrl.searchParams.get("q") || "";
-  const sections = await searchGlobal(query);
+  const scope = request.nextUrl.searchParams.get("scope");
+  const sections = (await searchGlobal(query)).filter((section) => {
+    if (scope === "records") {
+      return section.key === "orders" || section.key === "customers";
+    }
+
+    if (scope === "catalog") {
+      return section.key === "services";
+    }
+
+    return true;
+  });
 
   return NextResponse.json({
     sections

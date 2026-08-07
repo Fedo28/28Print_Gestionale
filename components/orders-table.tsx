@@ -156,13 +156,7 @@ export function OrdersTable({
   return (
     <div className="stack orders-table-shell">
       <div className="orders-list-selection-bar">
-        <span className="hint">
-          {isSelectionMode
-            ? selectedOrderIds.length > 0
-              ? `${selectedOrderIds.length} selezionati`
-              : "Scegli gli ordini da aggiornare insieme."
-            : "Per aggiornare piu ordini insieme, attiva la selezione."}
-        </span>
+        {isSelectionMode ? <span className="hint">{selectedOrderIds.length} selezionati</span> : <span />}
         <div className="orders-list-selection-actions">
           {isSelectionMode ? (
             <button className="button ghost orders-selection-button" onClick={toggleAllSelections} type="button">
@@ -402,6 +396,7 @@ export function OrdersTable({
                           <QuickOrderControlForms
                             hasWhatsapp={order.hasWhatsapp}
                             includeQuote
+                            invoiceStatus={order.invoiceStatus}
                             isQuote={order.isQuote}
                             orderId={order.id}
                             phase={order.mainPhase}

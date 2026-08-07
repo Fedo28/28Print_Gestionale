@@ -20,11 +20,11 @@ type BillboardAssetAutocompleteProps = {
   onSelect: (asset: BillboardAssetAutocompleteOption) => void;
   label: string;
   placeholder?: string;
-  helperText?: string;
   selectedAssetId?: string | null;
   emptyMessage?: string;
   maxSuggestions?: number;
   showMeta?: boolean;
+  disabled?: boolean;
 };
 
 export function BillboardAssetAutocomplete({
@@ -34,11 +34,11 @@ export function BillboardAssetAutocomplete({
   onSelect,
   label,
   placeholder = "",
-  helperText,
   selectedAssetId,
-  emptyMessage = "Nessun impianto trovato. Prova con nome, codice o luogo.",
+  emptyMessage = "Nessun impianto trovato.",
   maxSuggestions = 6,
-  showMeta = true
+  showMeta = true,
+  disabled = false
 }: BillboardAssetAutocompleteProps) {
   const [isFocused, setIsFocused] = useState(false);
   const deferredQuery = useDeferredValue(query);
@@ -46,19 +46,24 @@ export function BillboardAssetAutocomplete({
   const rankedResults = deferredQuery.trim() ? rankBillboardAssets(assets, deferredQuery) : assets;
   const suggestionResults = rankedResults.slice(0, maxSuggestions);
   const selectedAsset = selectedAssetId ? assets.find((asset) => asset.id === selectedAssetId) : null;
-  const showSuggestions = isFocused && (deferredQuery.trim().length > 0 || !selectedAsset);
+  const showSuggestions = !disabled && isFocused && (deferredQuery.trim().length > 0 || !selectedAsset);
 
   return (
     <div className="field full asset-autocomplete-field">
       <label htmlFor={inputId}>{label}</label>
       <input
         autoComplete="off"
+        disabled={disabled}
         id={inputId}
         onBlur={() => {
           window.setTimeout(() => setIsFocused(false), 120);
         }}
         onChange={(event) => onQueryChange(event.target.value)}
-        onFocus={() => setIsFocused(true)}
+        onFocus={() => {
+          if (!disabled) {
+            setIsFocused(true);
+          }
+        }}
         placeholder={placeholder}
         spellCheck={false}
         value={query}
@@ -69,8 +74,6 @@ export function BillboardAssetAutocomplete({
           {deferredQuery.trim() ? <span className="subtle">{rankedResults.length} risultati trovati</span> : null}
         </div>
       ) : null}
-      {helperText ? <p className="hint asset-autocomplete-hint">{helperText}</p> : null}
-
       {showSuggestions ? (
         suggestionResults.length > 0 ? (
           <div className="asset-autocomplete-suggestions" aria-label="Suggerimenti impianti">

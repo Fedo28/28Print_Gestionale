@@ -9,7 +9,6 @@ export const dynamic = "force-dynamic";
 
 type BillboardsFocus = "assets" | "occupied" | "free" | "bookings" | "day";
 type BillboardKindFilter = "ALL" | BillboardAssetKind;
-type BillboardDayView = "bookings" | "occupied" | "free";
 
 type BillboardPageProps = {
   searchParams?: {
@@ -19,7 +18,6 @@ type BillboardPageProps = {
     focus?: string;
     day?: string;
     kind?: string;
-    dayView?: string;
   };
 };
 
@@ -29,7 +27,6 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
   const focusDate = parseDateParam(searchParams?.date);
   const activeFocus = parseFocus(searchParams?.focus);
   const activeKind = parseKind(searchParams?.kind);
-  const activeDayView = parseDayView(searchParams?.dayView);
   const selectedDay = parseOptionalDayParam(searchParams?.day);
   const isBookingOpen = searchParams?.booking === "new";
   const selectedAssetCode = (searchParams?.asset || "").trim() || null;
@@ -49,11 +46,14 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
           billboardAssetId: asset.id,
           startsAt: formatDateKey(booking.startsAt),
           endsAt: formatDateKey(booking.endsAt),
+          status: booking.status,
+          note: booking.note,
           priceCents: booking.priceCents,
           paidCents: booking.paidCents,
           balanceDueCents: booking.balanceDueCents,
           monitorSlot: booking.monitorSlot,
           customer: {
+            id: booking.customer.id,
             name: booking.customer.name
           }
         }))
@@ -74,7 +74,6 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
       initialAssetCode={selectedAssetCode}
       initialBookingOpen={isBookingOpen}
       initialDayKey={selectedDay ? formatDateKey(selectedDay) : null}
-      initialDayView={activeDayView}
       initialFocus={activeFocus}
       initialKind={activeKind}
       monthBookings={surface.monthBookings.map((booking) => ({
@@ -82,11 +81,14 @@ export default async function BillboardsPage({ searchParams }: BillboardPageProp
         billboardAssetId: booking.billboardAssetId,
         startsAt: formatDateKey(booking.startsAt),
         endsAt: formatDateKey(booking.endsAt),
+        status: booking.status,
+        note: booking.note,
         priceCents: booking.priceCents,
         paidCents: booking.paidCents,
         balanceDueCents: booking.balanceDueCents,
         monitorSlot: booking.monitorSlot,
         customer: {
+          id: booking.customer.id,
           name: booking.customer.name
         },
         billboardAsset: {
@@ -131,14 +133,6 @@ function parseKind(value?: string): BillboardKindFilter {
   }
 
   return "ALL";
-}
-
-function parseDayView(value?: string): BillboardDayView {
-  if (value === "free" || value === "occupied") {
-    return value;
-  }
-
-  return "bookings";
 }
 
 function parseOptionalDayParam(value?: string) {

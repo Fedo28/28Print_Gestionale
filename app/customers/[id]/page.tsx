@@ -81,9 +81,7 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
             <span className="compact-kicker">Scheda cliente</span>
             <span className="pill">{customerTypeLabels[customer.type]}</span>
             <strong>{customer.name}</strong>
-            <span className="subtle">
-              {contactActions.length > 0 ? "Contatti rapidi disponibili qui sotto." : "Aggiungi un contatto per raggiungerlo piu velocemente."} Aggiornato il {formatDateTime(lastCustomerUpdate)}
-            </span>
+            <span className="subtle">Aggiornato il {formatDateTime(lastCustomerUpdate)}</span>
           </div>
           <div className="customer-detail-overview-actions">
             <Link className="compact-link" href="#customer-orders-panel">
@@ -393,7 +391,6 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
           <div>
             <span className="compact-kicker">Zona delicata</span>
             <h3>Eliminazione cliente</h3>
-            <span className="subtle">Disponibile solo se non ci sono collegamenti attivi.</span>
           </div>
           <form action={deleteCustomerAction} className="danger-zone-actions">
             <input name="id" type="hidden" value={customer.id} />

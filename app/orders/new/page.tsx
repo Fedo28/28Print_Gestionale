@@ -18,22 +18,15 @@ export default async function NewOrderPage({
   const continuation = searchParams?.continuation === "created" || searchParams?.continuation === "updated"
     ? searchParams.continuation
     : null;
-  const continuationCustomer = initialCustomerId ? customers.find((customer) => customer.id === initialCustomerId) || null : null;
   const continuationTitle = continuation === "updated" ? "Modifiche salvate" : continuation === "created" ? "Ordine salvato" : null;
-  const continuationMessage = continuation
-    ? continuationCustomer
-      ? `Stai gia inserendo il prossimo ordine per ${continuationCustomer.name}.`
-      : "Puoi compilare subito il prossimo ordine."
-    : null;
 
   return (
     <div className="stack order-entry-page-shell order-create-page-shell">
       <PageHeader action={<OrderDraftHeaderAction kind="order" />} title="Nuovo ordine" />
-      {continuationTitle && continuationMessage ? (
+      {continuationTitle ? (
         <section className="order-draft-banner order-entry-followup-banner">
           <div className="stack">
             <strong>{continuationTitle}</strong>
-            <span className="subtle">{continuationMessage}</span>
           </div>
         </section>
       ) : null}

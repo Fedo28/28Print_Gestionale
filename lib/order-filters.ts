@@ -14,6 +14,7 @@ export type OrderSortField = "order" | "customer" | "delivery" | "priority" | "s
 export type OrderSortDirection = "asc" | "desc";
 export type DashboardPreset =
   | "ALL"
+  | "TO_DO"
   | "TODAY"
   | "TOMORROW"
   | "APPOINTMENTS_TODAY"
@@ -31,6 +32,7 @@ export type DashboardPreset =
   | "BALANCE";
 
 export const dashboardPresetLabels: Record<Exclude<DashboardPreset, "ALL">, string> = {
+  TO_DO: "Da fare",
   TODAY: "Consegne di oggi",
   TOMORROW: "Consegne di domani",
   APPOINTMENTS_TODAY: "Appuntamenti di oggi",
@@ -124,6 +126,7 @@ export function parseDashboardPreset(raw: string | null): DashboardPreset {
   if (
     raw &&
     [
+      "TO_DO",
       "TODAY",
       "TOMORROW",
       "APPOINTMENTS_TODAY",

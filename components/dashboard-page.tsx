@@ -84,7 +84,6 @@ export async function DashboardPage({
       }
     : null;
   const totalInvoicableCents = invoiceOrders.reduce((sum, order) => sum + order.totalCents, 0);
-  const totalBalanceDueCents = invoiceOrders.reduce((sum, order) => sum + order.balanceDueCents, 0);
   const readyOrdersToNotify = readyOrders.filter((order) => !order.readyWhatsappSentAt);
   const readyOrdersNotified = readyOrders.filter((order) => Boolean(order.readyWhatsappSentAt));
   const activeReadyMode = getDashboardReadyMode(readyMode, readyOrdersToNotify.length);
@@ -165,8 +164,7 @@ export async function DashboardPage({
     financePaidAged: buildOrdersFilterHref({ preset: "FINANCE_PAID_AGED" }),
     financePartial: buildOrdersFilterHref({ preset: "FINANCE_PARTIAL" }),
     financeUnpaidOnly: buildOrdersFilterHref({ preset: "FINANCE_UNPAID_ONLY" }),
-    financeUnpaid: buildOrdersFilterHref({ preset: "FINANCE_UNPAID" }),
-    financeAll: buildOrdersFilterHref({ invoice: "DA_FATTURARE" }),
+    financeAll: buildOrdersFilterHref({ preset: "BALANCE" }),
     financeDelivered: buildOrdersFilterHref({ view: "DELIVERED", invoice: "DA_FATTURARE" }),
     tomorrow: buildOrdersFilterHref({ preset: "TOMORROW", sort: "delivery" }),
     materialsWaiting: buildOrdersFilterHref({ status: "IN_ATTESA_MATERIALE" }),
@@ -245,25 +243,6 @@ export async function DashboardPage({
       activeMaterialsFilter
     )
   };
-  const focusGuide = getDashboardFocusGuide(suggestedFocus, {
-    blockedCount: blockedOrders.length,
-    lateStartCount: lateStartOrders.length,
-    priorityCount: priorityOrders.length,
-    readyCount: readyOrders.length,
-    readyToNotifyCount: readyOrdersToNotify.length,
-    tomorrowToStartCount: tomorrowOrdersToStart.length,
-    toStartCount: toStartOrders.length
-  });
-  const focusGuideHref =
-    suggestedFocus === "BLOCKED"
-      ? dashboardPanelLinks.blocked
-      : suggestedFocus === "TO_START"
-        ? dashboardPanelLinks.toStart
-        : suggestedFocus === "READY"
-          ? dashboardPanelLinks.ready
-          : suggestedFocus === "TOMORROW"
-            ? dashboardPanelLinks.tomorrow
-            : dashboardPanelLinks.overdue;
   const nextDeliveryDetail = nextDelivery
     ? `${getDisplayOrderLabel(nextDelivery.orderCode, nextDelivery.title)} • ${formatDateTime(nextDelivery.deliveryAt)}`
     : "Nessuna scadenza vicina";
@@ -275,8 +254,7 @@ export async function DashboardPage({
   const mobileStats = [
     { accent: "overdue", href: dashboardPanelLinks.overdue, label: "Urgenze", value: priorityOrders.length },
     { accent: "agenda", href: dashboardPanelLinks.appointments, label: "Agenda", value: todayAppointments.length },
-    { accent: "to-start", href: dashboardPanelLinks.toStart, label: "Avvio", value: toStartOrders.length },
-    { accent: "balance", href: dashboardPanelLinks.balance, label: "Fatture", value: invoiceOrders.length }
+    { accent: "to-start", href: dashboardPanelLinks.toStart, label: "Avvio", value: toStartOrders.length }
   ] satisfies Array<{ accent: DashboardAccent; href: string; label: string; value: number }>;
   const visibleMobileStats = mobileStats.filter((item) => item.value > 0);
   const summaryMetrics = [
@@ -305,27 +283,10 @@ export async function DashboardPage({
       pulse: "TO_START" as DashboardPulse,
       tone: "neutral" as const,
       value: toStartOrders.length
-    },
-    {
-      accent: "balance" as DashboardAccent,
-      href: dashboardPanelLinks.balance,
-      icon: <DashboardGlyph kind="cash" />,
-      label: "Da fatturare",
-      pulse: "FINANCE" as DashboardPulse,
-      tone: "brand" as const,
-      value: invoiceOrders.length
     }
   ];
   const visibleSummaryMetrics = summaryMetrics.filter((item) => item.value > 0);
   const financeQuickActions = [
-    totalBalanceDueCents > 0
-      ? {
-          href: links.financeUnpaid,
-          key: "collect",
-          label: "Da incassare",
-          value: formatCurrency(totalBalanceDueCents)
-        }
-      : null,
     stalePaidInvoiceOrders.length > 0
       ? {
           href: links.financePaidAged,
@@ -337,7 +298,7 @@ export async function DashboardPage({
       ? {
           href: links.financeDelivered,
           key: "close",
-          label: "Da chiudere",
+          label: "Fattura ora",
           value: deliveredInvoiceOrders.length === 1 ? "1 ordine" : `${deliveredInvoiceOrders.length} ordini`
         }
       : null
@@ -442,8 +403,7 @@ export async function DashboardPage({
             title="Attenzione"
             items={[
               { label: "Arretrati", value: overdueOrders.length },
-              { label: "Blocchi", value: blockedOrders.length },
-              { label: "Fatture", value: invoiceOrders.length }
+              { label: "Blocchi", value: blockedOrders.length }
             ]}
           />
         </div>
@@ -655,17 +615,6 @@ export async function DashboardPage({
             </>
           ) : (
             <>
-              <div className="dashboard-focus-guide">
-                <div>
-                  <span className="compact-kicker">Cosa faccio adesso</span>
-                  <strong>{focusGuide.title}</strong>
-                  <span className="hint">{focusGuide.detail}</span>
-                </div>
-                <Link className="dashboard-focus-guide-link" href={focusGuideHref} replace scroll={false}>
-                  {focusGuide.cta}
-                </Link>
-              </div>
-
               <nav className="dashboard-focus-switch" aria-label="Selettore focus operativo">
                 <Link
                   className={`dashboard-focus-switch-link${activeFocus === "PRIORITY" ? " active" : ""}`}
@@ -1948,91 +1897,6 @@ function getRecommendedDashboardFocus({
   }
 
   return "PRIORITY" satisfies DashboardFocus;
-}
-
-function getDashboardFocusGuide(
-  focus: DashboardFocus,
-  {
-    blockedCount,
-    lateStartCount,
-    priorityCount,
-    readyCount,
-    readyToNotifyCount,
-    tomorrowToStartCount,
-    toStartCount
-  }: {
-    blockedCount: number;
-    lateStartCount: number;
-    priorityCount: number;
-    readyCount: number;
-    readyToNotifyCount: number;
-    tomorrowToStartCount: number;
-    toStartCount: number;
-  }
-) {
-  if (focus === "TO_START") {
-    return lateStartCount > 0
-      ? {
-          cta: "Apri avvio",
-          detail: lateStartCount === 1 ? "C'e 1 ordine gia in ritardo da avviare." : `Ci sono ${lateStartCount} ordini gia in ritardo da avviare.`,
-          title: "Avvia subito"
-        }
-      : {
-          cta: "Apri avvio",
-          detail: toStartCount === 1 ? "C'e 1 ordine in attesa di partenza." : `Ci sono ${toStartCount} ordini in attesa di partenza.`,
-          title: "Metti in lavorazione"
-        };
-  }
-
-  if (focus === "BLOCKED") {
-    return {
-      cta: "Apri sblocchi",
-      detail: blockedCount === 1 ? "C'e 1 ordine fermo che aspetta una decisione." : `Ci sono ${blockedCount} ordini fermi che aspettano una decisione.`,
-      title: "Sblocca ordini"
-    };
-  }
-
-  if (focus === "READY") {
-    return readyToNotifyCount > 0
-      ? {
-          cta: "Apri pronti",
-          detail:
-            readyToNotifyCount === 1
-              ? "C'e 1 ordine pronto e il cliente va avvisato."
-              : `Ci sono ${readyToNotifyCount} ordini pronti e i clienti vanno avvisati.`,
-          title: "Avvisa clienti"
-        }
-      : {
-          cta: "Apri pronti",
-          detail: readyCount === 1 ? "C'e 1 ordine pronto da gestire." : `Ci sono ${readyCount} ordini pronti da gestire.`,
-          title: "Gestisci pronti"
-        };
-  }
-
-  if (focus === "TOMORROW") {
-    return {
-      cta: "Apri domani",
-      detail:
-        tomorrowToStartCount === 1
-          ? "C'e 1 lavoro da preparare per domani."
-          : `Ci sono ${tomorrowToStartCount} lavori da preparare per domani.`,
-      title: "Prepara domani"
-    };
-  }
-
-  if (priorityCount > 0) {
-    return {
-      cta: "Apri priorita",
-      detail: priorityCount === 1 ? "C'e 1 consegna vicina da controllare." : `Ci sono ${priorityCount} consegne vicine da controllare.`,
-      title: "Controlla scadenze"
-    };
-  }
-
-  return {
-    cta: "Apri focus",
-    detail: "In questo momento non ci sono urgenze forti in evidenza.",
-    title: "Tutto sotto controllo"
-  };
 }
 
 function parseDashboardPulse(value?: string): DashboardPulse | null {

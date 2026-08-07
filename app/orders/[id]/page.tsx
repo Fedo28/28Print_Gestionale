@@ -6,6 +6,7 @@ import {
   correctPaymentAction,
   deleteOrderItemAction,
   markReadyAction,
+  quickUpdateQuoteFlagAction,
   restoreOrderHistoryAction,
   saveOrderMaterialNoteAction,
   toggleOrderItemDeliveryAction,
@@ -44,6 +45,7 @@ import {
 import { formatCurrency, formatDateTime, formatQuantity, toDateTimeLocalInput } from "@/lib/format";
 import { isOrderPricingPending } from "@/lib/order-finance";
 import { getDisplayOrderLabel } from "@/lib/order-display";
+import { canConvertOrderToQuote, getOrderToQuoteDisabledReason } from "@/lib/order-quote";
 import { buildOrdersFilterHref } from "@/lib/order-filters";
 import { parseOrderMaterialNoteContent } from "@/lib/order-material-note";
 import { getOrderById, getServiceCatalogAdmin } from "@/lib/orders";
@@ -149,6 +151,8 @@ export default async function OrderDetailPage({
   const activeMaterialNoteFormState = parseOrderMaterialNoteContent(activeMaterialNote?.content || "");
   const customerContactWarning =
     order.mainPhase === "SVILUPPO_COMPLETATO" && !hasWhatsapp ? "Manca un numero cliente valido: aggiorna telefono o WhatsApp." : null;
+  const canConvertToQuote = canConvertOrderToQuote(order);
+  const quoteDisabledReason = getOrderToQuoteDisabledReason(order);
   const orderTitlePrimaryAction =
     guidedAction?.kind === "deliver" ? (
       <form action={transitionPhaseAction} className="action-form order-detail-title-primary-action">
@@ -218,6 +222,20 @@ export default async function OrderDetailPage({
       <div className="order-detail-title-actions-bar">
         <div className="order-detail-title-actions">
           {orderTitlePrimaryAction}
+          {!order.isQuote && canConvertToQuote ? (
+            <form action={quickUpdateQuoteFlagAction} className="order-detail-header-inline-form order-detail-title-primary-action">
+              <input name="orderId" type="hidden" value={order.id} />
+              <input name="isQuote" type="hidden" value="true" />
+              <ConfirmSubmitButton
+                className="button ghost"
+                confirmMessage="Trasformare questo ordine in preventivo? Verra escluso dal flusso operativo finche non lo confermi di nuovo come ordine."
+              >
+                Trasforma in preventivo
+              </ConfirmSubmitButton>
+            </form>
+          ) : !order.isQuote && quoteDisabledReason ? (
+            <div className="order-detail-title-actions-note">{quoteDisabledReason}</div>
+          ) : null}
           {order.mainPhase === "SVILUPPO_COMPLETATO" ? (
             <ReadyWhatsAppButton compact hasPhone={hasWhatsapp} notifiedAt={order.readyWhatsappSentAt} orderId={order.id} />
           ) : null}
@@ -252,6 +270,7 @@ export default async function OrderDetailPage({
             </div>
             <form action={updateOrderAction} className="form-grid order-detail-edit-form">
               <input name="id" type="hidden" value={order.id} />
+              <input name="isQuote" type="hidden" value={order.isQuote ? "true" : "false"} />
               <div className="field wide order-detail-edit-title-field">
                 <label htmlFor="title">Titolo</label>
                 <input defaultValue={order.title} id="title" name="title" required />
@@ -285,12 +304,6 @@ export default async function OrderDetailPage({
                     </option>
                   ))}
                 </select>
-              </div>
-              <div className="field order-detail-edit-quote-field">
-                <label className="toggle-field" htmlFor="isQuote">
-                  <input defaultChecked={order.isQuote} id="isQuote" name="isQuote" type="checkbox" />
-                  <span>Preventivo</span>
-                </label>
               </div>
               <div className="field full order-detail-edit-appointment-note-field">
                 <label htmlFor="appointmentNote">Nota appuntamento</label>
@@ -526,7 +539,6 @@ export default async function OrderDetailPage({
               <summary className="order-item-editor-summary">
                 <div className="order-item-editor-copy">
                   <strong>Nuova riga</strong>
-                  <span className="subtle">Catalogo o voce libera.</span>
                 </div>
                 <span className="order-item-editor-total">Aggiungi</span>
               </summary>
@@ -813,7 +825,6 @@ export default async function OrderDetailPage({
                         confirmMessage="Vuoi ripristinare questo stato precedente?"
                       >
                         {entryContent}
-                        <span className="timeline-item-restore-note">Tocca per tornare a questo stato</span>
                         <span className="timeline-item-cta">
                           <UndoButtonContent label="Torna a questo stato" />
                         </span>

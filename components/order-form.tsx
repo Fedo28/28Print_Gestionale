@@ -19,8 +19,6 @@ import {
 import { formatCurrency, formatDateTime, formatQuantity } from "@/lib/format";
 import { computeAutomaticPriority } from "@/lib/priorities";
 import {
-  formatServiceUnitPriceLabel,
-  formatServiceUnitShortLabel,
   inferServiceUnitFromCatalogText,
   serviceUnitOptions,
   type ServiceUnitValue
@@ -305,6 +303,7 @@ type ServiceSuggestion =
 
 type OrderFormMode = "order" | "quote";
 type MobileOrderStep = "customer" | "details" | "items" | "review";
+type OrderFormExperience = "guided" | "complete";
 
 type InlineCatalogDraft = {
   name: string;
@@ -355,15 +354,16 @@ type OrderFormUndoSnapshot = {
 };
 
 const MOBILE_ORDER_MEDIA_QUERY = "(max-width: 768px)";
+// Keep the original full form available while the guided experience is evaluated.
+const ORDER_FORM_EXPERIENCE: OrderFormExperience = "guided";
 const MOBILE_ORDER_STEPS: Array<{
   id: MobileOrderStep;
   label: string;
-  description: string;
 }> = [
-  { id: "customer", label: "Cliente", description: "Scegli un cliente esistente oppure creane uno nuovo." },
-  { id: "details", label: "Dettagli", description: "Compila titolo, consegna e appuntamento. La priorita viene assegnata da sola." },
-  { id: "items", label: "Lavorazioni", description: "Aggiungi e rifinisci le righe di lavorazione." },
-  { id: "review", label: "Riepilogo", description: "Controlla i dati finali e conferma l'ordine." }
+  { id: "customer", label: "Cliente" },
+  { id: "details", label: "Dettagli" },
+  { id: "items", label: "Lavorazioni" },
+  { id: "review", label: "Riepilogo" }
 ] as const;
 
 function createEmptyInlineCatalogDraft(): InlineCatalogDraft {
@@ -391,6 +391,14 @@ function createEmptyMobileOrderMeta(): MobileOrderMeta {
     globalExtra: "",
     initialDeposit: ""
   };
+}
+
+function RequiredFieldMark({ title = "Campo obbligatorio" }: { title?: string }) {
+  return (
+    <span aria-hidden="true" className="required-field-mark" title={title}>
+      *
+    </span>
+  );
 }
 
 export function OrderForm({
@@ -466,6 +474,7 @@ export function OrderForm({
   const mobileStepIndex = MOBILE_ORDER_STEPS.findIndex((step) => step.id === mobileStep);
   const isMobileItemSheetOpen = openMobileItemIndex !== null;
   const hasChosenInvoiceStatus = Boolean(mobileMeta.invoiceStatus.trim());
+  const isGuidedExperience = ORDER_FORM_EXPERIENCE === "guided";
 
   function addEmptyItemLine(options?: { bodyMode?: boolean }) {
     const nextIndex = items.length;
@@ -1080,7 +1089,7 @@ export function OrderForm({
         type: "service" as const,
         key: service.id,
         label: service.name,
-        meta: `${service.code || "Senza codice"} • ${formatCurrency(service.basePriceCents)} • ${formatServiceUnitPriceLabel(service.unit)}`,
+        meta: formatCurrency(service.basePriceCents),
         service,
         score: getCatalogServiceSearchScore(service, normalizedQuery)
       }))
@@ -1103,7 +1112,7 @@ export function OrderForm({
         type: "photography",
         key: "photography-group",
         label: "Fotografie",
-        meta: "Seleziona il taglio foto nella colonna accanto"
+        meta: "Formati fotografici"
       });
     }
 
@@ -1499,14 +1508,6 @@ export function OrderForm({
     : lastDraftSavedAt
       ? `Ultimo salvataggio ${formatDateTime(lastDraftSavedAt)}`
       : "Nessuna bozza salvata";
-  const canContinueMobileStep =
-    mobileStep === "customer"
-      ? Boolean(selectedCustomerId || mobileMeta.customerName.trim())
-      : mobileStep === "details"
-        ? Boolean(mobileMeta.title.trim() && (isQuoteMode || mobileMeta.deliveryAt || mobileMeta.appointmentAt))
-        : mobileStep === "items"
-          ? filledRows > 0
-          : true;
   const mobileContinueLabel =
     mobileStep === "customer"
       ? "Vai ai dettagli"
@@ -1618,7 +1619,10 @@ export function OrderForm({
       <div className="form-grid order-line-grid">
         <div className={`field wide order-line-service${isPhotographyRow ? " order-line-service-photo" : ""}`}>
           <div className="order-line-service-head">
-            <label htmlFor={`service-${index}`}>Articolo / servizio</label>
+            <label htmlFor={`service-${index}`}>
+              Articolo / servizio
+              <RequiredFieldMark />
+            </label>
             <div className="order-line-mode-switch" role="tablist" aria-label={`Modalita riga ${index + 1}`}>
               <button
                 aria-selected={!item.bodyMode}
@@ -1794,19 +1798,11 @@ export function OrderForm({
                       <strong className="order-line-suggestion-title">{suggestion.label}</strong>
                       <span className="order-line-suggestion-meta">{suggestion.meta}</span>
                     </span>
-                    {suggestion.type === "service" ? (
-                      <span className="order-line-suggestion-badge">{formatServiceUnitShortLabel(suggestion.service.unit)}</span>
-                    ) : null}
                   </button>
                 ))
               ) : (
                 <div className="order-line-suggestion order-line-empty-state">
                   <strong>{isCatalogEmpty ? "Catalogo servizi vuoto" : "Nessun servizio trovato"}</strong>
-                  <span>
-                    {isCatalogEmpty
-                      ? "Importa il listino da Impostazioni o verifica che il bootstrap del template Excel sia andato a buon fine."
-                      : "Prova con codice, nome o una parola piu specifica del servizio."}
-                  </span>
                 </div>
               )}
             </div>
@@ -1956,7 +1952,6 @@ export function OrderForm({
                 <div className="order-line-inline-catalog-title">
                   <div className="order-line-inline-catalog-copy">
                     <strong>Calcolatore etichette</strong>
-                    <span className="subtle">Aggiunge sempre 1 cm per lato, 20 euro di messa in macchina e il 20% se scegli taglio singolo.</span>
                   </div>
                   <span className="pill">Prezzo totale riga</span>
                 </div>
@@ -2042,12 +2037,10 @@ export function OrderForm({
 
                 return (
                   <div className="order-line-inline-calculator-preview">
-                    <strong>{previewReady ? formatCurrency(totalCents) : "Compila i campi per vedere il totale"}</strong>
-                    <span>
-                      {previewReady
-                        ? `${expandedWidth} m x ${expandedHeight} m x ${formatQuantity(quantity)} x ${formatCurrency(materialService?.basePriceCents || 0)} + 20,00 €${labelCalculatorDraft.singleCut ? " + 20%" : ""}`
-                        : "Il prezzo finale verra inserito nel prezzo listino della riga come totale gia calcolato."}
-                    </span>
+                    <strong>{previewReady ? formatCurrency(totalCents) : "Totale"}</strong>
+                    {previewReady ? (
+                      <span>{`${expandedWidth} m x ${expandedHeight} m x ${formatQuantity(quantity)} x ${formatCurrency(materialService?.basePriceCents || 0)} + 20,00 €${labelCalculatorDraft.singleCut ? " + 20%" : ""}`}</span>
+                    ) : null}
                   </div>
                 );
               })()}
@@ -2322,6 +2315,7 @@ export function OrderForm({
     <form
       action={action}
       className="stack order-form-shell"
+      data-order-layout={ORDER_FORM_EXPERIENCE}
       data-order-kind={kind}
       data-mobile-order-step={mobileStep}
       onChangeCapture={() => {
@@ -2337,8 +2331,8 @@ export function OrderForm({
     >
       {selectedCustomerId ? <input name="customerId" type="hidden" value={selectedCustomerId} /> : null}
       {isQuoteMode ? <input name="isQuote" type="hidden" value="true" /> : null}
-      <section className="order-mobile-flow" aria-label="Percorso nuovo ordine mobile">
-        <nav className="order-mobile-stepper" aria-label="Step nuovo ordine">
+      <section className="order-mobile-flow" aria-label="Percorso nuovo ordine">
+        <nav className="order-mobile-stepper" aria-label="Passaggi nuovo ordine">
           {MOBILE_ORDER_STEPS.map((step) => (
             <button
               aria-current={mobileStep === step.id ? "step" : undefined}
@@ -2351,37 +2345,6 @@ export function OrderForm({
             </button>
           ))}
         </nav>
-      </section>
-
-      <section className="order-draft-banner">
-        <div className="stack">
-          <strong>Bozza {isQuoteMode ? "preventivo" : "ordine"} opzionale</strong>
-          <span className="subtle">{mobileDraftStatusMessage}</span>
-        </div>
-        <div className="button-row">
-          <button
-            className="secondary"
-            onClick={(event) => {
-              event.preventDefault();
-              persistDraft();
-            }}
-            type="button"
-          >
-            Salva bozza
-          </button>
-          {hasSavedDraft ? (
-            <button
-              className="ghost"
-              onClick={(event) => {
-                event.preventDefault();
-                resetDraftAndForm();
-              }}
-              type="button"
-            >
-              Svuota bozza
-            </button>
-          ) : null}
-        </div>
       </section>
 
       <div className="grid grid-2 order-sheet-grid">
@@ -2417,6 +2380,7 @@ export function OrderForm({
                 }}
                 placeholder=""
                 query={customerQuery}
+                required
                 selectedCustomerId={selectedCustomerId}
               />
 
@@ -2507,11 +2471,17 @@ export function OrderForm({
             {renderMobilePanelHead()}
             <div className="form-grid">
               <div className="field full">
-                <label htmlFor="title">Titolo</label>
+                <label htmlFor="title">
+                  Titolo
+                  <RequiredFieldMark />
+                </label>
                 <input id="title" name="title" required />
               </div>
               <div className="field wide order-details-delivery-field">
-                <label htmlFor="deliveryAt">Consegna</label>
+                <label htmlFor="deliveryAt">
+                  Consegna
+                  {!isQuoteMode ? <RequiredFieldMark title="Consegna oppure appuntamento obbligatorio" /> : null}
+                </label>
                 <input
                   className="date-time-input"
                   id="deliveryAt"
@@ -2521,7 +2491,10 @@ export function OrderForm({
                 />
               </div>
               <div className="field wide order-details-appointment-field">
-                <label htmlFor="appointmentAt">Appuntamento</label>
+                <label htmlFor="appointmentAt">
+                  Appuntamento
+                  {!isQuoteMode ? <RequiredFieldMark title="Consegna oppure appuntamento obbligatorio" /> : null}
+                </label>
                 <input
                   className="date-time-input"
                   id="appointmentAt"
@@ -2546,7 +2519,6 @@ export function OrderForm({
                   ))}
                 </select>
               </div>
-              {!isQuoteMode ? <p className="hint order-scheduling-hint">Compila una consegna oppure un appuntamento.</p> : null}
               <div className="field full order-notes-field">
                 <div className="order-notes-field-head">
                   <label htmlFor="notes">Note operative</label>
@@ -2598,10 +2570,7 @@ export function OrderForm({
           </div>
         </div>
         {isCatalogEmpty ? (
-          <div className="empty">
-            Il catalogo servizi e vuoto in questo ambiente: i suggerimenti non compariranno finche il listino non viene
-            bootstrapato o importato da Impostazioni.
-          </div>
+          <div className="empty">Catalogo servizi vuoto.</div>
         ) : null}
         <input name="itemsPayload" type="hidden" value={itemsPayload} />
 
@@ -2716,7 +2685,7 @@ export function OrderForm({
             Aggiungi riga
           </button>
         </div>
-        {!isMobileViewport ? (
+        {!isMobileViewport && !isGuidedExperience ? (
           <div className="order-sheet-footer">
             <div className="order-sheet-footer-head">
               <strong>Rettifiche totali</strong>
@@ -2752,7 +2721,10 @@ export function OrderForm({
             </div>
             <div className="form-grid order-sheet-payment-row">
               <div className="field order-sheet-invoice-field">
-                <label htmlFor="invoiceStatus">Richiesta fattura</label>
+                <label htmlFor="invoiceStatus">
+                  Richiesta fattura
+                  <RequiredFieldMark />
+                </label>
                 <select defaultValue="" id="invoiceStatus" name="invoiceStatus" required>
                   <option disabled value="">
                     Seleziona una scelta
@@ -2831,7 +2803,7 @@ export function OrderForm({
         </section>
       ) : null}
 
-      {isMobileViewport ? (
+      {isMobileViewport || isGuidedExperience ? (
         <section className="card card-pad order-sheet-panel order-mobile-review-panel">
           <div className="stack">
             {renderMobilePanelHead()}
@@ -2925,7 +2897,10 @@ export function OrderForm({
               </div>
               <div className="form-grid order-sheet-payment-row">
               <div className="field order-sheet-invoice-field">
-                  <label htmlFor="invoiceStatus">Richiesta fattura</label>
+                  <label htmlFor="invoiceStatus">
+                    Richiesta fattura
+                    <RequiredFieldMark />
+                  </label>
                   <select defaultValue="" id="invoiceStatus" name="invoiceStatus" required>
                     <option disabled value="">
                       Seleziona una scelta
@@ -3063,6 +3038,16 @@ export function OrderForm({
           >
             Indietro
           </button>
+          <button
+            className="secondary order-guided-desktop-draft"
+            onClick={(event) => {
+              event.preventDefault();
+              persistDraft();
+            }}
+            type="button"
+          >
+            Salva bozza
+          </button>
           {mobileStep === "review" ? (
             <>
               <button
@@ -3087,9 +3072,8 @@ export function OrderForm({
           ) : (
             <button
               className="primary"
-              disabled={!canContinueMobileStep}
               onClick={() => {
-                if (!canContinueMobileStep || mobileStepIndex >= MOBILE_ORDER_STEPS.length - 1) {
+                if (mobileStepIndex >= MOBILE_ORDER_STEPS.length - 1) {
                   return;
                 }
                 jumpToMobileStep(MOBILE_ORDER_STEPS[mobileStepIndex + 1].id);

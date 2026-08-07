@@ -57,7 +57,6 @@ export default async function StatsPage() {
             <div>
               <span className="compact-kicker">Ultimi 12 mesi</span>
               <h3>Andamento mese su mese</h3>
-              <p className="card-muted">Confronto sul mese di creazione ordine, esclusi i preventivi.</p>
             </div>
             <div className="stats-period-meta">
               <strong>{formatCurrency(totalRevenue)}</strong>

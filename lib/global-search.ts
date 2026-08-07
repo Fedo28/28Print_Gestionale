@@ -221,7 +221,7 @@ export async function searchGlobal(query: string): Promise<GlobalSearchSection[]
         id: service.id,
         kind: "service",
         label: service.name,
-        meta: `${service.code || "Senza codice"} • ${formatCurrency(service.basePriceCents)}`,
+        meta: formatCurrency(service.basePriceCents),
         href: "/settings"
       }))
     });

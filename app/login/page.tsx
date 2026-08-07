@@ -16,7 +16,6 @@ export default async function LoginPage() {
         <div className="stack">
           <div>
             <h2>Accesso gestionale</h2>
-            <p className="card-muted">Accesso staff per beta online e uso locale del gestionale.</p>
           </div>
           <LoginForm
             defaultNickname={isLocalDev ? "fedo" : ""}

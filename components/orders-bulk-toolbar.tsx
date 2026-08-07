@@ -112,7 +112,6 @@ export function OrdersBulkToolbar({
       <div className="orders-bulk-toolbar-head">
         <div className="orders-bulk-toolbar-copy">
           <strong>{selectedOrderIds.length} ordini selezionati</strong>
-          <span className="subtle">Applica un cambio unico e poi aggiorno subito la lista.</span>
         </div>
         <button className="button ghost" disabled={isPending} onClick={onClearSelection} type="button">
           Deseleziona

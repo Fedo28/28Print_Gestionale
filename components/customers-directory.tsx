@@ -32,7 +32,6 @@ export function CustomersDirectory({ customers }: { customers: CustomerDirectory
           ...customer,
           orderCount: customer.orders.length
         }))}
-        helperText="Puoi scrivere anche solo una parte o commettere qualche errore: i nomi più simili vengono mostrati per primi."
         label="Cerca cliente"
         onQueryChange={(value) => {
           setQuery(value);

@@ -40,7 +40,6 @@ export default async function SettingsPage() {
           <div className="list-header">
             <div>
               <h3>Profilo accesso</h3>
-              <p className="card-muted">Dopo il primo accesso puoi personalizzare il nickname con cui entri nel gestionale.</p>
             </div>
             <span className="pill">Ruolo {session.role === "ADMIN" ? "Admin" : "Operatore"}</span>
           </div>
@@ -54,18 +53,10 @@ export default async function SettingsPage() {
             <div className="list-header">
               <div>
                 <h3>Catalogo servizi</h3>
-                <p className="card-muted">Listino base modificabile, sincronizzabile da Excel e richiamabile nelle righe ordine.</p>
               </div>
             </div>
-            <p className="hint">
-              Il primo deploy produzione carica automaticamente il template Excel incluso nel progetto se il catalogo e
-              vuoto. Da questa schermata puoi comunque reimportare il file in qualsiasi momento.
-            </p>
             {services.length === 0 ? (
-              <div className="empty">
-                Il catalogo servizi e ancora vuoto in questo ambiente. Se il deploy e appena stato creato, rifai il
-                bootstrap oppure importa manualmente il file Excel da qui.
-              </div>
+              <div className="empty">Catalogo servizi vuoto.</div>
             ) : null}
             <ServiceCreateForm action={createServiceAction} />
 
@@ -79,7 +70,6 @@ export default async function SettingsPage() {
           <div className="list-header">
             <div>
               <h3>Template WhatsApp</h3>
-              <p className="card-muted">Supporta i placeholder {"{nome_cliente}"}, {"{order_code}"} e {"{titolo_ordine}"}.</p>
             </div>
           </div>
           <form action={saveWhatsappTemplateAction} className="stack">

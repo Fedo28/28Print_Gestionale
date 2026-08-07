@@ -62,9 +62,6 @@ export function CatalogImportForm() {
           <label htmlFor="catalogFile">Import Excel catalogo</label>
           <input accept=".xlsx" id="catalogFile" name="file" required type="file" />
         </div>
-        <p className="hint settings-import-hint">
-          Colonne richieste: <code>code</code>, <code>name</code>, <code>base_price</code>. Opzionali: <code>description</code>, <code>quantity_tiers</code>, <code>active</code>.
-        </p>
         <div className="button-row settings-form-actions">
           <button className="secondary" disabled={isPending} type="submit">
             {isPending ? "Import in corso..." : "Importa file Excel"}

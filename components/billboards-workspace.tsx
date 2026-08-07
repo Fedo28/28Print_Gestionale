@@ -10,7 +10,6 @@ import { formatCurrency, formatDate, formatDateKey } from "@/lib/format";
 
 type BillboardsFocus = "assets" | "occupied" | "free" | "bookings" | "day";
 type BillboardKindFilter = "ALL" | BillboardAssetKind;
-type BillboardDayView = "bookings" | "occupied" | "free";
 
 type CustomerOption = {
   id: string;
@@ -31,11 +30,14 @@ type PlainAssetBooking = {
   billboardAssetId: string;
   startsAt: string;
   endsAt: string;
+  status: string;
+  note: string | null;
   priceCents: number;
   paidCents: number;
   balanceDueCents: number;
   monitorSlot: number | null;
   customer: {
+    id: string;
     name: string;
   };
 };
@@ -76,13 +78,19 @@ type MonitorBoardAsset = PlainAsset & {
   }>;
 };
 
+type RangeAvailability = {
+  asset: PlainAsset;
+  availableUnits: number;
+  capacity: number;
+  overlappingBookings: PlainAssetBooking[];
+};
+
 type BillboardsWorkspaceProps = {
   assets: PlainAsset[];
   customers: CustomerOption[];
   initialAssetCode: string | null;
   initialBookingOpen: boolean;
   initialDayKey: string | null;
-  initialDayView: BillboardDayView;
   initialFocus: BillboardsFocus | null;
   initialKind: BillboardKindFilter;
   monthBookings: PlainMonthBooking[];
@@ -97,7 +105,6 @@ export function BillboardsWorkspace({
   initialAssetCode,
   initialBookingOpen,
   initialDayKey,
-  initialDayView,
   initialFocus,
   initialKind,
   monthBookings,
@@ -108,10 +115,13 @@ export function BillboardsWorkspace({
   const [focus, setFocus] = useState<BillboardsFocus | null>(initialFocus);
   const [kind, setKind] = useState<BillboardKindFilter>(initialKind);
   const [dayKey, setDayKey] = useState<string | null>(initialDayKey);
-  const [dayView, setDayView] = useState<BillboardDayView>(initialDayView);
   const [bookingOpen, setBookingOpen] = useState(initialBookingOpen);
+  const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
   const [selectedAssetCode, setSelectedAssetCode] = useState<string | null>(initialAssetCode);
-  const [bookingSeedDayKey, setBookingSeedDayKey] = useState<string>(initialDayKey || defaultDateKeyFromMonth(todayKey, monthDateKey));
+  const [bookingSeedStartKey, setBookingSeedStartKey] = useState<string>(initialDayKey || "");
+  const [bookingSeedEndKey, setBookingSeedEndKey] = useState<string>(initialDayKey || "");
+  const [availabilityStartKey, setAvailabilityStartKey] = useState(todayKey);
+  const [availabilityEndKey, setAvailabilityEndKey] = useState(todayKey);
   const [calendarHeight, setCalendarHeight] = useState<number | null>(null);
   const calendarRef = useRef<HTMLElement | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
@@ -122,6 +132,17 @@ export function BillboardsWorkspace({
   const defaultBookingDate = isSameMonth(monthDate, today) ? today : monthDate;
   const defaultBookingDateKey = formatDateKey(defaultBookingDate);
   const selectedAsset = assets.find((asset) => asset.code === selectedAssetCode) || null;
+  const editableBooking = useMemo(
+    () => monthBookings.find((booking) => booking.id === editingBookingId) || null,
+    [editingBookingId, monthBookings]
+  );
+  const bookingFormAsset = useMemo(() => {
+    if (editableBooking) {
+      return assets.find((asset) => asset.id === editableBooking.billboardAssetId) || null;
+    }
+
+    return selectedAsset;
+  }, [assets, editableBooking, selectedAsset]);
   const existingBookings = useMemo(
     () =>
       assets.flatMap((asset) =>
@@ -183,6 +204,21 @@ export function BillboardsWorkspace({
       }),
     [filteredAssets, todayKey]
   );
+  const hasValidAvailabilityRange = Boolean(
+    availabilityStartKey && availabilityEndKey && availabilityEndKey >= availabilityStartKey
+  );
+  const availabilityResults = useMemo(
+    () =>
+      hasValidAvailabilityRange
+        ? filteredAssets
+            .map((asset) => getRangeAvailability(asset, availabilityStartKey, availabilityEndKey))
+            .filter((result) => result.availableUnits > 0)
+        : [],
+    [availabilityEndKey, availabilityStartKey, filteredAssets, hasValidAvailabilityRange]
+  );
+  const unavailableAssetsCount = hasValidAvailabilityRange
+    ? filteredAssets.length - availabilityResults.length
+    : 0;
   const monthMatrix = useMemo(
     () => buildMonthMatrix(calendarMonthBookings, monthDate, calendarAssets, todayKey, calendarAsset),
     [calendarAsset, calendarAssets, calendarMonthBookings, monthDate, todayKey]
@@ -196,10 +232,9 @@ export function BillboardsWorkspace({
         occupiedAssetsToday,
         selectedAsset: calendarAsset,
         selectedDayKey: dayKey,
-        todayKey,
-        dayView
+        todayKey
       }),
-    [calendarAsset, dayKey, dayView, filteredAssets, filteredMonthBookings, focus, freeAssetsToday, occupiedAssetsToday, todayKey]
+    [calendarAsset, dayKey, filteredAssets, filteredMonthBookings, focus, freeAssetsToday, occupiedAssetsToday, todayKey]
   );
   const monitorBoardDate = dayKey ? parseDateKey(dayKey) : today;
   const monitorBoardAssets = useMemo(
@@ -251,15 +286,12 @@ export function BillboardsWorkspace({
     if (dayKey) {
       searchParams.set("day", dayKey);
     }
-    if (dayView !== "bookings") {
-      searchParams.set("dayView", dayView);
-    }
     if (kind !== "ALL") {
       searchParams.set("kind", kind);
     }
     const anchor = bookingOpen ? "#new-billboard-booking" : focus ? "#billboards-focus-panel" : "";
     window.history.replaceState({}, "", `/billboards?${searchParams.toString()}${anchor}`);
-  }, [bookingOpen, dayKey, dayView, focus, kind, monthDateKey, selectedAssetCode]);
+  }, [bookingOpen, dayKey, focus, kind, monthDateKey, selectedAssetCode]);
 
   function scrollToTarget(target: "panel" | "booking" | "calendar") {
     const element = target === "panel" ? panelRef.current : target === "booking" ? bookingRef.current : calendarRef.current;
@@ -272,10 +304,9 @@ export function BillboardsWorkspace({
     });
   }
 
-  function openFocus(nextFocus: BillboardsFocus, nextDayKey?: string | null, nextDayView?: BillboardDayView) {
+  function openFocus(nextFocus: BillboardsFocus, nextDayKey?: string | null) {
     setFocus(nextFocus);
     setDayKey(nextDayKey ?? null);
-    setDayView(nextDayView ?? "bookings");
     scrollToTarget("panel");
   }
 
@@ -283,7 +314,6 @@ export function BillboardsWorkspace({
     if (focus === nextFocus) {
       setFocus(null);
       setDayKey(null);
-      setDayView("bookings");
       return;
     }
     openFocus(nextFocus);
@@ -291,37 +321,60 @@ export function BillboardsWorkspace({
 
   function openAssetCalendar(assetCode: string) {
     setSelectedAssetCode(assetCode);
+    setEditingBookingId(null);
     setBookingOpen(false);
     setFocus(null);
     setDayKey(null);
-    setDayView("bookings");
     scrollToTarget("calendar");
   }
 
   function openAssetBooking(assetCode: string, targetDayKey?: string) {
+    const targetDateKey = targetDayKey || defaultBookingDateKey;
+    openAssetBookingForRange(assetCode, targetDateKey, targetDateKey);
+  }
+
+  function openAssetBookingForRange(assetCode: string, startKey: string, endKey: string) {
     setSelectedAssetCode(assetCode);
-    setBookingSeedDayKey(targetDayKey || defaultBookingDateKey);
-    setDayKey(targetDayKey || null);
+    setEditingBookingId(null);
+    setBookingSeedStartKey(startKey);
+    setBookingSeedEndKey(endKey);
+    setDayKey(startKey || null);
     setFocus(null);
     setBookingOpen(true);
     scrollToTarget("booking");
   }
 
+  function openBookingEditor(bookingId: string) {
+    const booking = monthBookings.find((entry) => entry.id === bookingId);
+    if (!booking) {
+      return;
+    }
+
+    setEditingBookingId(booking.id);
+    setSelectedAssetCode(booking.billboardAsset.code);
+    setBookingSeedStartKey(booking.startsAt);
+    setBookingSeedEndKey(booking.endsAt);
+    setBookingOpen(true);
+    setFocus(null);
+    setDayKey(booking.startsAt);
+    scrollToTarget("booking");
+  }
+
   function closeBooking() {
     setBookingOpen(false);
-    setBookingSeedDayKey(defaultBookingDateKey);
+    setEditingBookingId(null);
+    setBookingSeedStartKey("");
+    setBookingSeedEndKey("");
   }
 
   function closeFocus() {
     setFocus(null);
     setDayKey(null);
-    setDayView("bookings");
   }
 
   function clearSelectedAsset() {
     setSelectedAssetCode(null);
     setDayKey(null);
-    setDayView("bookings");
     if (isImplicitSingleAssetView) {
       setKind("ALL");
     }
@@ -340,9 +393,6 @@ export function BillboardsWorkspace({
     }
     if (dayKey) {
       searchParams.set("day", dayKey);
-    }
-    if (dayView !== "bookings") {
-      searchParams.set("dayView", dayView);
     }
     if (kind !== "ALL") {
       searchParams.set("kind", kind);
@@ -365,8 +415,11 @@ export function BillboardsWorkspace({
             <button
               className="button primary"
               onClick={() => {
+                setEditingBookingId(null);
                 setSelectedAssetCode(null);
-                setBookingSeedDayKey(defaultBookingDateKey);
+                setBookingSeedStartKey("");
+                setBookingSeedEndKey("");
+                setFocus(null);
                 setBookingOpen(true);
                 scrollToTarget("booking");
               }}
@@ -381,8 +434,7 @@ export function BillboardsWorkspace({
       <section className="card card-pad billboards-filter-card" aria-label="Filtri cartelloni">
         <div className="list-header billboards-filter-head">
           <div>
-            <span className="compact-kicker">Filtro impianti</span>
-            <h3>Vista cartelloni</h3>
+            <h3>Impianti</h3>
           </div>
           <span className="pill">{filteredAssets.length} visibili</span>
         </div>
@@ -405,12 +457,95 @@ export function BillboardsWorkspace({
         </nav>
       </section>
 
+      <section className="card card-pad billboards-availability-card" aria-label="Ricerca disponibilita">
+        <div className="list-header billboards-availability-head">
+          <div>
+            <h3>Disponibilita</h3>
+          </div>
+          {hasValidAvailabilityRange ? (
+            <div className="billboards-availability-totals">
+              <span className="pill status">{availabilityResults.length} disponibili</span>
+              {unavailableAssetsCount > 0 ? <span className="pill warning">{unavailableAssetsCount} pieni</span> : null}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="billboards-availability-controls">
+          <label className="field">
+            <span>Data inizio</span>
+            <input
+              min={todayKey}
+              onChange={(event) => {
+                const nextStartKey = event.target.value;
+                setAvailabilityStartKey(nextStartKey);
+                if (availabilityEndKey && availabilityEndKey < nextStartKey) {
+                  setAvailabilityEndKey(nextStartKey);
+                }
+              }}
+              type="date"
+              value={availabilityStartKey}
+            />
+          </label>
+          <label className="field">
+            <span>Data fine</span>
+            <input
+              min={availabilityStartKey || todayKey}
+              onChange={(event) => setAvailabilityEndKey(event.target.value)}
+              type="date"
+              value={availabilityEndKey}
+            />
+          </label>
+          <div className="billboards-availability-period-copy">
+            <span className="compact-kicker">Periodo selezionato</span>
+            <strong>
+              {hasValidAvailabilityRange
+                ? `${formatDate(parseDateKey(availabilityStartKey))} - ${formatDate(parseDateKey(availabilityEndKey))}`
+                : "Completa entrambe le date"}
+            </strong>
+          </div>
+        </div>
+
+        {hasValidAvailabilityRange ? (
+          availabilityResults.length > 0 ? (
+            <div className="billboards-availability-grid">
+              {availabilityResults.map(({ asset, availableUnits, capacity }) => (
+                <article className="billboards-availability-result" key={asset.id}>
+                  <div className="billboards-availability-result-head">
+                    <div>
+                      <span className="billboard-asset-meta-label">{asset.code}</span>
+                      <strong>{asset.name}</strong>
+                    </div>
+                    <span className="pill status">
+                      {capacity > 1 ? `${availableUnits} slot liberi` : "Libero"}
+                    </span>
+                  </div>
+                  <div className="subtle">{simplifyBillboardLocation(asset.location)}</div>
+                  <div className="billboards-availability-result-actions">
+                    <span>{billboardAssetKindLabels[asset.kind]}</span>
+                    <button
+                      className="button primary"
+                      onClick={() => openAssetBookingForRange(asset.code, availabilityStartKey, availabilityEndKey)}
+                      type="button"
+                    >
+                      Prenota
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="empty billboards-availability-empty">
+              Nessun impianto libero nel periodo selezionato.
+            </div>
+          )
+        ) : null}
+      </section>
+
       {calendarAsset ? (
         <section className="mini-item billboards-selected-asset-banner">
           <div>
             <span className="compact-kicker">Impianto selezionato</span>
             <strong>{calendarAsset.name}</strong>
-            <div className="subtle">{calendarAsset.code} • Stai guardando la disponibilita di questo impianto. Clicca un giorno con spazio libero per prenotarlo.</div>
           </div>
           <div className="billboards-selected-asset-banner-actions">
             <span className="pill status">{billboardAssetKindLabels[calendarAsset.kind]}</span>
@@ -456,10 +591,9 @@ export function BillboardsWorkspace({
         <section className="card card-pad billboards-booking-card-v2" id="new-billboard-booking" ref={bookingRef}>
           <div className="list-header">
             <div>
-              <span className="compact-kicker">Prenotazione</span>
-              <h3>Nuova prenotazione</h3>
+              <h3>{editableBooking ? "Modifica plancia" : "Nuova prenotazione"}</h3>
             </div>
-            {selectedAsset ? <span className="pill status">{selectedAsset.code}</span> : null}
+            {bookingFormAsset ? <span className="pill status">{bookingFormAsset.code}</span> : null}
           </div>
           <BillboardBookingForm
             assets={assets.map((asset) => ({
@@ -474,20 +608,37 @@ export function BillboardsWorkspace({
               type: customer.type
             }))}
             defaultAsset={
-              selectedAsset
+              bookingFormAsset
                 ? {
-                    id: selectedAsset.id,
-                    code: selectedAsset.code,
-                    name: selectedAsset.name,
-                    kind: selectedAsset.kind,
-                    location: selectedAsset.location
+                    id: bookingFormAsset.id,
+                    code: bookingFormAsset.code,
+                    name: bookingFormAsset.name,
+                    kind: bookingFormAsset.kind,
+                    location: bookingFormAsset.location
                   }
                 : null
             }
-            defaultEndDate={bookingSeedDayKey}
-            defaultStartDate={bookingSeedDayKey}
+            defaultBooking={
+              editableBooking
+                ? {
+                    id: editableBooking.id,
+                    billboardAssetId: editableBooking.billboardAssetId,
+                    customerId: editableBooking.customer.id,
+                    customerName: editableBooking.customer.name,
+                    monitorSlot: editableBooking.monitorSlot,
+                    startsAt: editableBooking.startsAt,
+                    endsAt: editableBooking.endsAt,
+                    priceInput: formatMoneyInput(editableBooking.priceCents),
+                    paidInput: formatMoneyInput(editableBooking.paidCents),
+                    note: editableBooking.note || ""
+                  }
+                : null
+            }
+            defaultEndDate={editableBooking ? editableBooking.endsAt : bookingSeedEndKey}
+            defaultStartDate={editableBooking ? editableBooking.startsAt : bookingSeedStartKey}
             existingBookings={existingBookings}
-            key={`${selectedAsset?.id || "none"}-${bookingSeedDayKey}-${monthDateKey}`}
+            key={`${editingBookingId || "create"}-${bookingFormAsset?.id || "none"}-${bookingSeedStartKey}-${bookingSeedEndKey}-${monthDateKey}`}
+            mode={editableBooking ? "update" : "create"}
           />
         </section>
       ) : null}
@@ -496,7 +647,6 @@ export function BillboardsWorkspace({
         <section className="card card-pad billboards-monitor-board" id="billboards-monitor-board">
           <div className="list-header">
             <div>
-              <span className="compact-kicker">Monitor</span>
               <h3>Plancia giorno</h3>
               <div className="subtle">Slot del {formatDate(monitorBoardDate)}</div>
             </div>
@@ -584,61 +734,87 @@ export function BillboardsWorkspace({
                 const canBookSelectedAssetDay = Boolean(calendarAsset && day.freeCount > 0);
                 return (
                   <div
-                    className={`calendar-month-cell billboard-day-cell-v2${isFocusMonth ? "" : " muted"}${day.isToday ? " today" : ""}${day.isFullyOccupied ? " is-fully-occupied" : ""}`}
+                    className={`calendar-month-cell billboard-day-cell-v2${isFocusMonth ? "" : " muted"}${day.isToday ? " today" : ""}${day.entries.length === 0 ? " is-empty" : ""}${day.isFullyOccupied ? " is-fully-occupied" : ""}`}
                     key={day.key}
                   >
                     <div className="calendar-month-head">
                       <button
                         className="billboard-day-head-link"
                         onClick={() => {
-                          if (calendarAsset && day.freeCount > 0) {
+                          if (calendarAsset && day.entries.length === 0 && day.freeCount > 0) {
                             openAssetBooking(calendarAsset.code, day.key);
                             return;
                           }
 
-                          openFocus("day", day.key, "bookings");
+                          openFocus("day", day.key);
                         }}
                         type="button"
                       >
                         <strong>{day.date.getDate()}</strong>
-                        <span>{day.entries.length}</span>
+                        {day.entries.length > 0 ? <span>{day.entries.length}</span> : null}
                       </button>
                     </div>
-                    <div className="billboard-day-stats">
+                    {day.entries.length === 0 ? (
                       <button
-                        className="billboard-day-stat billboard-day-stat-occupied"
-                        onClick={() => openFocus("day", day.key, calendarAsset ? "bookings" : "occupied")}
-                        type="button"
-                      >
-                        <em>Occ.</em>
-                        <strong>{day.occupiedCount}</strong>
-                      </button>
-                      <button
-                        className="billboard-day-stat billboard-day-stat-free"
+                        className={`billboard-day-empty-state${calendarAsset ? " is-bookable" : ""}`}
                         onClick={() => {
-                          if (calendarAsset && day.freeCount > 0) {
+                          if (calendarAsset) {
                             openAssetBooking(calendarAsset.code, day.key);
                             return;
                           }
 
-                          openFocus("day", day.key, "free");
+                          openFocus("day", day.key);
                         }}
                         type="button"
                       >
-                        <em>{canBookSelectedAssetDay ? "Pren." : "Lib."}</em>
-                        <strong>{day.freeCount}</strong>
+                        <strong>{calendarAsset ? "Prenota" : "Tutti liberi"}</strong>
+                        <span>
+                          {calendarAsset
+                            ? calendarAsset.kind === "MONITOR"
+                              ? `${day.freeCount} slot disponibili`
+                              : "Impianto disponibile"
+                            : `${day.freeCount} impianti`}
+                        </span>
                       </button>
-                    </div>
-                    {!calendarAsset && day.topAssets.length > 0 ? (
-                      <div className="billboard-day-assets">
-                        {day.topAssets.map((assetCode) => (
-                          <span className="pill" key={assetCode}>
-                            {assetCode}
-                          </span>
-                        ))}
-                        {day.hiddenAssetsCount > 0 ? <span className="pill">+{day.hiddenAssetsCount}</span> : null}
-                      </div>
-                    ) : null}
+                    ) : (
+                      <>
+                        <div className="billboard-day-stats">
+                          <button
+                            className="billboard-day-stat billboard-day-stat-occupied"
+                            onClick={() => openFocus("day", day.key)}
+                            type="button"
+                          >
+                            <em>Occupati</em>
+                            <strong>{day.occupiedCount}</strong>
+                          </button>
+                          <button
+                            className="billboard-day-stat billboard-day-stat-free"
+                            onClick={() => {
+                              if (canBookSelectedAssetDay && calendarAsset) {
+                                openAssetBooking(calendarAsset.code, day.key);
+                                return;
+                              }
+
+                              openFocus("day", day.key);
+                            }}
+                            type="button"
+                          >
+                            <em>{canBookSelectedAssetDay ? "Prenota" : "Liberi"}</em>
+                            <strong>{day.freeCount}</strong>
+                          </button>
+                        </div>
+                        {!calendarAsset && day.topAssets.length > 0 ? (
+                          <div className="billboard-day-assets">
+                            {day.topAssets.map((assetCode) => (
+                              <span className="pill" key={assetCode}>
+                                {assetCode}
+                              </span>
+                            ))}
+                            {day.hiddenAssetsCount > 0 ? <span className="pill">+{day.hiddenAssetsCount}</span> : null}
+                          </div>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                 );
               })}
@@ -650,11 +826,13 @@ export function BillboardsWorkspace({
           <aside className="card card-pad billboards-focus-panel-v2" id="billboards-focus-panel" ref={panelRef}>
             <div className="list-header">
               <div>
-                <span className="compact-kicker">Vista attiva</span>
+                <span className="compact-kicker">{focusContent.kind === "day" ? "Dettaglio giorno" : "Vista attiva"}</span>
                 <h3>{focusContent.title}</h3>
               </div>
               <div className="billboards-focus-actions">
-                <span className="pill">{focusContent.count}</span>
+                <span className="pill">
+                  {focusContent.kind === "day" ? `${focusContent.count} prenotazioni` : focusContent.count}
+                </span>
                 <button className="button ghost" onClick={closeFocus} type="button">
                   Chiudi
                 </button>
@@ -662,7 +840,85 @@ export function BillboardsWorkspace({
             </div>
 
             <div className="billboards-focus-panel-body">
-              {focusContent.kind === "assets" ? (
+              {focusContent.kind === "day" ? (
+                <div className="billboards-day-detail">
+                  <div className="billboards-day-metrics">
+                    <div>
+                      <span>Prenotazioni</span>
+                      <strong>{focusContent.bookings.length}</strong>
+                    </div>
+                    <div>
+                      <span>Impianti occupati</span>
+                      <strong>{focusContent.occupiedAssetCount}</strong>
+                    </div>
+                    <div>
+                      <span>Disponibili</span>
+                      <strong>{focusContent.availableAssets.length}</strong>
+                    </div>
+                    <div>
+                      <span>Residuo aperto</span>
+                      <strong>{formatCurrency(focusContent.openBalanceCents)}</strong>
+                    </div>
+                  </div>
+
+                  <section className="billboards-day-section">
+                    <div className="billboards-day-section-head">
+                      <div>
+                        <h4>Clienti e lavorazioni</h4>
+                      </div>
+                      <span className="pill warning">{focusContent.bookings.length}</span>
+                    </div>
+                    <div className="compact-order-list billboard-focus-bookings-list">
+                      {focusContent.bookings.length === 0 ? (
+                        <div className="empty">Nessuna prenotazione.</div>
+                      ) : (
+                        focusContent.bookings.map((booking) => (
+                          <BookingFocusCard
+                            booking={booking}
+                            key={booking.id}
+                            onEdit={() => openBookingEditor(booking.id)}
+                            todayKey={todayKey}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </section>
+
+                  <details className="billboards-day-available" open={focusContent.bookings.length === 0}>
+                    <summary>
+                      <span>Impianti disponibili</span>
+                      <strong>{focusContent.availableAssets.length}</strong>
+                    </summary>
+                    <div className="billboards-day-available-list">
+                      {focusContent.availableAssets.length === 0 ? (
+                        <div className="empty">Nessun impianto disponibile in questa data.</div>
+                      ) : (
+                        focusContent.availableAssets.map(({ asset, availableUnits, capacity }) => (
+                          <article className="billboards-day-available-item" key={asset.id}>
+                            <div>
+                              <span className="billboard-asset-meta-label">{asset.code}</span>
+                              <strong>{asset.name}</strong>
+                              <span className="subtle">{simplifyBillboardLocation(asset.location)}</span>
+                            </div>
+                            <div className="billboards-day-available-actions">
+                              <span className="pill status">
+                                {capacity > 1 ? `${availableUnits} slot` : "Libero"}
+                              </span>
+                              <button
+                                className="button primary"
+                                onClick={() => openAssetBooking(asset.code, focusContent.dayKey)}
+                                type="button"
+                              >
+                                Prenota
+                              </button>
+                            </div>
+                          </article>
+                        ))
+                      )}
+                    </div>
+                  </details>
+                </div>
+              ) : focusContent.kind === "assets" ? (
                 <div className="billboard-focus-assets-list">
                   {focusContent.assets.length === 0 ? (
                     <div className="empty">Nessun impianto in questo gruppo.</div>
@@ -705,30 +961,12 @@ export function BillboardsWorkspace({
                     <div className="empty">Nessuna prenotazione in questo gruppo.</div>
                   ) : (
                     focusContent.bookings.map((booking) => (
-                      <article className="compact-order-item billboard-focus-booking-card" key={booking.id}>
-                        <div className="compact-order-main">
-                          <div className="billboard-focus-booking-head">
-                            <strong className="billboard-focus-booking-title">{booking.billboardAsset.name}</strong>
-                            <span className="billboard-focus-booking-customer">{booking.customer.name}</span>
-                          </div>
-                          <div className="subtle billboard-focus-booking-dates">
-                            {formatDate(parseDateKey(booking.startsAt))} - {formatDate(parseDateKey(booking.endsAt))}
-                          </div>
-                          <div className="billboard-booking-financials">
-                            {booking.billboardAsset.kind === "MONITOR" && booking.monitorSlot ? (
-                              <span>Slot {booking.monitorSlot}</span>
-                            ) : null}
-                            <span>Valore {formatCurrency(booking.priceCents)}</span>
-                            <span>Incassato {formatCurrency(booking.paidCents)}</span>
-                            <span>Residuo {formatCurrency(booking.balanceDueCents)}</span>
-                          </div>
-                        </div>
-                        <div className="billboard-upcoming-side-v2">
-                          <span className={`pill ${bookingIncludesDay(booking, todayKey) ? "warning" : "status"}`}>
-                            {bookingIncludesDay(booking, todayKey) ? "In corso" : "Prenotata"}
-                          </span>
-                        </div>
-                      </article>
+                      <BookingFocusCard
+                        booking={booking}
+                        key={booking.id}
+                        onEdit={() => openBookingEditor(booking.id)}
+                        todayKey={todayKey}
+                      />
                     ))
                   )}
                 </div>
@@ -762,6 +1000,51 @@ function SummaryActionCard({
   );
 }
 
+function BookingFocusCard({
+  booking,
+  todayKey,
+  onEdit
+}: {
+  booking: PlainMonthBooking;
+  todayKey: string;
+  onEdit: () => void;
+}) {
+  const isActive = bookingIncludesDay(booking, todayKey);
+  const isCompleted = booking.endsAt < todayKey;
+
+  return (
+    <article className="compact-order-item billboard-focus-booking-card">
+      <div className="compact-order-main">
+        <div className="billboard-focus-booking-head">
+          <span className="billboard-asset-meta-label">{booking.billboardAsset.code}</span>
+          <strong className="billboard-focus-booking-title">{booking.billboardAsset.name}</strong>
+          <span className="billboard-focus-booking-customer">{booking.customer.name}</span>
+        </div>
+        <div className="subtle billboard-focus-booking-dates">
+          {formatDate(parseDateKey(booking.startsAt))} - {formatDate(parseDateKey(booking.endsAt))}
+        </div>
+        {booking.note ? <div className="billboard-focus-booking-note">{booking.note}</div> : null}
+        <div className="billboard-booking-financials">
+          {booking.billboardAsset.kind === "MONITOR" && booking.monitorSlot ? <span>Slot {booking.monitorSlot}</span> : null}
+          <span>Valore {formatCurrency(booking.priceCents)}</span>
+          <span>Incassato {formatCurrency(booking.paidCents)}</span>
+          <span className={booking.balanceDueCents > 0 ? "is-open" : ""}>
+            Residuo {formatCurrency(booking.balanceDueCents)}
+          </span>
+        </div>
+      </div>
+      <div className="billboard-upcoming-side-v2">
+        <span className={`pill ${isActive ? "warning" : "status"}`}>
+          {isActive ? "In corso" : isCompleted ? "Terminata" : "Prenotata"}
+        </span>
+        <button className="button ghost billboard-focus-booking-edit" onClick={onEdit} type="button">
+          Modifica
+        </button>
+      </div>
+    </article>
+  );
+}
+
 function getFocusContent(
   focus: BillboardsFocus | null,
   input: {
@@ -772,7 +1055,6 @@ function getFocusContent(
     selectedAsset: PlainAsset | null;
     todayKey: string;
     selectedDayKey: string | null;
-    dayView: BillboardDayView;
   }
 ):
   | {
@@ -786,6 +1068,16 @@ function getFocusContent(
       title: string;
       count: number;
       bookings: PlainMonthBooking[];
+    }
+  | {
+      kind: "day";
+      title: string;
+      count: number;
+      dayKey: string;
+      bookings: PlainMonthBooking[];
+      availableAssets: RangeAvailability[];
+      occupiedAssetCount: number;
+      openBalanceCents: number;
     }
   | null {
   if (!focus) {
@@ -805,36 +1097,34 @@ function getFocusContent(
     const dayKey = input.selectedDayKey || input.todayKey;
     const dayDate = parseDateKey(dayKey);
     const scopedAssets = input.selectedAsset ? input.assets.filter((asset) => asset.id === input.selectedAsset?.id) : input.assets;
+    const scopedAssetIds = new Set(scopedAssets.map((asset) => asset.id));
     const dayBookings = input.monthBookings.filter((booking) => {
       if (!bookingIncludesDay(booking, dayKey)) {
         return false;
       }
 
-      return input.selectedAsset ? booking.billboardAssetId === input.selectedAsset.id : true;
+      return scopedAssetIds.has(booking.billboardAssetId);
     });
-    const dayFreeAssets = scopedAssets.filter((asset) => {
-      const occupancy = asset.bookings.filter((booking) => bookingIncludesDay(booking, dayKey)).length;
-      return occupancy < getBillboardAssetCapacity(asset.kind);
-    });
-    const dayOccupiedAssets = scopedAssets.filter((asset) =>
-      asset.bookings.some((booking) => bookingIncludesDay(booking, dayKey))
-    );
-
-    if (input.dayView === "free" || input.dayView === "occupied") {
-      const assets = input.dayView === "free" ? dayFreeAssets : dayOccupiedAssets;
-      return {
-        kind: "assets",
-        title: `${input.dayView === "free" ? "Liberi" : "Occupati"} ${formatDate(dayDate)}`,
-        count: assets.length,
-        assets: assets.map((asset) => buildFocusAsset(asset, dayKey))
-      };
-    }
+    const availableAssets = scopedAssets
+      .map((asset) =>
+        getRangeAvailability(
+          asset,
+          dayKey,
+          dayKey,
+          dayBookings.filter((booking) => booking.billboardAssetId === asset.id)
+        )
+      )
+      .filter((result) => result.availableUnits > 0);
 
     return {
-      kind: "bookings",
-      title: `Prenotazioni ${formatDate(dayDate)}`,
+      kind: "day",
+      title: formatDate(dayDate),
       count: dayBookings.length,
-      bookings: dayBookings
+      dayKey,
+      bookings: dayBookings,
+      availableAssets,
+      occupiedAssetCount: new Set(dayBookings.map((booking) => booking.billboardAssetId)).size,
+      openBalanceCents: dayBookings.reduce((total, booking) => total + booking.balanceDueCents, 0)
     };
   }
 
@@ -851,6 +1141,45 @@ function getFocusContent(
           : "Tutti gli impianti",
     count: assets.length,
     assets: assets.map((asset) => buildFocusAsset(asset, input.todayKey))
+  };
+}
+
+function getRangeAvailability(
+  asset: PlainAsset,
+  startKey: string,
+  endKey: string,
+  sourceBookings: PlainAssetBooking[] = asset.bookings
+): RangeAvailability {
+  const overlappingBookings = sourceBookings.filter((booking) =>
+    rangesOverlap(booking.startsAt, booking.endsAt, startKey, endKey)
+  );
+  const capacity = getBillboardAssetCapacity(asset.kind);
+
+  if (asset.kind !== "MONITOR") {
+    return {
+      asset,
+      availableUnits: overlappingBookings.length === 0 ? 1 : 0,
+      capacity,
+      overlappingBookings
+    };
+  }
+
+  const occupiedSlots = new Set<number>();
+  let unassignedBookings = 0;
+  for (const booking of overlappingBookings) {
+    if (booking.monitorSlot && booking.monitorSlot >= 1 && booking.monitorSlot <= capacity) {
+      occupiedSlots.add(booking.monitorSlot);
+    } else {
+      unassignedBookings += 1;
+    }
+  }
+
+  const occupiedUnits = Math.min(capacity, occupiedSlots.size + unassignedBookings);
+  return {
+    asset,
+    availableUnits: Math.max(0, capacity - occupiedUnits),
+    capacity,
+    overlappingBookings
   };
 }
 
@@ -897,6 +1226,17 @@ function simplifyBillboardLocation(location: string | null) {
   }
 
   return location.replace(/\s*-\s*-?\d+\.\d+\s*,\s*-?\d+\.\d+\s*$/, "").trim();
+}
+
+function formatMoneyInput(cents: number) {
+  if (!cents) {
+    return "";
+  }
+
+  return (cents / 100).toLocaleString("it-IT", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
 }
 
 function buildMonthMatrix(
@@ -1014,6 +1354,10 @@ function parseDateKey(value: string) {
 
 function bookingIncludesDay(booking: { startsAt: string; endsAt: string }, dayKey: string) {
   return booking.startsAt <= dayKey && booking.endsAt >= dayKey;
+}
+
+function rangesOverlap(leftStart: string, leftEnd: string, rightStart: string, rightEnd: string) {
+  return leftStart <= rightEnd && leftEnd >= rightStart;
 }
 
 function getBillboardAssetCapacity(kind: BillboardAssetKind) {

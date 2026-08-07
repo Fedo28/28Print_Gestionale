@@ -88,7 +88,6 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
           <div>
             <span className="compact-kicker">{viewLabel}</span>
             <h3>{navigation.title}</h3>
-            <p className="card-muted">{navigation.subtitle}</p>
           </div>
           <div className="calendar-nav-actions">
             <Link className="button secondary" href={navigation.prevHref}>
@@ -143,13 +142,12 @@ function DayCalendar({ snapshot }: { snapshot: CalendarDaySnapshot }) {
           <div className="list-header compact-section-head calendar-lane-head">
             <div>
               <h3>Lavori del giorno</h3>
-              <p className="card-muted">Ordini in scadenza nella giornata selezionata.</p>
             </div>
             <span className="pill calendar-count-badge">{snapshot.dueOrders.length}</span>
           </div>
           <div className="compact-order-list">
             {snapshot.dueOrders.length === 0 ? (
-              <div className="empty">Nessun lavoro con consegna prevista in questa giornata.</div>
+              <div className="empty">Nessun lavoro.</div>
             ) : (
               snapshot.dueOrders.map((order) => (
                 <CalendarOrderCard focusDate={snapshot.date} key={order.id} order={order} variant="delivery" />
@@ -162,13 +160,12 @@ function DayCalendar({ snapshot }: { snapshot: CalendarDaySnapshot }) {
           <div className="list-header compact-section-head calendar-lane-head">
             <div>
               <h3>Appuntamenti del giorno</h3>
-              <p className="card-muted">Installazioni, incontri cliente e lavorazioni prenotate.</p>
             </div>
             <span className="pill calendar-count-badge">{snapshot.appointmentOrders.length}</span>
           </div>
           <div className="compact-order-list">
             {snapshot.appointmentOrders.length === 0 ? (
-              <div className="empty">Nessun appuntamento programmato per questa giornata.</div>
+              <div className="empty">Nessun appuntamento.</div>
             ) : (
               snapshot.appointmentOrders.map((order) => (
                 <CalendarOrderCard focusDate={snapshot.date} key={order.id} order={order} variant="appointment" />
@@ -182,9 +179,6 @@ function DayCalendar({ snapshot }: { snapshot: CalendarDaySnapshot }) {
             <div className="list-header compact-section-head calendar-lane-head">
               <div>
                 <h3>Arretrati aperti</h3>
-                <p className="card-muted">
-                  Ordini ancora in carico con consegna precedente alla data selezionata.
-                </p>
               </div>
               <span className="pill danger calendar-count-badge">{snapshot.overdueOrders.length}</span>
             </div>
@@ -784,7 +778,6 @@ function getNavigation(view: CalendarView, focusDate: Date) {
   if (view === "day") {
     return {
       title: formatDate(focusDate),
-      subtitle: "Carico della giornata, appuntamenti vicini e arretrati ancora in cantiere.",
       prevHref: buildCalendarHref("day", addDays(focusDate, -1)),
       nextHref: buildCalendarHref("day", addDays(focusDate, 1)),
       todayHref: buildCalendarHref("day", startOfDay(new Date()))
@@ -796,7 +789,6 @@ function getNavigation(view: CalendarView, focusDate: Date) {
     const end = addDays(start, 6);
     return {
       title: `${formatDate(start)} - ${formatDate(end)}`,
-      subtitle: "Settimana operativa per confrontare scadenze di lavoro e appuntamenti senza cambiare schermata.",
       prevHref: buildCalendarHref("week", addDays(start, -7)),
       nextHref: buildCalendarHref("week", addDays(start, 7)),
       todayHref: buildCalendarHref("week", startOfDay(new Date()))
@@ -810,7 +802,6 @@ function getNavigation(view: CalendarView, focusDate: Date) {
 
   return {
     title: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1),
-    subtitle: "Agenda mensile dedicata agli appuntamenti e alle installazioni programmate.",
     prevHref: buildCalendarHref("month", new Date(focusDate.getFullYear(), focusDate.getMonth() - 1, 1)),
     nextHref: buildCalendarHref("month", new Date(focusDate.getFullYear(), focusDate.getMonth() + 1, 1)),
     todayHref: buildCalendarHref("month", startOfDay(new Date()))

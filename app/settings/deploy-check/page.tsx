@@ -100,7 +100,6 @@ export default async function DeployCheckPage() {
         <div className="list-header">
           <div>
             <h3>Conteggi archivio</h3>
-            <p className="card-muted">Se qui vedi numeri diversi tra locale e Vercel, i due ambienti non stanno leggendo lo stesso database.</p>
           </div>
         </div>
         <div className="grid grid-2">
@@ -132,7 +131,6 @@ export default async function DeployCheckPage() {
           <div className="list-header">
             <div>
               <h3>Ultimo ordine</h3>
-              <p className="card-muted">Serve a capire al volo se il deploy vede davvero gli ultimi salvataggi.</p>
             </div>
           </div>
           {latestOrder ? (
@@ -151,7 +149,6 @@ export default async function DeployCheckPage() {
           <div className="list-header">
             <div>
               <h3>Ultimo preventivo</h3>
-              <p className="card-muted">Anche qui il confronto locale/Vercel deve restare coerente.</p>
             </div>
           </div>
           {latestQuote ? (

@@ -44,7 +44,6 @@ export function OrderPaymentEntryForm({ orderId }: { orderId: string }) {
       {state.successMessage ? (
         <div className="mini-item payment-entry-feedback">
           <strong>{state.successMessage}</strong>
-          <div className="subtle">Il form si e svuotato ed e pronto per il prossimo incasso.</div>
         </div>
       ) : null}
 

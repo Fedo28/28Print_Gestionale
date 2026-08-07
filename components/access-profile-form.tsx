@@ -65,7 +65,6 @@ export function AccessProfileForm({
             required
             spellCheck={false}
           />
-          <p className="hint">Da qui puoi personalizzare il nickname dopo il primo accesso. La sessione attuale resta valida.</p>
         </div>
 
         <div className="button-row">

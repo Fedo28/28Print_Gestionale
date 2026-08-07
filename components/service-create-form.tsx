@@ -169,7 +169,6 @@ export function ServiceCreateForm({ action }: { action: (formData: FormData) => 
       <div className="field full">
         <label htmlFor="quantityTiers">Scaglioni quantita</label>
         <input id="quantityTiers" name="quantityTiers" placeholder="1-9:0,50 | 10-49:0,30 | 50+:0,20" />
-        <p className="hint">Facoltativo. Per i biglietti da visita il prezzo dello scaglione vale come totale riga; per gli altri servizi viene usato come prezzo unitario sulla quantita inserita.</p>
       </div>
       <div className="button-row settings-form-actions">
         <button className="primary" type="submit">

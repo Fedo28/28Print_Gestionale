@@ -57,10 +57,19 @@ type Props = {
 export default async function OrdersPage({ searchParams }: Props) {
   await requireAuth();
   const requestedPhase = parsePhaseFilter(searchParams?.phase || null);
+  const requestedPreset = parseDashboardPreset(searchParams?.preset || null);
   const view: OrderListView =
     parseOrderListView(searchParams?.view || null) === "DELIVERED" || requestedPhase === "CONSEGNATO" ? "DELIVERED" : "ACTIVE";
   const sort = parseOrderSortField(searchParams?.sort || null) || "delivery";
   const dir = parseOrderSortDirection(searchParams?.dir || null) || (view === "DELIVERED" ? "desc" : "asc");
+  const preset: DashboardPreset =
+    view === "DELIVERED"
+      ? "ALL"
+      : requestedPreset === "ALL"
+        ? requestedPhase === "SVILUPPO_COMPLETATO"
+          ? "READY"
+          : "TO_DO"
+        : requestedPreset;
   const filters = {
     view,
     q: searchParams?.q?.trim() || undefined,
@@ -70,11 +79,11 @@ export default async function OrdersPage({ searchParams }: Props) {
     invoice: parseInvoiceFilter(searchParams?.invoice || null),
     priority: parsePriorityFilter(searchParams?.priority || null),
     customerType: parseCustomerTypeFilter(searchParams?.customerType || null),
-    preset: view === "DELIVERED" ? "ALL" : parseDashboardPreset(searchParams?.preset || null),
+    preset,
     sort,
     dir
   };
-  const activeTab = getOrdersTab(filters.view, filters.preset);
+  const activeTab = getOrdersPrimaryTab(filters.view, filters.preset);
   const [orders, tabCounts] = await Promise.all([
     getOrdersList({
       view: filters.view,
@@ -160,6 +169,7 @@ export default async function OrdersPage({ searchParams }: Props) {
       : null,
   ].filter((entry): entry is { key: string; label: string; href: string } => Boolean(entry));
   const hasAdvancedFilters =
+    Boolean(filters.q) ||
     filters.phase !== "ALL" ||
     filters.status !== "ALL" ||
     filters.payment !== "ALL" ||
@@ -167,19 +177,39 @@ export default async function OrdersPage({ searchParams }: Props) {
     filters.priority !== "ALL" ||
     filters.customerType !== "ALL";
   const tabLinks = [
-    { key: "ACTIVE_ALL", label: "Attivi", count: tabCounts.ACTIVE_ALL, href: buildOrdersTabHref("ACTIVE_ALL", filters) },
-    { key: "TODAY", label: "Priorita", count: tabCounts.TODAY, href: buildOrdersTabHref("TODAY", filters) },
-    { key: "TO_START", label: "Da avviare", count: tabCounts.TO_START, href: buildOrdersTabHref("TO_START", filters) },
-    { key: "WORKING", label: "In lavorazione", count: tabCounts.WORKING, href: buildOrdersTabHref("WORKING", filters) },
-    { key: "BLOCKED", label: "Sospesi", count: tabCounts.BLOCKED, href: buildOrdersTabHref("BLOCKED", filters) },
+    { key: "TO_DO", label: "Da fare", count: tabCounts.TO_DO, href: buildOrdersTabHref("TO_DO", filters) },
     { key: "READY", label: "Pronti", count: tabCounts.READY, href: buildOrdersTabHref("READY", filters) },
     { key: "DELIVERED", label: "Consegnati", count: tabCounts.DELIVERED, href: buildOrdersTabHref("DELIVERED", filters) }
   ] as const;
+  const activeWorkState = getOrdersWorkState(filters.preset);
+  const workStateLinks = [
+    { key: "TO_DO", label: "Tutti da fare", count: tabCounts.TO_DO, href: buildOrdersTabHref("TO_DO", filters) },
+    { key: "TO_START", label: "Da avviare", count: tabCounts.TO_START, href: buildOrdersTabHref("TO_START", filters) },
+    { key: "WORKING", label: "In lavorazione", count: tabCounts.WORKING, href: buildOrdersTabHref("WORKING", filters) },
+    { key: "BLOCKED", label: "Sospesi", count: tabCounts.BLOCKED, href: buildOrdersTabHref("BLOCKED", filters) }
+  ] as const;
+  const activeWorkStateLabel = workStateLinks.find((entry) => entry.key === activeWorkState)?.label || "Tutti da fare";
+  const isPrioritySort = filters.sort === "priority" && filters.dir === "desc";
+  const prioritySortHref = buildOrdersFilterHref({
+    ...filters,
+    sort: isPrioritySort ? "delivery" : "priority",
+    dir: isPrioritySort ? "asc" : "desc"
+  });
+  const clearAdvancedFiltersHref = buildOrdersFilterHref({
+    ...filters,
+    phase: "ALL",
+    status: "ALL",
+    payment: "ALL",
+    invoice: "ALL",
+    priority: "ALL",
+    customerType: "ALL"
+  });
+  const resultsTitle = getOrdersResultsTitle(filters.view, filters.preset);
 
   return (
     <div className="stack orders-page-shell">
       <PageHeader
-        title={view === "DELIVERED" ? "Storico ordini" : "Ordini"}
+        title="Ordini"
         action={
           <div className="button-row orders-page-head-actions">
             <Link className="button ghost orders-page-history-button" href="/orders/activity">
@@ -193,10 +223,10 @@ export default async function OrdersPage({ searchParams }: Props) {
       />
 
       <section className="card card-pad orders-page-filters-card">
-        <nav className="calendar-view-switch orders-view-switch" aria-label="Selettore vista ordini">
+        <nav className="orders-primary-tabs" aria-label="Selettore vista ordini">
           {tabLinks.map((tab) => (
             <Link
-              className={`calendar-switch-link${activeTab === tab.key ? " active" : ""}`}
+              className={`orders-primary-tab${activeTab === tab.key ? " active" : ""}`}
               href={tab.href}
               key={tab.key}
               replace
@@ -207,38 +237,70 @@ export default async function OrdersPage({ searchParams }: Props) {
             </Link>
           ))}
         </nav>
+        <div className="orders-quick-controls">
+          {activeTab === "TO_DO" ? (
+            <details className="orders-work-state-menu">
+              <summary>{`Stato: ${activeWorkStateLabel}`}</summary>
+              <div className="orders-work-state-menu-panel">
+                {workStateLinks.map((entry) => (
+                  <Link
+                    aria-current={activeWorkState === entry.key ? "page" : undefined}
+                    className={activeWorkState === entry.key ? "active" : ""}
+                    href={entry.href}
+                    key={entry.key}
+                    replace
+                    scroll={false}
+                  >
+                    <span>{entry.label}</span>
+                    <strong>{entry.count}</strong>
+                  </Link>
+                ))}
+              </div>
+            </details>
+          ) : null}
+          {view === "ACTIVE" ? (
+            <Link
+              className={`orders-priority-sort-toggle${isPrioritySort ? " active" : ""}`}
+              href={prioritySortHref}
+              replace
+              scroll={false}
+            >
+              Urgenti prima
+            </Link>
+          ) : null}
+        </div>
         <form className="stack orders-filters-shell" method="get">
           {view === "DELIVERED" ? <input name="view" type="hidden" value="DELIVERED" /> : null}
           {filters.preset !== "ALL" ? <input name="preset" type="hidden" value={filters.preset} /> : null}
           <input name="sort" type="hidden" value={filters.sort} />
           <input name="dir" type="hidden" value={filters.dir} />
-          <div className="toolbar filters-bar">
-            <div className="filters-grow">
-              <OrderSearchInput
-                ariaLabel="Ricerca ordini"
-                name="q"
-                initialValue={filters.q}
-                placeholder={view === "DELIVERED" ? "Cerca nello storico per codice, titolo, cliente o telefono" : "Cerca codice, titolo, cliente o telefono"}
-                requestParams={{
-                  view: filters.view,
-                  phase: filters.phase !== "ALL" ? filters.phase : undefined,
-                  status: filters.status !== "ALL" ? filters.status : undefined,
-                  payment: filters.payment !== "ALL" ? filters.payment : undefined,
-                  invoice: filters.invoice !== "ALL" ? filters.invoice : undefined,
-                  priority: filters.priority !== "ALL" ? filters.priority : undefined,
-                  customerType: filters.customerType !== "ALL" ? filters.customerType : undefined,
-                  preset: filters.preset !== "ALL" ? filters.preset : undefined
-                }}
-                scope="orders"
-              />
-            </div>
-            <button className="secondary" type="submit">
-              Cerca
-            </button>
-          </div>
           <details className="advanced-filters-panel" open={hasAdvancedFilters}>
-            <summary>Filtri avanzati</summary>
+            <summary>Altri filtri</summary>
             <div className="toolbar filters-bar advanced-filters-grid">
+              <div className="orders-list-search-row">
+                <div className="filters-grow">
+                  <OrderSearchInput
+                    ariaLabel="Ricerca ordini"
+                    name="q"
+                    initialValue={filters.q}
+                    placeholder="Cerca cliente o lavoro"
+                    requestParams={{
+                      view: filters.view,
+                      phase: filters.phase !== "ALL" ? filters.phase : undefined,
+                      status: filters.status !== "ALL" ? filters.status : undefined,
+                      payment: filters.payment !== "ALL" ? filters.payment : undefined,
+                      invoice: filters.invoice !== "ALL" ? filters.invoice : undefined,
+                      priority: filters.priority !== "ALL" ? filters.priority : undefined,
+                      customerType: filters.customerType !== "ALL" ? filters.customerType : undefined,
+                      preset: filters.preset !== "ALL" ? filters.preset : undefined
+                    }}
+                    scope="orders"
+                  />
+                </div>
+                <button className="secondary" type="submit">
+                  Cerca
+                </button>
+              </div>
               {view === "ACTIVE" ? (
                 <div className="filters-field">
                   <select aria-label="Fase" defaultValue={filters.phase} name="phase">
@@ -305,7 +367,7 @@ export default async function OrdersPage({ searchParams }: Props) {
                 <button className="secondary" type="submit">
                   Applica filtri
                 </button>
-                <Link className="compact-link" href={buildOrdersTabHref(activeTab, getOrdersTabResetFilters(filters))} prefetch={false}>
+                <Link className="compact-link" href={clearAdvancedFiltersHref} prefetch={false}>
                   Pulisci avanzati
                 </Link>
               </div>
@@ -332,7 +394,7 @@ export default async function OrdersPage({ searchParams }: Props) {
       <section className="card card-pad table-wrap orders-table-wrap orders-page-results-card">
         <div className="list-header orders-results-head">
           <div>
-            <h3>Risultati</h3>
+            <h3>{resultsTitle}</h3>
             <span className="subtle">
               {orders.length} {orders.length === 1 ? "ordine nella lista" : "ordini nella lista"}
             </span>
@@ -353,34 +415,39 @@ export default async function OrdersPage({ searchParams }: Props) {
   );
 }
 
-type OrdersTabKey = "ACTIVE_ALL" | "TODAY" | "TO_START" | "WORKING" | "BLOCKED" | "READY" | "DELIVERED";
+type OrdersTabKey = "TO_DO" | "TO_START" | "WORKING" | "BLOCKED" | "READY" | "DELIVERED";
+type OrdersPrimaryTabKey = "TO_DO" | "READY" | "DELIVERED";
+type OrdersWorkStateKey = "TO_DO" | "TO_START" | "WORKING" | "BLOCKED";
 
-function getOrdersTab(view: OrderListView, preset: DashboardPreset): OrdersTabKey {
+function getOrdersPrimaryTab(view: OrderListView, preset: DashboardPreset): OrdersPrimaryTabKey | null {
   if (view === "DELIVERED") {
     return "DELIVERED";
-  }
-
-  if (preset === "PRIORITY_TODAY") {
-    return "TODAY";
-  }
-
-  if (preset === "TO_START") {
-    return "TO_START";
-  }
-
-  if (preset === "WORKING") {
-    return "WORKING";
-  }
-
-  if (preset === "BLOCKED") {
-    return "BLOCKED";
   }
 
   if (preset === "READY") {
     return "READY";
   }
 
-  return "ACTIVE_ALL";
+  if (
+    preset === "ALL" ||
+    preset === "TO_DO" ||
+    preset === "PRIORITY_TODAY" ||
+    preset === "TO_START" ||
+    preset === "WORKING" ||
+    preset === "BLOCKED"
+  ) {
+    return "TO_DO";
+  }
+
+  return null;
+}
+
+function getOrdersWorkState(preset: DashboardPreset): OrdersWorkStateKey {
+  if (preset === "TO_START" || preset === "WORKING" || preset === "BLOCKED") {
+    return preset;
+  }
+
+  return "TO_DO";
 }
 
 function buildOrdersTabHref(
@@ -400,8 +467,8 @@ function buildOrdersTabHref(
   };
 
   switch (tab) {
-    case "TODAY":
-      return buildOrdersFilterHref({ ...base, view: "ACTIVE", preset: "PRIORITY_TODAY" });
+    case "TO_DO":
+      return buildOrdersFilterHref({ ...base, view: "ACTIVE", preset: "TO_DO" });
     case "TO_START":
       return buildOrdersFilterHref({ ...base, view: "ACTIVE", preset: "TO_START" });
     case "WORKING":
@@ -413,28 +480,30 @@ function buildOrdersTabHref(
     case "DELIVERED":
       return buildOrdersFilterHref({ ...base, view: "DELIVERED", preset: "ALL" });
     default:
-      return buildOrdersFilterHref({ ...base, view: "ACTIVE", preset: "ALL" });
+      return buildOrdersFilterHref({ ...base, view: "ACTIVE", preset: "TO_DO" });
   }
 }
 
-function getOrdersTabResetFilters(
-  filters: Pick<OrderListFilters, "q" | "sort" | "dir">
-): Pick<OrderListFilters, "q" | "status" | "payment" | "invoice" | "priority" | "customerType" | "sort" | "dir"> {
-  return {
-    q: filters.q,
-    status: "ALL",
-    payment: "ALL",
-    invoice: "ALL",
-    priority: "ALL",
-    customerType: "ALL",
-    sort: filters.sort,
-    dir: filters.dir
-  };
+function getOrdersResultsTitle(view: OrderListView, preset: DashboardPreset) {
+  if (view === "DELIVERED") {
+    return "Consegnati";
+  }
+
+  if (preset === "READY") {
+    return "Pronti";
+  }
+
+  if (preset === "TO_START" || preset === "WORKING" || preset === "BLOCKED") {
+    return dashboardPresetLabels[preset];
+  }
+
+  return getOrdersPresetFilterLabel(preset) || "Da fare";
 }
 
 function getOrdersPresetFilterLabel(preset: DashboardPreset) {
   if (
     preset === "ALL" ||
+    preset === "TO_DO" ||
     preset === "PRIORITY_TODAY" ||
     preset === "TO_START" ||
     preset === "WORKING" ||

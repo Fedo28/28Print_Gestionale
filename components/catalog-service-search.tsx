@@ -98,7 +98,6 @@ export function CatalogServiceSearch({ services }: CatalogServiceSearchProps) {
       <div className="list-header">
         <div>
           <h4>Servizi presenti</h4>
-          <p className="card-muted">Scrivi liberamente codice, nome, descrizione o scaglioni: i risultati qui sotto restano modificabili, incluso il nome del servizio.</p>
         </div>
       </div>
 
@@ -119,10 +118,11 @@ export function CatalogServiceSearch({ services }: CatalogServiceSearchProps) {
             type="search"
             value={query}
           />
-          <div className="settings-catalog-search-meta">
-            <span className="subtle">{services.length} servizi disponibili</span>
-            {normalizedQuery ? <span className="subtle">{rankedResults.length} risultati trovati</span> : null}
-          </div>
+          {normalizedQuery ? (
+            <div className="settings-catalog-search-meta">
+              <span className="subtle">{rankedResults.length} risultati trovati</span>
+            </div>
+          ) : null}
         </div>
 
         {normalizedQuery ? (
@@ -137,9 +137,7 @@ export function CatalogServiceSearch({ services }: CatalogServiceSearchProps) {
                     type="button"
                   >
                     <span className="settings-catalog-suggestion-name">{service.name}</span>
-                    <span className="settings-catalog-suggestion-meta">
-                      {service.code || "Senza codice"} • {formatCurrency(service.basePriceCents)} • {formatServiceUnitPriceLabel(service.unit)}
-                    </span>
+                    <span className="settings-catalog-suggestion-meta">{formatCurrency(service.basePriceCents)}</span>
                   </button>
                 ))}
               </div>
@@ -153,19 +151,11 @@ export function CatalogServiceSearch({ services }: CatalogServiceSearchProps) {
               </div>
             ) : (
               <div className="mini-item settings-catalog-search-empty">
-                <p className="subtle">Nessun servizio trovato con questa ricerca. Prova con una parte del nome, il codice o il formato.</p>
+                <p className="subtle">Nessun servizio trovato.</p>
               </div>
             )}
-
-            {rankedResults.length > visibleResults.length ? (
-              <p className="hint">Sto mostrando i primi {visibleResults.length} risultati. Restringi la ricerca per vedere una selezione piu precisa.</p>
-            ) : null}
           </>
-        ) : (
-          <div className="mini-item settings-catalog-search-empty">
-            <p className="subtle">Il catalogo completo non viene mostrato qui sotto. Inizia a digitare e ti suggerisco subito i servizi piu vicini a quello che stai cercando.</p>
-          </div>
-        )}
+        ) : null}
       </div>
     </div>
   );
