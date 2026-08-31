@@ -1,4 +1,6 @@
 .next
+.next-dev
+.vercel
 node_modules
 dist
 coverage
@@ -9,3 +11,5 @@ dev.db-journal
 prisma/dev.db
 prisma/dev.db-journal
 public/uploads
+.shop-private
+.env*

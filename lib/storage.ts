@@ -1,5 +1,5 @@
 import { del, put } from "@vercel/blob";
-import { mkdir, rm, unlink, writeFile } from "fs/promises";
+import { mkdir, readFile, rm, unlink, writeFile } from "fs/promises";
 import path from "path";
 import { sanitizeAttachmentFileName } from "@/lib/attachment-utils";
 
@@ -10,6 +10,7 @@ type StoredAttachment = {
 };
 
 type AttachmentScope = "orders" | "billboards";
+const SHOP_PRIVATE_STORAGE_ROOT = ".shop-private";
 
 type UploadAttachmentInput = {
   entityId: string;
@@ -20,6 +21,10 @@ type UploadAttachmentInput = {
 
 function getLocalUploadsRoot(scope: AttachmentScope) {
   return path.join(process.cwd(), "public", "uploads", scope);
+}
+
+function getShopPrivateUploadsRoot() {
+  return path.join(process.cwd(), SHOP_PRIVATE_STORAGE_ROOT);
 }
 
 function isBlobUrl(filePath: string) {
@@ -96,6 +101,39 @@ export async function uploadBillboardBookingPdf(input: UploadAttachmentInput) {
   }
 
   return uploadToLocalStorage("billboards", input);
+}
+
+export async function uploadPrivateShopFile(input: { storageKey: string; buffer: Buffer }) {
+  const storageKey = String(input.storageKey || "").trim().replace(/^\/+/, "");
+  if (!storageKey) {
+    throw new Error("Storage key file shop obbligatoria.");
+  }
+
+  const absolutePath = path.join(getShopPrivateUploadsRoot(), storageKey);
+  await mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, input.buffer);
+
+  return {
+    storagePath: path.relative(process.cwd(), absolutePath).split(path.sep).join("/"),
+    storageProvider: "local-private"
+  };
+}
+
+function resolvePrivateShopFileAbsolutePath(storagePath: string) {
+  const normalizedStoragePath = String(storagePath || "").trim().replace(/^\/+/, "");
+  if (!normalizedStoragePath.startsWith(`${SHOP_PRIVATE_STORAGE_ROOT}/`)) {
+    throw new Error("Percorso file shop non valido.");
+  }
+
+  return path.join(process.cwd(), normalizedStoragePath);
+}
+
+export async function readPrivateShopFile(storagePath: string) {
+  return readFile(resolvePrivateShopFileAbsolutePath(storagePath));
+}
+
+export async function deletePrivateShopFile(storagePath: string) {
+  await unlink(resolvePrivateShopFileAbsolutePath(storagePath)).catch(() => undefined);
 }
 
 export async function deleteStoredAttachment(filePath: string) {

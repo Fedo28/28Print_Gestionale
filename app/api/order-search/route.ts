@@ -8,6 +8,7 @@ import {
   parsePaymentFilter,
   parsePhaseFilter,
   parsePriorityFilter,
+  parseShopOrderFilter,
   parseStatusFilter
 } from "@/lib/order-filters";
 import { getOrderSearchSuggestions } from "@/lib/orders";
@@ -30,6 +31,7 @@ export async function GET(request: NextRequest) {
     invoice: parseInvoiceFilter(request.nextUrl.searchParams.get("invoice")),
     priority: parsePriorityFilter(request.nextUrl.searchParams.get("priority")),
     customerType: parseCustomerTypeFilter(request.nextUrl.searchParams.get("customerType")),
+    shop: parseShopOrderFilter(request.nextUrl.searchParams.get("shop")),
     preset: parseDashboardPreset(request.nextUrl.searchParams.get("preset")),
     quote: scope === "quotes" ? "QUOTE" : "ORDER",
     limit: 6

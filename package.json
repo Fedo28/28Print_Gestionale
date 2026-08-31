@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": "20.x"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "./scripts/dev-clean.sh",
@@ -20,16 +20,25 @@
     "db:seed": "tsx --tsconfig tsconfig.json prisma/seed.ts",
     "db:seed:local": "tsx --tsconfig tsconfig.json prisma/seed.ts",
     "db:bootstrap:prod": "tsx --tsconfig tsconfig.json scripts/bootstrap-production.ts",
+    "push:generate-keys": "tsx --tsconfig tsconfig.json scripts/generate-web-push-keys.ts",
+    "shop:seed-demo": "tsx --tsconfig tsconfig.json scripts/seed-shop-demo.ts",
+    "stripe:version": "./node_modules/@stripe/cli-darwin-arm64/bin/stripe version",
+    "stripe:login": "./node_modules/@stripe/cli-darwin-arm64/bin/stripe login",
+    "stripe:listen": "node --env-file=.env scripts/stripe-listen.js listen",
+    "stripe:webhook-secret": "node --env-file=.env scripts/stripe-listen.js print-secret",
     "vercel-build": "npm run deploy:check-env && prisma migrate deploy && tsx --tsconfig tsconfig.json scripts/bootstrap-production.ts && next build",
     "test": "vitest run"
   },
   "dependencies": {
     "@prisma/client": "6.19.1",
+    "@types/web-push": "^3.6.4",
     "@vercel/blob": "^2.3.1",
     "next": "^14.2.35",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "sharp": "^0.34.5",
+    "stripe": "^22.6.0",
+    "web-push": "^3.6.7",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
@@ -40,5 +49,8 @@
     "tsx": "4.19.2",
     "typescript": "5.8.2",
     "vitest": "3.0.8"
+  },
+  "optionalDependencies": {
+    "@stripe/cli-darwin-arm64": "^1.50.6"
   }
 }

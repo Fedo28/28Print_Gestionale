@@ -1,0 +1,12 @@
+.env
+.env.local
+.next
+.next-dev
+.vercel
+.shop-private
+coverage
+dist
+node_modules
+public/uploads
+*.log
+tsconfig.tsbuildinfo

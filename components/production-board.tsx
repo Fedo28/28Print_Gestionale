@@ -136,13 +136,14 @@ function ProductionCard({
   const hasWhatsapp = Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""));
   const nextAction = getNextAction(queue);
   const urgent = order.priority === "URGENTE";
+  const shopOnlineOrderCode = getProductionShopOnlineOrderCode(order);
 
   return (
     <article
       aria-busy={isMoving}
       className={`compact-order-item compact-order-item-dashboard compact-order-item-dense workday-highlight-card production-order-card${
         workdayHighlight ? ` ${workdayHighlight}` : ""
-      }${whatsappNotified ? " whatsapp-notified" : ""}${urgent ? " production-order-card-urgent" : ""}${isMoving ? " is-moving" : ""}`}
+      }${shopOnlineOrderCode ? " is-shop-online" : ""}${whatsappNotified ? " whatsapp-notified" : ""}${urgent ? " production-order-card-urgent" : ""}${isMoving ? " is-moving" : ""}`}
       draggable={!isMoving}
       onDragEnd={onDragEnd}
       onDragStart={(event) => onDragStart(event, order.id)}
@@ -170,6 +171,12 @@ function ProductionCard({
 
         <div className="subtle compact-order-customer">{getDisplayOrderLabel(order.orderCode, order.title)}</div>
         <div className="hint compact-order-meta">Consegna {formatCompactDate(order.deliveryAt)}</div>
+        {shopOnlineOrderCode ? (
+          <div className="shop-online-card-meta">
+            <span className="pill shop-online-pill">Shop online</span>
+            <span>{shopOnlineOrderCode}</span>
+          </div>
+        ) : null}
         {whatsappNotified ? <div className="hint order-whatsapp-status">Cliente avvisato</div> : null}
         {workdayHighlight === "weekend" ? <div className="hint">Consegna in weekend</div> : null}
         {queue === "blocked" ? <div className="hint production-blocked-note">{order.operationalNote || operationalStatusLabels[order.operationalStatus]}</div> : null}
@@ -199,6 +206,10 @@ function ProductionCard({
       <StatusPills hideNeutralStatus linked={false} payment={order.paymentStatus} phase={order.mainPhase} status={order.operationalStatus} />
     </article>
   );
+}
+
+function getProductionShopOnlineOrderCode(order: ProductionOrder) {
+  return order.salesOrderLinks?.find((link) => link.salesOrder.origin === "SHOP_ONLINE")?.salesOrder.orderCode || null;
 }
 
 function ProductionLane({

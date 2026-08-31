@@ -1,7 +1,10 @@
 {
-  "/orders/[id]/page": "app/orders/[id]/page.js",
-  "/orders/page": "app/orders/page.js",
-  "/page": "app/page.js",
-  "/billboards/page": "app/billboards/page.js",
-  "/production/page": "app/production/page.js"
+  "/api/shop/orders/[id]/files/route": "app/api/shop/orders/[id]/files/route.js",
+  "/api/shop/orders/[id]/demo-checkout/route": "app/api/shop/orders/[id]/demo-checkout/route.js",
+  "/api/shop/orders/route": "app/api/shop/orders/route.js",
+  "/shop/accesso-beta/page": "app/shop/accesso-beta/page.js",
+  "/shop/categorie/[slug]/page": "app/shop/categorie/[slug]/page.js",
+  "/shop/orders/[id]/page": "app/shop/orders/[id]/page.js",
+  "/shop/stampa-documenti/page": "app/shop/stampa-documenti/page.js",
+  "/shop/page": "app/shop/page.js"
 }

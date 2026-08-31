@@ -17,6 +17,23 @@ enum CustomerType {
   AZIENDA
 }
 
+enum CustomerAccountStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum CustomerAddressType {
+  SHIPPING
+  BILLING
+  BOTH
+}
+
+enum BillingProfileKind {
+  PRIVATE
+  BUSINESS
+  PROFESSIONAL
+}
+
 enum MainPhase {
   ACCETTATO
   CALENDARIZZATO
@@ -68,6 +85,50 @@ enum PaymentMethod {
 enum PaymentEntryStatus {
   ATTIVO
   SOSTITUITO
+}
+
+enum SalesOrderStatus {
+  DRAFT
+  PENDING_PAYMENT
+  PAID
+  PAYMENT_FAILED
+  CANCELLED
+  FULFILLED
+}
+
+enum SalesOrderOrigin {
+  SHOP_ONLINE
+}
+
+enum PaymentProvider {
+  STRIPE
+}
+
+enum PaymentRecordStatus {
+  CREATED
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum FileAssetVisibility {
+  PRIVATE
+  STAFF_ONLY
+}
+
+enum DomainEventStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+enum SalesOrderJobLinkReason {
+  AUTO_PRODUCT_POLICY
+  INVOICE_REQUESTED
+  AUTO_PRODUCT_POLICY_AND_INVOICE_REQUESTED
+  MANUAL
 }
 
 enum ServiceUnit {
@@ -135,6 +196,7 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   auditLogs    AuditLog[]
+  pushSubscriptions StaffPushSubscription[]
 }
 
 model Customer {
@@ -152,6 +214,11 @@ model Customer {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   orders     Order[]
+  accounts   CustomerAccount[]
+  addresses  CustomerAddress[]
+  billingProfiles CustomerBillingProfile[]
+  salesOrders SalesOrder[]
+  fileAssets FileAsset[]
   billboardBookings BillboardBooking[]
   purchaseNotes PurchaseNote[]
 
@@ -160,6 +227,76 @@ model Customer {
   @@index([pec])
   @@index([type])
   @@index([uniqueCode])
+}
+
+model CustomerAccount {
+  id                 String                @id @default(uuid())
+  customerId         String
+  email              String
+  emailNormalized    String                @unique
+  passwordHash       String
+  status             CustomerAccountStatus @default(ACTIVE)
+  emailVerifiedAt    DateTime?
+  lastLoginAt        DateTime?
+  invitedAt          DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  customer           Customer              @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  salesOrders        SalesOrder[]
+  uploadedFileAssets FileAsset[]
+
+  @@unique([customerId, emailNormalized])
+  @@index([customerId, status])
+}
+
+model CustomerAddress {
+  id         String              @id @default(uuid())
+  customerId String
+  type       CustomerAddressType @default(BOTH)
+  label      String?
+  fullName   String?
+  companyName String?
+  line1      String
+  line2      String?
+  postalCode String?
+  city       String
+  province   String?
+  country    String              @default("IT")
+  phone      String?
+  isDefault  Boolean             @default(false)
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+  customer   Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId, type, isDefault])
+}
+
+model CustomerBillingProfile {
+  id           String             @id @default(uuid())
+  customerId   String
+  kind         BillingProfileKind @default(PRIVATE)
+  label        String?
+  firstName    String?
+  lastName     String?
+  fullName     String?
+  companyName  String?
+  taxCode      String?
+  vatNumber    String?
+  sdiCode      String?
+  pec          String?
+  addressLine1 String?
+  addressLine2 String?
+  postalCode   String?
+  city         String?
+  province     String?
+  country      String             @default("IT")
+  phone        String?
+  isDefault    Boolean            @default(false)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  customer     Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId, kind, isDefault])
 }
 
 model Order {
@@ -195,6 +332,7 @@ model Order {
   payments            Payment[]
   history             OrderHistory[]
   purchaseNotes       PurchaseNote[]
+  salesOrderLinks     SalesOrderJobLink[]
 
   @@unique([createdOn, titleNormalized])
   @@index([deliveryAt])
@@ -242,9 +380,132 @@ model ServiceCatalog {
   unit           ServiceUnit @default(PZ)
   quantityTiers  String?
   active         Boolean     @default(true)
+  onlineActive   Boolean     @default(false)
+  onlineSlug     String?     @unique
+  createJobAutomatically Boolean @default(false)
+  shopSortOrder  Int         @default(0)
+  shopConfigurationSchema Json?
+  shopPricingSchema Json?
+  shopFilePolicy Json?
+  shopProductionPolicy Json?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   items          OrderItem[]
+  salesOrderItems SalesOrderItem[]
+}
+
+model SalesOrder {
+  id                String           @id @default(uuid())
+  customerId        String
+  customerAccountId String?
+  orderCode         String           @unique
+  status            SalesOrderStatus @default(DRAFT)
+  origin            SalesOrderOrigin @default(SHOP_ONLINE)
+  currency          String           @default("EUR")
+  invoiceRequested  Boolean          @default(false)
+  subtotalCents     Int              @default(0)
+  discountCents     Int              @default(0)
+  extraCents        Int              @default(0)
+  totalCents        Int              @default(0)
+  notes             String?
+  placedAt          DateTime?
+  paidAt            DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  customer          Customer         @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  customerAccount   CustomerAccount? @relation(fields: [customerAccountId], references: [id], onDelete: SetNull)
+  items             SalesOrderItem[]
+  billingSnapshot   SalesOrderBillingSnapshot?
+  payments          PaymentRecord[]
+  jobLinks          SalesOrderJobLink[]
+
+  @@index([customerId, createdAt])
+  @@index([customerAccountId, createdAt])
+  @@index([status, createdAt])
+  @@index([origin, createdAt])
+}
+
+model SalesOrderItem {
+  id                           String          @id @default(uuid())
+  salesOrderId                 String
+  serviceCatalogId             String?
+  label                        String
+  description                  String?
+  quantity                     Float           @default(1)
+  configuration                Json?
+  pricingSnapshot              Json?
+  unitPriceCents               Int             @default(0)
+  lineTotalCents               Int             @default(0)
+  createJobAutomaticallyResolved Boolean       @default(false)
+  createdAt                    DateTime        @default(now())
+  updatedAt                    DateTime        @updatedAt
+  salesOrder                   SalesOrder      @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  serviceCatalog               ServiceCatalog? @relation(fields: [serviceCatalogId], references: [id], onDelete: SetNull)
+  files                        SalesOrderItemFile[]
+  jobLinks                     SalesOrderJobLink[]
+
+  @@index([salesOrderId, createdAt])
+  @@index([serviceCatalogId])
+}
+
+model SalesOrderBillingSnapshot {
+  id           String             @id @default(uuid())
+  salesOrderId String             @unique
+  kind         BillingProfileKind @default(PRIVATE)
+  firstName    String?
+  lastName     String?
+  fullName     String?
+  companyName  String?
+  taxCode      String?
+  vatNumber    String?
+  sdiCode      String?
+  pec          String?
+  addressLine1 String?
+  addressLine2 String?
+  postalCode   String?
+  city         String?
+  province     String?
+  country      String             @default("IT")
+  phone        String?
+  rawJson      Json?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  salesOrder   SalesOrder         @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+}
+
+model FileAsset {
+  id                        String           @id @default(uuid())
+  ownerCustomerId           String
+  uploadedByCustomerAccountId String?
+  originalName              String
+  mimeType                  String
+  fileSize                  Int
+  storageProvider           String
+  storageKey                String           @unique
+  storagePath               String?
+  visibility                FileAssetVisibility @default(PRIVATE)
+  expiresAt                 DateTime?
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @updatedAt
+  ownerCustomer             Customer         @relation(fields: [ownerCustomerId], references: [id], onDelete: Restrict)
+  uploadedByCustomerAccount CustomerAccount? @relation(fields: [uploadedByCustomerAccountId], references: [id], onDelete: SetNull)
+  salesOrderItems           SalesOrderItemFile[]
+
+  @@index([ownerCustomerId, createdAt])
+  @@index([uploadedByCustomerAccountId, createdAt])
+  @@index([expiresAt])
+}
+
+model SalesOrderItemFile {
+  id            String         @id @default(uuid())
+  salesOrderItemId String
+  fileAssetId   String
+  createdAt     DateTime       @default(now())
+  salesOrderItem SalesOrderItem @relation(fields: [salesOrderItemId], references: [id], onDelete: Cascade)
+  fileAsset     FileAsset      @relation(fields: [fileAssetId], references: [id], onDelete: Cascade)
+
+  @@unique([salesOrderItemId, fileAssetId])
+  @@index([fileAssetId])
 }
 
 model Attachment {
@@ -276,6 +537,58 @@ model Payment {
 
   @@index([orderId])
   @@index([orderId, status, effectiveAt])
+}
+
+model PaymentRecord {
+  id                        String              @id @default(uuid())
+  salesOrderId              String
+  provider                  PaymentProvider     @default(STRIPE)
+  providerCheckoutSessionId String?             @unique
+  providerPaymentIntentId   String?             @unique
+  amountCents               Int
+  currency                  String              @default("EUR")
+  status                    PaymentRecordStatus @default(CREATED)
+  paidAt                    DateTime?
+  failureCode               String?
+  failureMessage            String?
+  rawProviderSnapshot       Json?
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+  salesOrder                SalesOrder          @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+
+  @@index([salesOrderId, status, createdAt])
+}
+
+model PaymentWebhookEvent {
+  id               String            @id @default(uuid())
+  provider         PaymentProvider   @default(STRIPE)
+  providerEventId  String            @unique
+  eventType        String
+  objectId         String?
+  payloadJson      Json?
+  processingStatus DomainEventStatus @default(PENDING)
+  processedAt      DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([provider, eventType, createdAt])
+  @@index([processingStatus, createdAt])
+}
+
+model SalesOrderJobLink {
+  id             String                  @id @default(uuid())
+  salesOrderId   String
+  salesOrderItemId String?
+  orderId        String
+  reason         SalesOrderJobLinkReason
+  createdAt      DateTime                @default(now())
+  salesOrder     SalesOrder              @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  salesOrderItem SalesOrderItem?         @relation(fields: [salesOrderItemId], references: [id], onDelete: SetNull)
+  order          Order                   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([salesOrderId, orderId])
+  @@index([salesOrderItemId])
+  @@index([orderId])
 }
 
 model OrderHistory {
@@ -317,6 +630,43 @@ model AppSetting {
   value     String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model DomainEvent {
+  id          String            @id @default(uuid())
+  topic       String
+  entityType  String
+  entityId    String
+  dedupeKey   String            @unique
+  payloadJson Json?
+  status      DomainEventStatus @default(PENDING)
+  processedAt DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@index([topic, createdAt])
+  @@index([status, createdAt])
+  @@index([entityType, entityId, createdAt])
+}
+
+model StaffPushSubscription {
+  id            String   @id @default(uuid())
+  userId        String
+  endpoint      String   @unique
+  p256dh        String
+  auth          String
+  userAgent     String?
+  active        Boolean  @default(true)
+  lastSeenAt    DateTime @default(now())
+  lastSentAt    DateTime?
+  failedAt      DateTime?
+  failureReason String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, active])
+  @@index([active, updatedAt])
 }
 
 model PurchaseNote {

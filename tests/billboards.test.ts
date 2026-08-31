@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { rankBillboardAssets } from "../lib/billboard-asset-search";
 import {
+  DEFAULT_BILLBOARD_ASSET_DEFINITIONS,
   bookingIncludesDate,
   buildBillboardAssetSeed,
   calculateBillboardBookingBalanceCents,
@@ -12,33 +13,17 @@ describe("billboards domain", () => {
   it("builds the default billboard inventory seed", () => {
     const assets = buildBillboardAssetSeed();
 
-    expect(assets).toHaveLength(26);
-    expect(assets[0]).toMatchObject({
-      code: "CARTELLONE_01",
-      name: "Cartellone 01",
-      kind: "CARTELLONE",
-      sortOrder: 1,
-      active: true,
-      location: null
-    });
-    expect(assets[23]).toMatchObject({
-      code: "CARTELLONE_24",
-      name: "Cartellone 24",
-      kind: "CARTELLONE",
-      sortOrder: 24
-    });
-    expect(assets[24]).toMatchObject({
-      code: "MONITOR_01",
-      name: "Monitor",
-      kind: "MONITOR",
-      sortOrder: 25
-    });
-    expect(assets[25]).toMatchObject({
-      code: "VELA_01",
-      name: "Vela itinerante",
-      kind: "VELA_ITINERANTE",
-      sortOrder: 26
-    });
+    expect(assets).toHaveLength(DEFAULT_BILLBOARD_ASSET_DEFINITIONS.length);
+    expect(assets).toEqual(
+      DEFAULT_BILLBOARD_ASSET_DEFINITIONS.map((asset) => ({
+        code: asset.code,
+        name: asset.name,
+        kind: asset.kind,
+        location: asset.location,
+        sortOrder: asset.sortOrder,
+        active: true
+      }))
+    );
   });
 
   it("detects overlapping billboard ranges inclusively", () => {

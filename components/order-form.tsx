@@ -8,6 +8,11 @@ import { UndoButtonContent } from "@/components/undo-button-content";
 import { useUndoHistory } from "@/components/use-undo-history";
 import { getCatalogServiceSearchScore, normalizeCatalogServiceSearchValue } from "@/lib/catalog-search";
 import { normalizeCustomerSearchValue } from "@/lib/customer-search";
+import {
+  isLabelCalculatorFormat,
+  resolveServiceCatalogPriceMode
+} from "@/lib/domain/catalog/service-catalog";
+import { quoteCatalogService } from "@/lib/domain/pricing/service-pricing";
 import { isLabelCalculatorMaterialService } from "@/lib/label-calculator";
 import {
   customerTypeLabels,
@@ -36,18 +41,15 @@ import {
   type OrderDraftSnapshot
 } from "@/lib/order-drafts";
 import {
-  type CatalogPriceMode,
   computeLineTotalWithAdjustmentsCents,
   computeEffectiveUnitPriceCents,
   formatDiscountSummary,
   formatExtraSummary,
-  getTieredUnitPrice,
   parseFlexibleAdjustmentInput,
   parseQuantityValue,
   parseQuantityTiers,
   type QuantityTier,
-  type DiscountModeValue,
-  usesLineTotalQuantityTiers
+  type DiscountModeValue
 } from "@/lib/pricing";
 
 type CustomerWithOrders = Customer & { orders: { id: string }[] };
@@ -79,8 +81,6 @@ type LabelCalculatorDraft = {
   materialServiceId: string;
   singleCut: boolean;
 };
-
-const LABEL_CALCULATOR_FORMAT_PREFIX = "Calcolatore etichette";
 
 const emptyItem = (): ItemState => ({
   bodyMode: false,
@@ -142,14 +142,6 @@ function normalizeEditorItems(items: ItemState[]) {
   return nextItems.length > 0 ? nextItems : [emptyItem()];
 }
 
-function getCatalogPriceModeForService(service: ServiceCatalog | undefined): CatalogPriceMode {
-  return usesLineTotalQuantityTiers(service) ? "LINE_TOTAL" : "UNIT";
-}
-
-function isLabelCalculatorFormat(format: string | null | undefined) {
-  return normalizeCatalogServiceSearchValue(format || "").startsWith(normalizeCatalogServiceSearchValue(LABEL_CALCULATOR_FORMAT_PREFIX));
-}
-
 function createEmptyLabelCalculatorDraft(): LabelCalculatorDraft {
   return {
     widthCm: "",
@@ -174,7 +166,7 @@ function parseLabelCalculatorFormat(format: string | null | undefined) {
 }
 
 function buildLabelCalculatorFormat(widthCm: string, heightCm: string) {
-  return `${LABEL_CALCULATOR_FORMAT_PREFIX} • ${widthCm}x${heightCm} cm`;
+  return `Calcolatore etichette • ${widthCm}x${heightCm} cm`;
 }
 
 function computeLabelCalculatorTotalCents(
@@ -1056,24 +1048,21 @@ export function OrderForm({
       return "";
     }
 
-    let cents = service.basePriceCents;
-
-    try {
-      cents = getTieredUnitPrice(service.basePriceCents, quantity, service.quantityTiers);
-    } catch {
-      cents = service.basePriceCents;
-    }
+    const cents = quoteCatalogService({
+      service,
+      quantity
+    }).catalogBasePriceCents;
 
     return (cents / 100).toFixed(2).replace(".", ",");
   }
 
   function getCatalogPriceModeForItem(item: ItemState) {
-    if (isLabelCalculatorFormat(item.format)) {
-      return "LINE_TOTAL";
-    }
-
     const service = catalogServices.find((entry) => entry.id === item.serviceCatalogId);
-    return getCatalogPriceModeForService(service);
+    return resolveServiceCatalogPriceMode({
+      format: item.format,
+      serviceCatalogCode: service?.code,
+      serviceCatalogName: service?.name
+    });
   }
 
   function getServiceSuggestions(query: string) {

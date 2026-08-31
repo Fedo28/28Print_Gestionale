@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { MouseEvent, ReactNode } from "react";
 import { GlobalSearch } from "@/components/global-search";
+import { ShopOrderNotificationCenter } from "@/components/shop-order-notification-center";
 import brandLogo from "../logo.png";
 
 type NavTone = "neutral" | "sky" | "coral" | "lilac" | "rose" | "amber" | "mint" | "teal";
@@ -47,6 +48,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const isLoginRoute = pathname === "/login";
   const isPrintRoute = pathname.endsWith("/print");
+  const isShopRoute = pathname === "/shop" || pathname.startsWith("/shop/");
   const isDashboardRoute = pathname === "/";
   const isActivityRoute = pathname.startsWith("/activity");
   const isSettingsRoute = pathname.startsWith("/settings");
@@ -67,6 +69,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [pathname]);
 
   useEffect(() => {
+    if (isLoginRoute || isPrintRoute || isShopRoute) {
+      return;
+    }
+
     const schedulePrefetch = () => {
       for (const item of navItems) {
         router.prefetch(item.href);
@@ -88,7 +94,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       window.clearTimeout(prefetchHandle);
     };
-  }, [router]);
+  }, [isLoginRoute, isPrintRoute, isShopRoute, router]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -190,6 +196,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   if (isPrintRoute) {
     return <main className="print-route-layout">{children}</main>;
+  }
+
+  if (isShopRoute) {
+    return <main className="shop-route-layout">{children}</main>;
   }
 
   function handleCloseMobileNav() {
@@ -294,6 +304,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span className="mobile-search-trigger-label">Cerca</span>
             </span>
           </button>
+
+          {isCompactViewport ? <ShopOrderNotificationCenter compact /> : null}
 
           <button
             aria-controls="mobile-navigation-drawer"
@@ -428,6 +440,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="shell-toolbar">
               <GlobalSearch />
               <div className="shell-toolbar-actions">
+                <ShopOrderNotificationCenter />
                 <Link
                   aria-label="Apri ultime modifiche"
                   className={`shell-toolbar-icon-link shell-toolbar-history-link${isActivityRoute ? " active" : ""}`}

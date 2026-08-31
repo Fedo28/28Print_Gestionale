@@ -279,6 +279,10 @@ function buildServiceAuditSnapshot(service: {
   unit: string;
   quantityTiers?: string | null;
   active: boolean;
+  onlineActive?: boolean;
+  onlineSlug?: string | null;
+  createJobAutomatically?: boolean;
+  shopSortOrder?: number;
   createdAt?: Date;
   updatedAt?: Date;
 }) {
@@ -291,6 +295,10 @@ function buildServiceAuditSnapshot(service: {
     unit: service.unit,
     quantityTiers: service.quantityTiers || null,
     active: service.active,
+    onlineActive: Boolean(service.onlineActive),
+    onlineSlug: service.onlineSlug || null,
+    createJobAutomatically: Boolean(service.createJobAutomatically),
+    shopSortOrder: service.shopSortOrder ?? 0,
     createdAt: service.createdAt,
     updatedAt: service.updatedAt
   };
@@ -1412,6 +1420,20 @@ function parseBillboardBookingCustomerInput(formData: FormData) {
   };
 }
 
+function parseShopSortOrder(raw: FormDataEntryValue | null) {
+  const value = String(raw || "").trim();
+  if (!value) {
+    return 0;
+  }
+
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    throw new Error("L'ordine shop deve essere un numero valido.");
+  }
+
+  return Math.max(0, Math.round(numeric));
+}
+
 export async function createServiceAction(formData: FormData) {
   const session = await requireAuth();
   const service = await createService(
@@ -1450,7 +1472,11 @@ export async function updateServiceAction(formData: FormData) {
     basePriceCents: parseCurrencyToCents(formData.get("basePrice")?.toString() || null),
     unit: parseServiceUnit(formData.get("unit")),
     quantityTiers: String(formData.get("quantityTiers") || ""),
-    active: parseBooleanFlag(formData.get("active"))
+    active: parseBooleanFlag(formData.get("active")),
+    onlineActive: parseBooleanFlag(formData.get("onlineActive")),
+    onlineSlug: String(formData.get("onlineSlug") || ""),
+    createJobAutomatically: parseBooleanFlag(formData.get("createJobAutomatically")),
+    shopSortOrder: parseShopSortOrder(formData.get("shopSortOrder"))
   });
   await writeAuditLog({
     actionType: "UPDATED",
@@ -1466,7 +1492,11 @@ export async function updateServiceAction(formData: FormData) {
       basePriceCents: "Prezzo base",
       unit: "Unita",
       quantityTiers: "Scaglioni",
-      active: "Attivo"
+      active: "Attivo",
+      onlineActive: "Online",
+      onlineSlug: "Slug shop",
+      createJobAutomatically: "Crea commessa automatica",
+      shopSortOrder: "Ordine shop"
     })) : null,
     snapshotBefore: previous ? buildServiceAuditSnapshot(previous) : undefined,
     snapshotAfter: buildServiceAuditSnapshot(service)
@@ -1475,6 +1505,8 @@ export async function updateServiceAction(formData: FormData) {
   revalidatePath("/settings");
   revalidatePath("/orders/new");
   revalidatePath("/quotes/new");
+  revalidatePath("/shop");
+  revalidatePath("/shop/stampa-documenti");
 }
 
 export async function saveWhatsappTemplateAction(formData: FormData) {

@@ -9,6 +9,7 @@ import { formatCompactDate, formatCurrency, formatDateKey, formatDateTime, forma
 import { getDisplayOrderLabel } from "@/lib/order-display";
 import { buildOrdersFilterHref } from "@/lib/order-filters";
 import { getDashboardData, type DashboardWeekDayLoad } from "@/lib/orders";
+import { listPendingShopOnlineOperationalOrders } from "@/lib/shop-operational-orders";
 import { getWorkdayHighlight } from "@/lib/workday-highlights";
 
 type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
@@ -23,7 +24,7 @@ type DashboardFinanceBucket = "ALL" | "PARTIAL" | "UNPAID";
 type DashboardFinanceSort = "AGE" | "AMOUNT";
 type DashboardMaterialsFilter = "ALL" | "BLOCKING" | "LINKED" | "UNLINKED";
 type DashboardPulse = "CALENDAR" | "DAY" | "PRIORITY" | "TO_START" | "LATE_START" | "BLOCKED" | "READY" | "FINANCE" | "FINANCE_AGED" | "TOMORROW";
-type DashboardAccent = "today" | "agenda" | "overdue" | "to-start" | "working" | "blocked" | "ready" | "balance";
+type DashboardAccent = "today" | "agenda" | "overdue" | "to-start" | "working" | "blocked" | "ready" | "balance" | "shop";
 const DASHBOARD_FOCUS_DOMINANT_THRESHOLD = 6;
 const DASHBOARD_HOME_VISIBLE_LIMIT = 2;
 
@@ -50,6 +51,10 @@ export async function DashboardPage({
   materials?: string;
   pulse?: string;
 }) {
+  const [dashboardData, pendingShopOnline] = await Promise.all([
+    getDashboardData(),
+    listPendingShopOnlineOperationalOrders(3)
+  ]);
   const {
     todayOrders,
     todayAppointments,
@@ -63,7 +68,7 @@ export async function DashboardPage({
     weekOrders,
     weekLoad,
     purchaseNotes
-  } = await getDashboardData();
+  } = dashboardData;
 
   const nextDelivery = getSoonestDeliveryOrder(mergeUniqueOrders(overdueOrders, todayOrders, toStartOrders, workingOrders));
   const nextAppointment = todayAppointments[0];
@@ -252,12 +257,21 @@ export async function DashboardPage({
   const nextDeliveryLabel = nextDelivery ? nextDelivery.customer.name : "Nessuna";
   const nextAppointmentLabel = nextAppointment ? nextAppointment.customer.name : "Nessuno";
   const mobileStats = [
+    { accent: "shop", href: "/orders?shop=online&preset=TO_DO", label: "Shop", value: pendingShopOnline.count },
     { accent: "overdue", href: dashboardPanelLinks.overdue, label: "Urgenze", value: priorityOrders.length },
     { accent: "agenda", href: dashboardPanelLinks.appointments, label: "Agenda", value: todayAppointments.length },
     { accent: "to-start", href: dashboardPanelLinks.toStart, label: "Avvio", value: toStartOrders.length }
   ] satisfies Array<{ accent: DashboardAccent; href: string; label: string; value: number }>;
-  const visibleMobileStats = mobileStats.filter((item) => item.value > 0);
+  const visibleMobileStats = mobileStats.filter((item) => item.value > 0 || item.label === "Shop");
   const summaryMetrics = [
+    {
+      accent: "shop" as DashboardAccent,
+      href: "/orders?shop=online&preset=TO_DO",
+      icon: <DashboardGlyph kind="spark" />,
+      label: "Shop",
+      tone: "success" as const,
+      value: pendingShopOnline.count
+    },
     {
       accent: "overdue" as DashboardAccent,
       href: dashboardPanelLinks.overdue,
@@ -285,7 +299,7 @@ export async function DashboardPage({
       value: toStartOrders.length
     }
   ];
-  const visibleSummaryMetrics = summaryMetrics.filter((item) => item.value > 0);
+  const visibleSummaryMetrics = summaryMetrics.filter((item) => item.value > 0 || item.label === "Shop");
   const financeQuickActions = [
     stalePaidInvoiceOrders.length > 0
       ? {
@@ -953,36 +967,44 @@ function DashboardLane({
         ) : (
           <>
             <div className={`compact-order-grid${density === "dense" ? " compact-order-grid-dense" : ""}`}>
-              {visibleOrders.map((order) => (
-                <CompactOrderItem
-                  key={order.id}
-                  hasWhatsapp={Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""))}
-                  orderId={order.id}
-                  href={`/orders/${order.id}`}
-                  code={order.customer.name}
-                  deliveryAt={order.deliveryAt}
-                  priority={order.priority}
-                  readyWhatsappSentAt={order.readyWhatsappSentAt}
-                  title={getDisplayOrderLabel(order.orderCode, order.title)}
-                  meta={renderMeta(order)}
-                  aside={renderAside?.(order)}
-                  tone={getOrderTone(order.deliveryAt, order.mainPhase, order.paymentStatus)}
-                  phase={order.mainPhase}
-                  density={density}
-                  extraClassName={itemClassName?.(order)}
-                  pills={
-                    <StatusPills
-                      hideNeutralStatus
-                      linked={false}
-                      phase={order.mainPhase}
-                      payment={order.paymentStatus}
-                      status={order.operationalStatus}
-                    />
-                  }
-                  status={order.operationalStatus}
-                  note={renderNote?.(order)}
-                />
-              ))}
+              {visibleOrders.map((order) => {
+                const shopOnlineOrderCode = getDashboardShopOnlineOrderCode(order);
+                const resolvedItemClassName = [itemClassName?.(order), shopOnlineOrderCode ? "is-shop-online" : ""].filter(Boolean).join(" ");
+
+                return (
+                  <CompactOrderItem
+                    key={order.id}
+                    hasWhatsapp={Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""))}
+                    orderId={order.id}
+                    href={`/orders/${order.id}`}
+                    code={order.customer.name}
+                    deliveryAt={order.deliveryAt}
+                    priority={order.priority}
+                    readyWhatsappSentAt={order.readyWhatsappSentAt}
+                    title={getDisplayOrderLabel(order.orderCode, order.title)}
+                    meta={renderMeta(order)}
+                    aside={renderAside?.(order)}
+                    tone={getOrderTone(order.deliveryAt, order.mainPhase, order.paymentStatus)}
+                    phase={order.mainPhase}
+                    density={density}
+                    extraClassName={resolvedItemClassName || undefined}
+                    pills={
+                      <>
+                        <StatusPills
+                          hideNeutralStatus
+                          linked={false}
+                          phase={order.mainPhase}
+                          payment={order.paymentStatus}
+                          status={order.operationalStatus}
+                        />
+                        {shopOnlineOrderCode ? <span className="pill compact-pill shop-online-pill">Shop online</span> : null}
+                      </>
+                    }
+                    status={order.operationalStatus}
+                    note={renderNote?.(order)}
+                  />
+                );
+              })}
             </div>
             {hasHiddenOrders && viewHref ? (
               <Link
@@ -1250,6 +1272,10 @@ function DashboardMaterialsCard({
       ) : null}
     </section>
   );
+}
+
+function getDashboardShopOnlineOrderCode(order: DashboardOrder) {
+  return order.salesOrderLinks?.find((link) => link.salesOrder.origin === "SHOP_ONLINE")?.salesOrder.orderCode || null;
 }
 
 function CompactOrderItem({

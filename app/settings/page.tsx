@@ -22,6 +22,15 @@ export default async function SettingsPage() {
   const headerAction =
     session.role === "ADMIN" ? (
       <div className="button-row">
+        <Link className="button ghost" href="/shop">
+          Preview shop
+        </Link>
+        <Link className="button ghost" href="/settings/shop-foundation">
+          Shop foundation
+        </Link>
+        <Link className="button ghost" href="/settings/shop-payments">
+          Pagamenti shop
+        </Link>
         <Link className="button ghost" href="/settings/staff">
           Profili staff
         </Link>

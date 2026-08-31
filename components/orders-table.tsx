@@ -40,6 +40,12 @@ type OrderRow = {
     id: string;
     deliveredAt?: Date | string | null;
   }[];
+  salesOrderLinks?: {
+    salesOrder: {
+      origin: string;
+      orderCode: string;
+    };
+  }[];
 };
 
 function getCustomerContact(customer: { phone?: string | null; whatsapp?: string | null }) {
@@ -222,15 +228,17 @@ export function OrdersTable({
                     ? `Prevista ${formatDateTime(order.deliveryAt)}`
                     : "Consegnato"
                   : priorityLabels[order.priority];
+              const isShopOnlineOrder = Boolean(order.salesOrderLinks?.some((link) => link.salesOrder.origin === "SHOP_ONLINE"));
+              const shopOnlineOrderCode = order.salesOrderLinks?.find((link) => link.salesOrder.origin === "SHOP_ONLINE")?.salesOrder.orderCode;
 
               return (
                 <Fragment key={order.id}>
                   <tr
-                    className={`${isOpen ? "order-row-open" : ""}${isSelected ? " order-row-selected" : ""}${priorityToneClass ? ` order-row-${priorityToneClass}` : ""}${whatsappNotified ? " order-row-whatsapp-notified" : ""}`}
+                    className={`${isOpen ? "order-row-open" : ""}${isSelected ? " order-row-selected" : ""}${priorityToneClass ? ` order-row-${priorityToneClass}` : ""}${isShopOnlineOrder ? " order-row-shop-online" : ""}${whatsappNotified ? " order-row-whatsapp-notified" : ""}`}
                     key={order.id}
                   >
                     <td data-label="Cliente e lavoro">
-                      <div className="order-mobile-card">
+                      <div className={`order-mobile-card${isShopOnlineOrder ? " is-shop-online" : ""}`}>
                         <div className="order-mobile-card-summary">
                           <div className="order-mobile-card-head">
                           <div className="order-inline-head order-inline-head-spread">
@@ -271,6 +279,7 @@ export function OrdersTable({
 
                           <div className="order-mobile-card-customer">
                             <strong>{displayLabel}</strong>
+                            {isShopOnlineOrder ? <span className="pill shop-online-pill">Shop online</span> : null}
                             {entryMeta ? <span>{entryMeta}</span> : null}
                           </div>
                         </div>
@@ -332,6 +341,12 @@ export function OrdersTable({
                               <Link className="subtle order-entry-meta order-list-work-link" href={`/orders/${order.id}`}>
                                 {displayLabel}
                               </Link>
+                              {isShopOnlineOrder ? (
+                                <div className="order-shop-online-meta">
+                                  <span className="pill shop-online-pill">Shop online</span>
+                                  {shopOnlineOrderCode ? <span>{shopOnlineOrderCode}</span> : null}
+                                </div>
+                              ) : null}
                               {customerContact ? <div className="subtle order-entry-meta">{customerContact}</div> : null}
                             </div>
                           </div>

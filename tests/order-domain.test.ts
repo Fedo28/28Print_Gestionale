@@ -17,7 +17,13 @@ import {
   normalizeOrderTitle,
   normalizeForUniqueness
 } from "../lib/orders";
-import { buildOrdersFilterHref, parseDashboardPreset, parseOrderListView, parsePhaseFilter } from "../lib/order-filters";
+import {
+  buildOrdersFilterHref,
+  parseDashboardPreset,
+  parseOrderListView,
+  parsePhaseFilter,
+  parseShopOrderFilter
+} from "../lib/order-filters";
 import { getSelectablePhaseTargets } from "../lib/order-phase-transitions";
 import { automaticPriorityValues, computeAutomaticPriority } from "../lib/priorities";
 import {
@@ -133,6 +139,12 @@ describe("order domain", () => {
     expect(parseOrderListView("DELIVERED")).toBe("DELIVERED");
     expect(parseOrderListView("whatever")).toBe("ACTIVE");
     expect(buildOrdersFilterHref({ view: "DELIVERED", q: "rossi" })).toBe("/orders?view=DELIVERED&q=rossi");
+  });
+
+  it("supports the shop online operational filter", () => {
+    expect(parseShopOrderFilter("online")).toBe("ONLINE");
+    expect(parseShopOrderFilter("anything")).toBe("ALL");
+    expect(buildOrdersFilterHref({ preset: "TO_DO", shop: "ONLINE" })).toBe("/orders?shop=online&preset=TO_DO");
   });
 
   it("excludes preventivi from operational flows", () => {

@@ -21,6 +21,14 @@ import {
   paymentStatusLabels,
   phaseOrder
 } from "@/lib/constants";
+import {
+  buildDefaultShopServiceSlug,
+  buildUniqueServiceCode,
+  buildUniqueShopServiceSlug,
+  normalizeServiceCode,
+  normalizeShopServiceSlug,
+  resolveServiceCatalogPriceMode
+} from "@/lib/domain/catalog/service-catalog";
 import { getDisplayOrderLabel } from "@/lib/order-display";
 import { getOrderToQuoteDisabledReason } from "@/lib/order-quote";
 import { canTransitionPhase } from "@/lib/order-phase-transitions";
@@ -35,8 +43,7 @@ import {
   formatDiscountSummary,
   formatExtraSummary,
   normalizeQuantityTiers,
-  normalizeQuantityValue,
-  usesLineTotalQuantityTiers
+  normalizeQuantityValue
 } from "@/lib/pricing";
 import { sortPendingPurchaseNotes } from "@/lib/purchase-note-utils";
 import type {
@@ -50,6 +57,7 @@ import type {
   PhaseFilter,
   PriorityFilter,
   QuoteFilter,
+  ShopOrderFilter,
   StatusFilter
 } from "@/lib/order-filters";
 import { rankSearchableOrders } from "@/lib/order-search";
@@ -286,23 +294,6 @@ export type RecentOrderHistoryEntry = {
   snapshotKind: RecentOrderHistorySnapshotKind;
 };
 
-function usesLineTotalCatalogPricing(options: {
-  format?: string | null;
-  serviceCatalogCode?: string | null;
-  serviceCatalogName?: string | null;
-  explicitMode?: CatalogPriceMode;
-}) {
-  if (options.explicitMode === "LINE_TOTAL") {
-    return true;
-  }
-
-  if (usesLineTotalQuantityTiers({ name: options.serviceCatalogName, code: options.serviceCatalogCode })) {
-    return true;
-  }
-
-  return String(options.format || "").trim().toLowerCase().startsWith("calcolatore etichette");
-}
-
 export type UpdateCustomerInput = {
   id: string;
   type: CustomerType;
@@ -431,6 +422,27 @@ function operationalOrderWhere() {
     isQuote: false
   } satisfies Prisma.OrderWhereInput;
 }
+
+const shopOnlineSalesOrderLinksRelationArgs = {
+  where: {
+    salesOrder: {
+      origin: "SHOP_ONLINE" as const
+    }
+  },
+  select: {
+    salesOrder: {
+      select: {
+        origin: true,
+        orderCode: true
+      }
+    }
+  }
+};
+
+const orderWithCustomerAndShopLinksInclude = {
+  customer: true,
+  salesOrderLinks: shopOnlineSalesOrderLinksRelationArgs
+};
 
 export function isOperationalOrder(order: { isQuote: boolean }) {
   return !order.isQuote;
@@ -933,12 +945,10 @@ export function computeOrderTotals(items: OrderItemInput[]) {
       const discountValue = clampDiscountValue(discountMode, Number(item.discountValue ?? 0));
       const extraMode = (item.extraMode || "NONE") as DiscountMode;
       const extraValue = clampDiscountValue(extraMode, Number(item.extraValue ?? 0));
-      const catalogPriceMode = usesLineTotalCatalogPricing({
+      const catalogPriceMode = resolveServiceCatalogPriceMode({
         explicitMode: item.catalogPriceMode,
         format: item.format
-      })
-        ? "LINE_TOTAL"
-        : "UNIT";
+      });
       const lineTotalCents = computeLineTotalWithAdjustmentsCents(
         catalogBasePriceCents,
         quantity,
@@ -1803,14 +1813,12 @@ export async function updateOrderItem(input: UpdateOrderItemInput) {
       label: input.label,
       quantity: input.quantity,
       catalogBasePriceCents: input.catalogBasePriceCents,
-      catalogPriceMode: usesLineTotalCatalogPricing({
+      catalogPriceMode: resolveServiceCatalogPriceMode({
         explicitMode: input.catalogPriceMode,
         format: input.format,
         serviceCatalogCode: selectedServiceCatalog?.code,
         serviceCatalogName: selectedServiceCatalog?.name
-      })
-        ? "LINE_TOTAL"
-        : "UNIT",
+      }),
       discountMode: input.discountMode,
       discountValue: input.discountValue,
       extraMode: input.extraMode,
@@ -2270,14 +2278,12 @@ export async function createOrderItem(input: CreateOrderItemInput) {
       label: input.label,
       quantity: input.quantity,
       catalogBasePriceCents: input.catalogBasePriceCents,
-      catalogPriceMode: usesLineTotalCatalogPricing({
+      catalogPriceMode: resolveServiceCatalogPriceMode({
         explicitMode: input.catalogPriceMode,
         format: input.format,
         serviceCatalogCode: selectedServiceCatalog?.code,
         serviceCatalogName: selectedServiceCatalog?.name
-      })
-        ? "LINE_TOTAL"
-        : "UNIT",
+      }),
       discountMode: input.discountMode,
       discountValue: input.discountValue,
       extraMode: input.extraMode,
@@ -2420,13 +2426,11 @@ export async function cloneOrderItem(input: CloneOrderItemInput) {
       description: item.description || undefined,
       quantity: item.quantity,
       catalogBasePriceCents: item.catalogBasePriceCents || item.unitPriceCents,
-      catalogPriceMode: usesLineTotalCatalogPricing({
+      catalogPriceMode: resolveServiceCatalogPriceMode({
         format: item.format,
         serviceCatalogCode: item.serviceCatalog?.code,
         serviceCatalogName: item.serviceCatalog?.name
-      })
-        ? "LINE_TOTAL"
-        : "UNIT",
+      }),
       discountMode: item.discountMode,
       discountValue: item.discountValue,
       extraMode: item.extraMode,
@@ -2914,37 +2918,7 @@ export async function markOrderReady(orderId: string) {
   await transitionOrderPhase(orderId, "SVILUPPO_COMPLETATO");
 }
 
-export function normalizeServiceCode(code: string, options?: { allowEmpty?: boolean }) {
-  const normalized = code
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-
-  if (!normalized) {
-    if (options?.allowEmpty) {
-      return "";
-    }
-
-    throw new Error("Il codice servizio e obbligatorio.");
-  }
-
-  return normalized;
-}
-
-function buildUniqueServiceCode(base: string, usedCodes: Set<string>) {
-  let candidate = base || "SERVIZIO";
-  let index = 2;
-
-  while (usedCodes.has(candidate)) {
-    candidate = `${base || "SERVIZIO"}_${index}`;
-    index += 1;
-  }
-
-  usedCodes.add(candidate);
-  return candidate;
-}
+export { normalizeServiceCode } from "@/lib/domain/catalog/service-catalog";
 
 async function ensureServiceCodes() {
   const services = await prisma.serviceCatalog.findMany({
@@ -3040,6 +3014,10 @@ export async function updateServiceCatalogEntry(input: {
   unit: ServiceUnitValue;
   quantityTiers?: string;
   active: boolean;
+  onlineActive: boolean;
+  onlineSlug?: string;
+  createJobAutomatically: boolean;
+  shopSortOrder: number;
 }) {
   const cleanName = input.name.trim();
   if (!cleanName) {
@@ -3047,6 +3025,7 @@ export async function updateServiceCatalogEntry(input: {
   }
 
   const normalizedCode = normalizeServiceCode(input.code);
+  const normalizedRequestedSlug = normalizeShopServiceSlug(input.onlineSlug || "", { allowEmpty: true });
   const existing = await prisma.serviceCatalog.findFirst({
     where: {
       code: normalizedCode,
@@ -3058,6 +3037,42 @@ export async function updateServiceCatalogEntry(input: {
     throw new Error("Esiste gia un servizio con questo codice.");
   }
 
+  let resolvedOnlineSlug = normalizedRequestedSlug || null;
+
+  if (resolvedOnlineSlug) {
+    const existingSlug = await prisma.serviceCatalog.findFirst({
+      where: {
+        onlineSlug: resolvedOnlineSlug,
+        id: { not: input.id }
+      },
+      select: { id: true }
+    });
+
+    if (existingSlug) {
+      throw new Error("Esiste gia un servizio shop con questo slug.");
+    }
+  } else if (input.onlineActive) {
+    const existingSlugs = await prisma.serviceCatalog.findMany({
+      where: {
+        id: { not: input.id },
+        NOT: { onlineSlug: null }
+      },
+      select: { onlineSlug: true }
+    });
+
+    resolvedOnlineSlug = buildUniqueShopServiceSlug(
+      buildDefaultShopServiceSlug({
+        code: normalizedCode,
+        name: cleanName
+      }),
+      new Set(
+        existingSlugs
+          .map((service) => service.onlineSlug)
+          .filter((value): value is string => Boolean(value))
+      )
+    );
+  }
+
   return prisma.serviceCatalog.update({
     where: { id: input.id },
     data: {
@@ -3067,7 +3082,11 @@ export async function updateServiceCatalogEntry(input: {
       basePriceCents: Math.max(0, input.basePriceCents),
       unit: parseServiceUnit(input.unit),
       quantityTiers: normalizeQuantityTiers(input.quantityTiers),
-      active: input.active
+      active: input.active,
+      onlineActive: input.onlineActive,
+      onlineSlug: resolvedOnlineSlug,
+      createJobAutomatically: input.createJobAutomatically,
+      shopSortOrder: Math.max(0, Math.round(input.shopSortOrder))
     }
   });
 }
@@ -3179,7 +3198,7 @@ export async function getDashboardData() {
           lt: tomorrowStart
         }
       },
-      include: { customer: true },
+      include: orderWithCustomerAndShopLinksInclude,
       orderBy: [{ priority: "desc" }, { deliveryAt: "asc" }]
     }),
     prisma.order.findMany({
@@ -3191,7 +3210,7 @@ export async function getDashboardData() {
           lt: tomorrowStart
         }
       },
-      include: { customer: true },
+      include: orderWithCustomerAndShopLinksInclude,
       orderBy: [{ appointmentAt: "asc" }, { deliveryAt: "asc" }]
     }),
     prisma.order.findMany({
@@ -3200,7 +3219,7 @@ export async function getDashboardData() {
         deliveryAt: { lt: todayStart },
         mainPhase: { notIn: ["CONSEGNATO", "SVILUPPO_COMPLETATO"] as MainPhase[] }
       },
-      include: { customer: true },
+      include: orderWithCustomerAndShopLinksInclude,
       orderBy: { deliveryAt: "asc" }
     }),
     prisma.order.findMany({
@@ -3209,7 +3228,7 @@ export async function getDashboardData() {
         operationalStatus: { not: "ATTIVO" },
         mainPhase: { not: "CONSEGNATO" }
       },
-      include: { customer: true },
+      include: orderWithCustomerAndShopLinksInclude,
       orderBy: { deliveryAt: "asc" }
     }),
     prisma.order.findMany({
@@ -3217,7 +3236,7 @@ export async function getDashboardData() {
         ...operationalOrderWhere(),
         mainPhase: "SVILUPPO_COMPLETATO"
       },
-      include: { customer: true },
+      include: orderWithCustomerAndShopLinksInclude,
       orderBy: { deliveryAt: "asc" }
     }),
     prisma.order.findMany({
@@ -3226,7 +3245,7 @@ export async function getDashboardData() {
         ...financeOperationalWhere,
         invoiceStatus: "DA_FATTURARE"
       },
-      include: { customer: true },
+      include: orderWithCustomerAndShopLinksInclude,
       orderBy: [{ deliveredAt: "asc" }, { deliveryAt: "asc" }, { createdAt: "asc" }]
     }),
     prisma.order.findMany({
@@ -3235,7 +3254,7 @@ export async function getDashboardData() {
         mainPhase: "ACCETTATO",
         operationalStatus: "ATTIVO"
       },
-      include: { customer: true },
+      include: orderWithCustomerAndShopLinksInclude,
       orderBy: [{ priority: "desc" }, { deliveryAt: "asc" }]
     }),
     prisma.order.findMany({
@@ -3244,7 +3263,7 @@ export async function getDashboardData() {
         mainPhase: { in: ["IN_LAVORAZIONE", "CALENDARIZZATO"] },
         operationalStatus: "ATTIVO"
       },
-      include: { customer: true },
+      include: orderWithCustomerAndShopLinksInclude,
       orderBy: [{ priority: "desc" }, { deliveryAt: "asc" }]
     }),
     prisma.order.findMany({
@@ -3293,7 +3312,7 @@ export async function getDashboardData() {
           }
         ]
       },
-      include: { customer: true },
+      include: orderWithCustomerAndShopLinksInclude,
       orderBy: [{ appointmentAt: "asc" }, { deliveryAt: "asc" }]
     }),
     prisma.purchaseNote.findMany({
@@ -3379,6 +3398,7 @@ type OrdersListQueryFilters = {
   invoice?: InvoiceFilter;
   priority?: PriorityFilter;
   customerType?: CustomerTypeFilter;
+  shop?: ShopOrderFilter;
   quote?: QuoteFilter;
   preset?: DashboardPreset;
   sort?: OrderSortField;
@@ -3546,6 +3566,17 @@ async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
       ...(filters.invoice && filters.invoice !== "ALL" ? { invoiceStatus: filters.invoice } : {}),
       ...(isDeliveredView && filters.priority && filters.priority !== "ALL" ? { priority: filters.priority } : {}),
       ...(filters.customerType && filters.customerType !== "ALL" ? { customer: { type: filters.customerType } } : {}),
+      ...(filters.shop === "ONLINE"
+        ? {
+            salesOrderLinks: {
+              some: {
+                salesOrder: {
+                  origin: "SHOP_ONLINE"
+                }
+              }
+            }
+          }
+        : {}),
       ...(filters.quote === "QUOTE" ? { isQuote: true } : {}),
       ...(filters.quote === "ORDER" ? { isQuote: false } : {})
     },
@@ -3555,6 +3586,21 @@ async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
         select: {
           id: true,
           deliveredAt: true
+        }
+      },
+      salesOrderLinks: {
+        where: {
+          salesOrder: {
+            origin: "SHOP_ONLINE"
+          }
+        },
+        select: {
+          salesOrder: {
+            select: {
+              origin: true,
+              orderCode: true
+            }
+          }
         }
       }
     },
@@ -3678,6 +3724,7 @@ export async function getOrdersTabCounts(filters: {
   invoice?: InvoiceFilter;
   priority?: PriorityFilter;
   customerType?: CustomerTypeFilter;
+  shop?: ShopOrderFilter;
   quote?: QuoteFilter;
 }) {
   const tabDefinitions = [
@@ -3700,6 +3747,7 @@ export async function getOrdersTabCounts(filters: {
         invoice: filters.invoice,
         priority: filters.priority,
         customerType: filters.customerType,
+        shop: filters.shop,
         quote: filters.quote,
         preset: tab.preset,
         sort: "delivery",
@@ -3748,6 +3796,37 @@ export async function getOrderById(id: string) {
           completedAt: true
         },
         orderBy: [{ completedAt: "asc" }, { createdAt: "desc" }]
+      },
+      salesOrderLinks: {
+        include: {
+          salesOrder: {
+            include: {
+              items: {
+                orderBy: { createdAt: "asc" },
+                include: {
+                  files: {
+                    orderBy: { createdAt: "asc" },
+                    include: {
+                      fileAsset: {
+                        select: {
+                          id: true,
+                          originalName: true,
+                          mimeType: true,
+                          fileSize: true,
+                          storagePath: true,
+                          storageProvider: true,
+                          createdAt: true
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              billingSnapshot: true
+            }
+          }
+        },
+        orderBy: { createdAt: "asc" }
       }
     }
   });
@@ -3765,7 +3844,7 @@ export async function getCalendarOrders() {
       ...operationalOrderWhere(),
       mainPhase: { not: "CONSEGNATO" }
     },
-    include: { customer: true },
+    include: orderWithCustomerAndShopLinksInclude,
     orderBy: [{ deliveryAt: "asc" }, { priority: "desc" }]
   });
 
@@ -3778,7 +3857,7 @@ export async function getProductionQueues() {
       ...operationalOrderWhere(),
       mainPhase: { not: "CONSEGNATO" }
     },
-    include: { customer: true },
+    include: orderWithCustomerAndShopLinksInclude,
     orderBy: [{ priority: "desc" }, { deliveryAt: "asc" }]
   });
 

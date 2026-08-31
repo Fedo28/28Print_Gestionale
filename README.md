@@ -17,12 +17,23 @@ Copiando `.env.example` in `.env` trovi le chiavi da compilare:
 - `DATABASE_URL`: connessione PostgreSQL
 - `AUTH_SECRET`: chiave sessione
 - `BLOB_READ_WRITE_TOKEN`: token Vercel Blob
+- `WEB_PUSH_VAPID_PUBLIC_KEY`: chiave pubblica Web Push per notifiche staff
+- `WEB_PUSH_VAPID_PRIVATE_KEY`: chiave privata Web Push per notifiche staff
+- `WEB_PUSH_VAPID_SUBJECT`: contatto VAPID, ad esempio `mailto:shop@28print.it`
 - `ADMIN_NAME`: nome admin bootstrap produzione
 - `ADMIN_EMAIL`: email admin bootstrap produzione
 - `ADMIN_PASSWORD`: password admin bootstrap produzione
 - `LOCAL_DEMO_DATA`: se `true`, il setup locale carica anche i dati demo
+- `SHOP_PUBLIC_BASE_URL`: base URL prevista per lo shop cliente, default `https://shop.28print.it`
+- `SHOP_BETA_LOCKED`: se `true`, lo shop richiede codice prima di mostrare le pagine pubbliche
+- `SHOP_BETA_ACCESS_CODE`: codice di accesso per la beta controllata, richiesto quando `SHOP_BETA_LOCKED=true`
 
 Per il deploy Vercel, `BLOB_READ_WRITE_TOKEN` e obbligatorio se vuoi caricare allegati online.
+
+Variabili opzionali gia preparate per la foundation shop:
+
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
 
 ## Setup locale
 
@@ -71,6 +82,7 @@ Credenziali demo locali:
 - `npm run db:migrate:deploy`: applica migrazioni esistenti
 - `npm run db:seed:local`: inserisce dati demo locali
 - `npm run db:bootstrap:prod`: crea/aggiorna admin e impostazioni minime produzione
+- `npm run push:generate-keys`: genera le chiavi VAPID per le notifiche push
 - `npm run deploy:check-env`: verifica le env minime per il deploy Vercel
 - `npm run vercel-build`: build per Vercel con migrazioni e bootstrap
 
@@ -81,6 +93,9 @@ Configura in Vercel le env:
 - `DATABASE_URL`
 - `AUTH_SECRET`
 - `BLOB_READ_WRITE_TOKEN`
+- `WEB_PUSH_VAPID_PUBLIC_KEY`
+- `WEB_PUSH_VAPID_PRIVATE_KEY`
+- `WEB_PUSH_VAPID_SUBJECT`
 - `ADMIN_NAME`
 - `ADMIN_EMAIL`
 - `ADMIN_PASSWORD`
@@ -90,6 +105,8 @@ Valori consigliati:
 - `DATABASE_URL`: stringa PostgreSQL reale, non il placeholder di `.env.example`
 - `AUTH_SECRET`: almeno 32 caratteri
 - `ADMIN_PASSWORD`: almeno 8 caratteri
+- `SHOP_BETA_LOCKED`: `true` per la prima beta controllata, `false` quando lo shop diventa pubblico
+- `SHOP_BETA_ACCESS_CODE`: almeno 6 caratteri se la beta e bloccata
 
 Il repository include [`vercel.json`](/Users/federicopolichetti/Desktop/Gestionale V_GitHub/vercel.json) con build command:
 
@@ -118,4 +135,6 @@ Passi rapidi per andare online:
 - I dati non sono piu basati su `prisma/dev.db`
 - Gli allegati online usano Vercel Blob con upload diretto dal browser, cosi evitano il limite body di 4.5 MB delle Vercel Functions
 - Gli allegati locali restano su `public/uploads/orders`
+- Nota tecnica aperta al 2026-08-27: `npm run build` e stabile, ma `tsc --noEmit` puo ancora inciampare su riferimenti stale in `.next/types`; il fix va tenuto in coda alta prima di estendere troppo la demo shop
 - Il bootstrap produzione e idempotente: puo essere rieseguito senza duplicare l'admin
+- La base tecnica per lo shop usa `shop.28print.it` come dominio pubblico previsto, ma non richiede ancora DNS o deploy separato

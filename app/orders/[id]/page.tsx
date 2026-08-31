@@ -49,12 +49,21 @@ import { buildOrdersFilterHref } from "@/lib/order-filters";
 import { parseOrderMaterialNoteContent } from "@/lib/order-material-note";
 import { getOrderById, getServiceCatalogAdmin } from "@/lib/orders";
 import { usesLineTotalQuantityTiers } from "@/lib/pricing";
+import {
+  buildShopDocumentCardSummary,
+  buildShopDocumentBundleOverview,
+  extractShopDocumentBundleFromConfiguration
+} from "@/lib/shop-print-config";
 import { resolveAttachmentStorageMode } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
 function getCustomerPrimaryContact(customer: { phone?: string | null; whatsapp?: string | null }) {
   return customer.phone?.trim() || customer.whatsapp?.trim() || "Telefono non inserito";
+}
+
+function getShopFileStaffDownloadHref(fileAssetId: string) {
+  return `/api/orders/shop-files/${fileAssetId}`;
 }
 
 export default async function OrderDetailPage({
@@ -152,6 +161,25 @@ export default async function OrderDetailPage({
     order.mainPhase === "SVILUPPO_COMPLETATO" && !hasWhatsapp ? "Manca un numero cliente valido: aggiorna telefono o WhatsApp." : null;
   const canConvertToQuote = canConvertOrderToQuote(order);
   const quoteDisabledReason = getOrderToQuoteDisabledReason(order);
+  const linkedShopSalesOrder =
+    order.salesOrderLinks.find((link) => link.salesOrder.origin === "SHOP_ONLINE")?.salesOrder || null;
+  const linkedShopDocumentBundles = linkedShopSalesOrder
+    ? linkedShopSalesOrder.items
+        .map((item) => extractShopDocumentBundleFromConfiguration(item.configuration, Number(item.quantity)))
+        .filter((bundle): bundle is NonNullable<typeof bundle> => Boolean(bundle))
+    : [];
+  const linkedShopDocumentCount = linkedShopDocumentBundles.reduce((sum, bundle) => sum + bundle.documents.length, 0);
+  const linkedShopPrintPages = linkedShopDocumentBundles.reduce((sum, bundle) => sum + bundle.totalPages, 0);
+  const linkedShopFiles = linkedShopSalesOrder
+    ? linkedShopSalesOrder.items.flatMap((item) => item.files.map((file) => file.fileAsset))
+    : [];
+  const linkedShopItemsSummary =
+    linkedShopSalesOrder && linkedShopDocumentCount
+      ? `${linkedShopDocumentCount} documenti di stampa`
+      : linkedShopSalesOrder
+        ? "Preferenze shop nel pannello dedicato"
+        : null;
+  const pageTitle = linkedShopSalesOrder ? "Ordine shop" : order.title;
   const orderTitlePrimaryAction =
     guidedAction?.kind === "deliver" ? (
       <form action={transitionPhaseAction} className="action-form order-detail-title-primary-action">
@@ -203,7 +231,7 @@ export default async function OrderDetailPage({
   return (
     <div className="stack order-detail-page-shell">
       <PageHeader
-        title={order.title}
+        title={pageTitle}
         titleAction={<OrderEditToggleButton targetId="order-edit-panel" />}
         action={
           <div className="order-detail-header-actions order-detail-header-actions-simple">
@@ -455,6 +483,11 @@ export default async function OrderDetailPage({
               {priorityLabels[order.priority]}
             </Link>
           )}
+          {linkedShopSalesOrder ? (
+            <Link className="pill compact-pill shop-online-pill" href={buildOrdersFilterHref({ shop: "ONLINE" })} prefetch={false}>
+              Shop online
+            </Link>
+          ) : null}
           {order.isQuote ? (
             <Link className="pill compact-pill quote" href="/quotes" prefetch={false}>
               Preventivo
@@ -463,6 +496,94 @@ export default async function OrderDetailPage({
           {hasPartialDelivery ? <span className="pill compact-pill warning">{`Parziale ${deliveredItemsCount}/${order.items.length}`}</span> : null}
         </div>
       </div>
+
+      {linkedShopSalesOrder ? (
+        <section className="card card-pad order-detail-shop-online-card" id="shop-online-panel">
+          <div className="order-detail-shop-online-head">
+            <div>
+              <h3>Riepilogo shop</h3>
+              <span className="subtle">{linkedShopSalesOrder.orderCode}</span>
+            </div>
+            <Link className="button ghost" href="#order-detail-attachments-card">
+              Allegati
+            </Link>
+          </div>
+
+          <div className="order-detail-shop-online-summary">
+            <span>
+              <strong>{linkedShopDocumentCount || linkedShopSalesOrder.items.length}</strong>
+              <small>Documenti</small>
+            </span>
+            <span>
+              <strong>{linkedShopPrintPages || formatQuantity(linkedShopSalesOrder.items.reduce((sum, item) => sum + Number(item.quantity), 0))}</strong>
+              <small>Pagine stampa</small>
+            </span>
+            <span>
+              <strong>{formatCurrency(linkedShopSalesOrder.totalCents)}</strong>
+              <small>Totale shop</small>
+            </span>
+            <span>
+              <strong>{linkedShopSalesOrder.invoiceRequested ? "Si" : "No"}</strong>
+              <small>Fattura</small>
+            </span>
+          </div>
+
+          <details className="order-detail-shop-online-details">
+            <summary>
+              <span>Preferenze e file caricati</span>
+              <strong>{linkedShopFiles.length} file</strong>
+            </summary>
+            <div className="order-detail-shop-online-grid">
+              <div className="order-detail-shop-online-block">
+                <strong>Preferenze cliente</strong>
+                <div className="mini-list">
+                  {linkedShopSalesOrder.items.map((item) => {
+                    const documentBundle = extractShopDocumentBundleFromConfiguration(item.configuration, Number(item.quantity));
+
+                    return (
+                      <article className="mini-item order-detail-shop-item" key={item.id}>
+                        <div className="list-header">
+                          <strong>{item.label}</strong>
+                          <span className="pill compact-pill">{formatQuantity(item.quantity)}</span>
+                        </div>
+                        {documentBundle ? <div className="subtle">{buildShopDocumentBundleOverview(documentBundle)}</div> : null}
+                        {documentBundle?.documents.map((document) => (
+                          <div className="order-detail-shop-document-line" key={`${item.id}-${document.id}`}>
+                            <span>{document.name}</span>
+                            <small>{buildShopDocumentCardSummary(document)}</small>
+                          </div>
+                        ))}
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="order-detail-shop-online-block">
+                <strong>File caricati</strong>
+                {linkedShopFiles.length ? (
+                  <div className="mini-list">
+                    {linkedShopFiles.map((file) => (
+                      <a className="mini-item order-detail-shop-file-link" href={getShopFileStaffDownloadHref(file.id)} key={file.id}>
+                        <strong>{file.originalName}</strong>
+                        <span className="subtle">{formatAttachmentSize(file.fileSize)}</span>
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty">Nessun file collegato all'ordine shop.</div>
+                )}
+                {linkedShopSalesOrder.notes?.trim() ? (
+                  <div className="order-detail-shop-customer-note">
+                    <strong>Nota cliente</strong>
+                    <p>{linkedShopSalesOrder.notes}</p>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </details>
+        </section>
+      ) : null}
 
       <section className="order-detail-overview-card card card-pad">
         <div className="order-detail-overview-head">
@@ -561,7 +682,11 @@ export default async function OrderDetailPage({
                         ? `${formatQuantity(item.quantity)} pz • Scaglione ${formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}`
                         : `${formatQuantity(item.quantity)} x ${formatCurrency(item.catalogBasePriceCents || item.unitPriceCents)}`}
                     </span>
-                    {item.notes?.trim() ? <span className="order-item-editor-note-preview">{item.notes}</span> : null}
+                    {linkedShopItemsSummary ? (
+                      <span className="order-item-editor-note-preview">{linkedShopItemsSummary}</span>
+                    ) : item.notes?.trim() ? (
+                      <span className="order-item-editor-note-preview">{item.notes}</span>
+                    ) : null}
                     {item.deliveredAt ? <span className="order-item-delivered-pill">{`Consegnata il ${formatDateTime(item.deliveredAt)}`}</span> : null}
                   </div>
                   <span className="order-item-editor-summary-actions">
@@ -753,7 +878,7 @@ export default async function OrderDetailPage({
           </section>
 
           <div className="order-detail-side-bottom-grid">
-            <details className="card card-pad order-detail-disclosure order-detail-attachments-card">
+            <details className="card card-pad order-detail-disclosure order-detail-attachments-card" id="order-detail-attachments-card">
               <summary className="order-detail-disclosure-summary">
                 <div className="order-detail-disclosure-copy">
                   <span className="compact-kicker">Archivio</span>
