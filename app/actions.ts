@@ -4,8 +4,10 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   createBillboardBookings,
+  deleteBillboardAsset,
   deleteBillboardBooking,
   parseBillboardBookingDate,
+  updateBillboardAsset,
   updateBillboardBooking
 } from "@/lib/billboards";
 import {
@@ -23,9 +25,10 @@ import {
   parseUserRole
 } from "@/lib/forms";
 import { restoreDeletedEntity, writeAuditLog } from "@/lib/audit-log";
+import { BillboardPackagePresetValue } from "@/lib/billboard-pricing";
 import { formatDateKey } from "@/lib/format";
 import { getDisplayOrderLabel } from "@/lib/order-display";
-import type { DiscountMode, MainPhase, OperationalStatus, Prisma } from "@prisma/client";
+import type { BillboardAssetKind, DiscountMode, MainPhase, OperationalStatus, Prisma } from "@prisma/client";
 import {
   cloneOrderItem,
   correctPayment,
@@ -1255,11 +1258,14 @@ export async function createBillboardBookingAction(formData: FormData) {
   const priceCents = parseCurrencyToCents(formData.get("price")?.toString() || null);
   const paidCents = parseCurrencyToCents(formData.get("paid")?.toString() || null);
   const note = String(formData.get("note") || "");
+  const packageSelection = parseBillboardPackageSelection(formData, priceCents);
 
   try {
     const bookings = await createBillboardBookings({
       billboardAssetIds,
       monitorSlotsByAssetId,
+      billboardCustomerPackageId: packageSelection.billboardCustomerPackageId,
+      billboardCustomerPackageDraft: packageSelection.billboardCustomerPackageDraft,
       customerId: customerId || undefined,
       customer,
       startsAt,
@@ -1302,6 +1308,7 @@ export async function updateBillboardBookingAction(formData: FormData) {
   const priceCents = parseCurrencyToCents(formData.get("price")?.toString() || null);
   const paidCents = parseCurrencyToCents(formData.get("paid")?.toString() || null);
   const note = String(formData.get("note") || "");
+  const packageSelection = parseBillboardPackageSelection(formData, priceCents);
   const previous = await getBillboardBookingAuditRecord(bookingId);
   const monitorSlotsByAssetId = parseBillboardMonitorSlots(formData.get("monitorSlotsPayload")?.toString() || null);
   const monitorSlot = monitorSlotsByAssetId[billboardAssetId];
@@ -1321,6 +1328,8 @@ export async function updateBillboardBookingAction(formData: FormData) {
   const booking = await updateBillboardBooking({
     id: bookingId,
     billboardAssetId,
+    billboardCustomerPackageId: packageSelection.billboardCustomerPackageId,
+    billboardCustomerPackageDraft: packageSelection.billboardCustomerPackageDraft,
     monitorSlot: typeof monitorSlot === "number" ? monitorSlot : null,
     customerId: customerId || undefined,
     customer,
@@ -1373,6 +1382,48 @@ export async function deleteBillboardBookingAction(formData: FormData) {
   redirect(`/billboards?date=${formatDateKey(deleted.startsAt)}`);
 }
 
+export async function updateBillboardAssetAction(formData: FormData) {
+  await requireAuth();
+  const assetId = String(formData.get("assetId") || "").trim();
+  const returnDate = parseBillboardBookingDate(
+    `${String(formData.get("returnDate") || "").trim() || formatDateKey(new Date())}`,
+    "Data"
+  );
+
+  if (!assetId) {
+    throw new Error("Impianto pubblicitario non trovato.");
+  }
+
+  const asset = await updateBillboardAsset({
+    id: assetId,
+    code: String(formData.get("code") || "").trim(),
+    name: String(formData.get("name") || "").trim(),
+    kind: parseBillboardAssetKind(String(formData.get("kind") || "").trim()),
+    location: String(formData.get("location") || "").trim(),
+    sortOrder: Number(formData.get("sortOrder") || 0)
+  });
+
+  revalidateBillboardSurfaces();
+  redirect(`/billboards?date=${formatDateKey(returnDate)}&asset=${encodeURIComponent(asset.code)}`);
+}
+
+export async function deleteBillboardAssetAction(formData: FormData) {
+  await requireAuth();
+  const assetId = String(formData.get("assetId") || "").trim();
+  const returnDate = parseBillboardBookingDate(
+    `${String(formData.get("returnDate") || "").trim() || formatDateKey(new Date())}`,
+    "Data"
+  );
+
+  if (!assetId) {
+    throw new Error("Impianto pubblicitario non trovato.");
+  }
+
+  await deleteBillboardAsset(assetId);
+  revalidateBillboardSurfaces();
+  redirect(`/billboards?date=${formatDateKey(returnDate)}`);
+}
+
 function parseBillboardMonitorSlots(raw: string | null) {
   if (!raw || !raw.trim()) {
     return {};
@@ -1410,6 +1461,76 @@ function parseBillboardBookingCustomerInput(formData: FormData) {
     uniqueCode: String(formData.get("customerUniqueCode") || "").trim(),
     notes: String(formData.get("customerNotes") || "").trim()
   };
+}
+
+function parseBillboardPricingMode(value: string): "SINGLE" | "EXISTING_PACKAGE" | BillboardPackagePresetValue {
+  if (value === "PACK_3" || value === "PACK_10" || value === "RESELLER" || value === "CUSTOM") {
+    return value;
+  }
+
+  if (value === "EXISTING_PACKAGE") {
+    return value;
+  }
+
+  return "SINGLE";
+}
+
+function parseBillboardPackageSelection(formData: FormData, priceCents: number) {
+  const pricingMode = parseBillboardPricingMode(String(formData.get("pricingMode") || "").trim());
+
+  if (pricingMode === "SINGLE") {
+    return {
+      billboardCustomerPackageId: null,
+      billboardCustomerPackageDraft: null
+    };
+  }
+
+  if (pricingMode === "EXISTING_PACKAGE") {
+    const packageId = String(formData.get("billboardCustomerPackageId") || "").trim();
+    if (!packageId) {
+      throw new Error("Seleziona un pacchetto cliente.");
+    }
+
+    return {
+      billboardCustomerPackageId: packageId,
+      billboardCustomerPackageDraft: null
+    };
+  }
+
+  return {
+    billboardCustomerPackageId: null,
+    billboardCustomerPackageDraft: {
+      preset: pricingMode,
+      purchasedUnits: parseBillboardPackageUnits(formData.get("billboardPackageUnits")?.toString() || null, pricingMode),
+      unitPriceCents: priceCents,
+      note: String(formData.get("billboardPackageNote") || "").trim()
+    }
+  };
+}
+
+function parseBillboardPackageUnits(raw: string | null, preset: BillboardPackagePresetValue) {
+  if (preset === "PACK_3") {
+    return 3;
+  }
+
+  if (preset === "PACK_10") {
+    return 10;
+  }
+
+  const parsed = Number(raw || 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error("Numero crediti pacchetto non valido.");
+  }
+
+  return Math.round(parsed);
+}
+
+function parseBillboardAssetKind(raw: string): BillboardAssetKind {
+  if (raw === "CARTELLONE" || raw === "MONITOR" || raw === "VELA_ITINERANTE") {
+    return raw;
+  }
+
+  throw new Error("Tipologia impianto non valida.");
 }
 
 export async function createServiceAction(formData: FormData) {
