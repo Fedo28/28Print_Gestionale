@@ -10,3 +10,5 @@ node_modules
 public/uploads
 *.log
 tsconfig.tsbuildinfo
+RESTYLE_NOTES.md
+app/style-lab
