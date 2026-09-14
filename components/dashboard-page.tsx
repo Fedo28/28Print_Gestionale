@@ -7,7 +7,6 @@ import { formatCompactDate, formatCurrency, formatDateKey, formatDateTime } from
 import { getDisplayOrderLabel } from "@/lib/order-display";
 import { buildOrdersFilterHref } from "@/lib/order-filters";
 import { getDashboardData, type DashboardWeekDayLoad } from "@/lib/orders";
-import { listPendingShopOnlineOperationalOrders } from "@/lib/shop-operational-orders";
 
 type DashboardData = Awaited<ReturnType<typeof getDashboardData>>;
 type DashboardOrder = DashboardData["todayOrders"][number];
@@ -38,10 +37,7 @@ export async function DashboardPage({
   materials?: string;
   pulse?: string;
 }) {
-  const [dashboardData, pendingShopOnline] = await Promise.all([
-    getDashboardData(),
-    listPendingShopOnlineOperationalOrders(3)
-  ]);
+  const dashboardData = await getDashboardData();
   const {
     blockedOrders,
     readyOrders,
@@ -294,7 +290,6 @@ export async function DashboardPage({
   return (
     <div className="dashboard-page-shell dashboard-clean-shell">
       <section className="dashboard-clean-topbar" aria-label="Azioni dashboard">
-        <DashboardShopBell count={pendingShopOnline.count} />
         <div className="dashboard-clean-actions">
           <Link className="dashboard-ops-button is-solid" href="/orders/new">
             Nuovo ordine
@@ -425,41 +420,6 @@ export async function DashboardPage({
 
       <DashboardWeeklyOverview activePulse={activePulse} selectedDayKey={selectedDay?.key} weekLoad={weekLoad} />
     </div>
-  );
-}
-
-function DashboardShopBell({ count }: { count: number }) {
-  const content = (
-    <>
-      <span aria-hidden="true" className="dashboard-shop-bell-icon">
-        <DashboardBellIcon />
-      </span>
-      <span>Shop</span>
-      <strong>{count}</strong>
-    </>
-  );
-
-  if (count > 0) {
-    return (
-      <Link aria-label={`Shop: ${count} nuove notifiche`} className="dashboard-shop-bell" href={buildOrdersFilterHref({ shop: "ONLINE", preset: "TO_DO" })}>
-        {content}
-      </Link>
-    );
-  }
-
-  return (
-    <span aria-label={`Shop: ${count} nuove notifiche`} className="dashboard-shop-bell">
-      {content}
-    </span>
-  );
-}
-
-function DashboardBellIcon() {
-  return (
-    <svg aria-hidden="true" className="dashboard-shop-bell-svg" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M18 9.8a6 6 0 0 0-12 0c0 4.3-2 5.2-2 6.2h16c0-1-2-1.9-2-6.2Z" />
-      <path d="M9.7 19a2.4 2.4 0 0 0 4.6 0" />
-    </svg>
   );
 }
 

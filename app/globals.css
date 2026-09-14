@@ -31867,10 +31867,9 @@ button.theme-toggle.toolbar-theme-toggle {
 }
 
 .dashboard-clean-topbar {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px;
+  display: flex;
   align-items: center;
+  justify-content: flex-end;
 }
 
 .dashboard-clean-actions {
@@ -31884,57 +31883,6 @@ button.theme-toggle.toolbar-theme-toggle {
   min-height: 44px;
   border-radius: 0;
   box-shadow: none;
-}
-
-.dashboard-shop-bell {
-  display: inline-grid;
-  grid-template-columns: 42px auto minmax(28px, auto);
-  align-items: center;
-  gap: 9px;
-  width: fit-content;
-  min-height: 48px;
-  padding: 3px 12px 3px 3px;
-  border: 1px solid #d7e0ea;
-  border-radius: 0;
-  background: #ffffff;
-  color: #152235;
-  box-shadow: none;
-}
-
-.dashboard-shop-bell-icon {
-  display: inline-flex;
-  width: 42px;
-  height: 42px;
-  align-items: center;
-  justify-content: center;
-  background: #eff5ff;
-  color: #255cff;
-}
-
-.dashboard-shop-bell-svg {
-  width: 20px;
-  height: 20px;
-}
-
-.dashboard-shop-bell span:not(.dashboard-shop-bell-icon) {
-  color: #5d6f83;
-  font-size: 0.72rem;
-  font-weight: 900;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-.dashboard-shop-bell strong {
-  display: inline-flex;
-  min-width: 28px;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
-  background: #f2f6fb;
-  color: #152235;
-  font-family: var(--font-display), sans-serif;
-  font-size: 1.15rem;
-  line-height: 1;
 }
 
 .dashboard-clean-grid {
@@ -32728,7 +32676,7 @@ button.theme-toggle.toolbar-theme-toggle {
   }
 
   .dashboard-clean-topbar {
-    grid-template-columns: 1fr;
+    justify-content: flex-start;
   }
 
   .dashboard-clean-actions {
@@ -32760,13 +32708,8 @@ button.theme-toggle.toolbar-theme-toggle {
     display: grid;
   }
 
-  .dashboard-clean-actions .dashboard-ops-button,
-  .dashboard-shop-bell {
+  .dashboard-clean-actions .dashboard-ops-button {
     width: 100%;
-  }
-
-  .dashboard-shop-bell {
-    grid-template-columns: 42px minmax(0, 1fr) auto;
   }
 
   .dashboard-clean-appointment {
@@ -42563,10 +42506,10 @@ button.theme-toggle.toolbar-theme-toggle {
 
 .login-brand-mark strong {
   color: var(--login-ink);
-  font-size: clamp(3.8rem, 8vw, 6.4rem);
+  font-size: clamp(2.9rem, 6vw, 4.8rem);
   font-weight: 950;
-  letter-spacing: -0.105em;
-  line-height: 0.82;
+  letter-spacing: -0.085em;
+  line-height: 0.9;
 }
 
 .login-access-panel {
@@ -43031,7 +42974,7 @@ button.theme-toggle.toolbar-theme-toggle {
   }
 
   .login-brand-mark strong {
-    font-size: clamp(2.8rem, 12vw, 4.4rem);
+    font-size: clamp(2.2rem, 10vw, 3.4rem);
   }
 
   .orders-activity-page-shell > .page-head {
