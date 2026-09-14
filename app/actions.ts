@@ -47,10 +47,14 @@ import {
   transitionOrderPhase,
   updateCustomer,
   updateOrderItem,
+  updateOrderFinancialAdjustments,
   updateOrderQuoteFlag,
   updateOperationalStatus,
   updateOrder,
-  saveOrderMaterialNote
+  updateOrderCustomer,
+  saveOrderMaterialNote,
+  buildOrderMaterialNoteHistorySnapshot,
+  buildOrderCustomerHistorySnapshot
 } from "@/lib/orders";
 import { authenticateUser, createSessionForUser, describeLoginFailure, requireAdmin, requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -123,6 +127,10 @@ function parseOrderMaterialNoteInput(formData: FormData) {
     urgency: parsePurchaseNoteUrgency(formData.get("materialNoteUrgency")?.toString() || null),
     blockOrder
   };
+}
+
+function parseCatalogPriceMode(value: FormDataEntryValue | null) {
+  return value === "LINE_TOTAL" || value === "UNIT" ? value : undefined;
 }
 
 function parseOrderFormInput(formData: FormData, options?: { forceQuote?: boolean }) {
@@ -282,6 +290,10 @@ function buildServiceAuditSnapshot(service: {
   unit: string;
   quantityTiers?: string | null;
   active: boolean;
+  onlineActive?: boolean;
+  onlineSlug?: string | null;
+  createJobAutomatically?: boolean;
+  shopSortOrder?: number;
   createdAt?: Date;
   updatedAt?: Date;
 }) {
@@ -294,6 +306,10 @@ function buildServiceAuditSnapshot(service: {
     unit: service.unit,
     quantityTiers: service.quantityTiers || null,
     active: service.active,
+    onlineActive: Boolean(service.onlineActive),
+    onlineSlug: service.onlineSlug || null,
+    createJobAutomatically: Boolean(service.createJobAutomatically),
+    shopSortOrder: service.shopSortOrder ?? 0,
     createdAt: service.createdAt,
     updatedAt: service.updatedAt
   };
@@ -619,6 +635,8 @@ export async function restoreDeletedAuditEntryAction(formData: FormData) {
 export async function updateCustomerAction(formData: FormData) {
   const session = await requireAuth();
   const id = String(formData.get("id") || "");
+  const orderId = String(formData.get("orderId") || "").trim();
+  const returnTo = String(formData.get("returnTo") || "").trim();
   const previous = await prisma.customer.findUnique({ where: { id } });
   const updated = await updateCustomer({
     id,
@@ -656,8 +674,51 @@ export async function updateCustomerAction(formData: FormData) {
     snapshotAfter: buildCustomerAuditSnapshot(updated)
   });
 
+  if (orderId && previous) {
+    const linkedOrder = await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        customerId: updated.id
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!linkedOrder) {
+      throw new Error("Cliente non collegato a questo ordine.");
+    }
+
+    await prisma.orderHistory.create({
+      data: {
+        orderId,
+        type: "UPDATED",
+        description: "Cliente aggiornato",
+        details: formatChangedFields(describeChangedFields(previous, updated, {
+          name: "Nome",
+          type: "Tipo",
+          phone: "Telefono",
+          whatsapp: "WhatsApp",
+          email: "Email",
+          pec: "PEC",
+          taxCode: "Codice fiscale",
+          vatNumber: "P. IVA",
+          uniqueCode: "Codice univoco",
+          notes: "Note"
+        })),
+        snapshotBefore: buildOrderCustomerHistorySnapshot(previous) as Prisma.InputJsonValue,
+        snapshotAfter: buildOrderCustomerHistorySnapshot(updated) as Prisma.InputJsonValue
+      }
+    });
+  }
+
   revalidatePath("/customers");
   revalidatePath(`/customers/${id}`);
+  revalidateOperationalSurfaces(orderId || undefined);
+
+  if (returnTo.startsWith("/") && !returnTo.startsWith("//")) {
+    redirect(returnTo);
+  }
 }
 
 export async function deleteCustomerAction(formData: FormData) {
@@ -757,6 +818,23 @@ export async function updateOrderAction(formData: FormData) {
   }
 }
 
+export async function updateOrderCustomerAction(formData: FormData) {
+  await requireAuth();
+  const orderId = String(formData.get("orderId") || "").trim();
+  const customerId = String(formData.get("customerId") || "").trim();
+  const returnTo = String(formData.get("returnTo") || "").trim();
+
+  await updateOrderCustomer(orderId, customerId);
+  revalidateOperationalSurfaces(orderId);
+  revalidatePath(`/customers/${customerId}`);
+
+  if (returnTo.startsWith("/") && !returnTo.startsWith("//")) {
+    redirect(returnTo);
+  }
+
+  redirect(`/orders/${orderId}`);
+}
+
 export async function updateOrderStatusAction(formData: FormData) {
   await requireAuth();
   const orderId = String(formData.get("orderId") || "");
@@ -805,6 +883,24 @@ export async function saveOrderMaterialNoteAction(formData: FormData) {
     snapshotBefore: previous ? serializePurchaseNote(previous) : undefined,
     snapshotAfter: serializePurchaseNote(result.note)
   });
+  await prisma.orderHistory.create({
+    data: {
+      orderId,
+      type: "UPDATED",
+      description: previous ? "Materiali aggiornati" : "Materiali aggiunti",
+      details: result.note.content,
+      snapshotBefore: buildOrderMaterialNoteHistorySnapshot(previous, {
+        noteId: result.note.id,
+        orderId,
+        customerId: result.note.customerId,
+        customerName: result.note.customerName
+      }) as Prisma.InputJsonValue,
+      snapshotAfter: buildOrderMaterialNoteHistorySnapshot(result.note, {
+        noteId: result.note.id,
+        orderId
+      }) as Prisma.InputJsonValue
+    }
+  });
 
   revalidateOperationalSurfaces(orderId);
   revalidateLinkedPurchaseNoteSurfaces(orderId);
@@ -827,6 +923,7 @@ export async function updateOrderItemAction(formData: FormData) {
     serviceCatalogId: String(formData.get("serviceCatalogId") || "").trim() || undefined,
     quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
     catalogBasePriceCents: parseCurrencyToCents(formData.get("catalogBasePrice")?.toString() || null),
+    catalogPriceMode: parseCatalogPriceMode(formData.get("catalogPriceMode")),
     discountMode: discount.mode,
     discountValue: discount.value,
     extraMode: extra.mode,
@@ -838,7 +935,7 @@ export async function updateOrderItemAction(formData: FormData) {
   });
 
   revalidateOperationalSurfaces(orderId);
-  redirect(`/orders/${orderId}`);
+  redirect(`/orders/${orderId}?item=${itemId}#item-${itemId}`);
 }
 
 export async function restoreOrderHistoryAction(formData: FormData) {
@@ -866,6 +963,7 @@ export async function createOrderItemAction(formData: FormData) {
     serviceCatalogId: String(formData.get("serviceCatalogId") || "").trim() || undefined,
     quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
     catalogBasePriceCents: parseCurrencyToCents(formData.get("catalogBasePrice")?.toString() || null),
+    catalogPriceMode: parseCatalogPriceMode(formData.get("catalogPriceMode")),
     discountMode: discount.mode,
     discountValue: discount.value,
     extraMode: extra.mode,
@@ -880,6 +978,24 @@ export async function createOrderItemAction(formData: FormData) {
   redirect(`/orders/${orderId}?item=${item.id}#item-${item.id}`);
 }
 
+export async function updateOrderFinancialAdjustmentsAction(formData: FormData) {
+  await requireAuth();
+  const orderId = String(formData.get("orderId") || "").trim();
+  const globalDiscount = parseFlexibleAdjustmentInput(formData.get("globalDiscount")?.toString() || null);
+  const globalExtra = parseFlexibleAdjustmentInput(formData.get("globalExtra")?.toString() || null);
+
+  await updateOrderFinancialAdjustments({
+    orderId,
+    globalDiscountMode: globalDiscount.mode as DiscountMode,
+    globalDiscountValue: globalDiscount.value,
+    globalExtraMode: globalExtra.mode as DiscountMode,
+    globalExtraValue: globalExtra.value
+  });
+
+  revalidateOperationalSurfaces(orderId);
+  redirect(`/orders/${orderId}#order-detail-cashflow`);
+}
+
 export async function toggleOrderItemDeliveryAction(formData: FormData) {
   await requireAuth();
   const orderId = String(formData.get("orderId") || "");
@@ -888,7 +1004,7 @@ export async function toggleOrderItemDeliveryAction(formData: FormData) {
 
   await toggleOrderItemDelivery({ orderId, itemId, delivered });
   revalidateOperationalSurfaces(orderId);
-  redirect(`/orders/${orderId}`);
+  redirect(`/orders/${orderId}?item=${itemId}#item-${itemId}`);
 }
 
 export async function cloneOrderItemAction(formData: FormData) {
@@ -896,9 +1012,9 @@ export async function cloneOrderItemAction(formData: FormData) {
   const orderId = String(formData.get("orderId") || "");
   const itemId = String(formData.get("itemId") || "");
 
-  await cloneOrderItem({ orderId, itemId });
+  const clonedItem = await cloneOrderItem({ orderId, itemId });
   revalidateOperationalSurfaces(orderId);
-  redirect(`/orders/${orderId}`);
+  redirect(`/orders/${orderId}?item=${clonedItem.id}#item-${clonedItem.id}`);
 }
 
 export async function deleteOrderItemAction(formData: FormData) {
@@ -988,7 +1104,7 @@ export async function quickUpdateOperationalStatusAction(formData: FormData) {
   revalidateOperationalSurfaces(orderId);
 }
 
-type ProductionMoveTarget = "PLANNING" | "WORKING" | "READY" | "BLOCKED";
+type ProductionMoveTarget = "PLANNING" | "WORKING" | "READY" | "BLOCKED" | "DELIVERED";
 
 const productionBlockedStatuses = new Set<OperationalStatus>([
   "IN_ATTESA_FILE",
@@ -999,7 +1115,8 @@ const productionBlockedStatuses = new Set<OperationalStatus>([
 const productionPhaseTargets: Record<Exclude<ProductionMoveTarget, "BLOCKED">, MainPhase> = {
   PLANNING: "ACCETTATO",
   WORKING: "IN_LAVORAZIONE",
-  READY: "SVILUPPO_COMPLETATO"
+  READY: "SVILUPPO_COMPLETATO",
+  DELIVERED: "CONSEGNATO"
 };
 
 const validMainPhases = new Set<MainPhase>([
@@ -1011,7 +1128,7 @@ const validMainPhases = new Set<MainPhase>([
 ]);
 
 function isProductionMoveTarget(value: unknown): value is ProductionMoveTarget {
-  return value === "PLANNING" || value === "WORKING" || value === "READY" || value === "BLOCKED";
+  return value === "PLANNING" || value === "WORKING" || value === "READY" || value === "BLOCKED" || value === "DELIVERED";
 }
 
 export async function moveOrderInProductionAction(input: {
@@ -1036,7 +1153,7 @@ export async function moveOrderInProductionAction(input: {
     }
   });
 
-  if (!order || order.mainPhase === "CONSEGNATO") {
+  if (!order || (order.mainPhase === "CONSEGNATO" && input.target !== "READY")) {
     throw new Error("Ordine non disponibile in produzione.");
   }
 
@@ -1533,6 +1650,20 @@ function parseBillboardAssetKind(raw: string): BillboardAssetKind {
   throw new Error("Tipologia impianto non valida.");
 }
 
+function parseShopSortOrder(raw: FormDataEntryValue | null) {
+  const value = String(raw || "").trim();
+  if (!value) {
+    return 0;
+  }
+
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    throw new Error("L'ordine shop deve essere un numero valido.");
+  }
+
+  return Math.max(0, Math.round(numeric));
+}
+
 export async function createServiceAction(formData: FormData) {
   const session = await requireAuth();
   const service = await createService(
@@ -1571,7 +1702,11 @@ export async function updateServiceAction(formData: FormData) {
     basePriceCents: parseCurrencyToCents(formData.get("basePrice")?.toString() || null),
     unit: parseServiceUnit(formData.get("unit")),
     quantityTiers: String(formData.get("quantityTiers") || ""),
-    active: parseBooleanFlag(formData.get("active"))
+    active: parseBooleanFlag(formData.get("active")),
+    onlineActive: parseBooleanFlag(formData.get("onlineActive")),
+    onlineSlug: String(formData.get("onlineSlug") || ""),
+    createJobAutomatically: parseBooleanFlag(formData.get("createJobAutomatically")),
+    shopSortOrder: parseShopSortOrder(formData.get("shopSortOrder"))
   });
   await writeAuditLog({
     actionType: "UPDATED",
@@ -1587,7 +1722,11 @@ export async function updateServiceAction(formData: FormData) {
       basePriceCents: "Prezzo base",
       unit: "Unita",
       quantityTiers: "Scaglioni",
-      active: "Attivo"
+      active: "Attivo",
+      onlineActive: "Online",
+      onlineSlug: "Slug shop",
+      createJobAutomatically: "Crea commessa automatica",
+      shopSortOrder: "Ordine shop"
     })) : null,
     snapshotBefore: previous ? buildServiceAuditSnapshot(previous) : undefined,
     snapshotAfter: buildServiceAuditSnapshot(service)
@@ -1596,6 +1735,8 @@ export async function updateServiceAction(formData: FormData) {
   revalidatePath("/settings");
   revalidatePath("/orders/new");
   revalidatePath("/quotes/new");
+  revalidatePath("/shop");
+  revalidatePath("/shop/stampa-documenti");
 }
 
 export async function saveWhatsappTemplateAction(formData: FormData) {

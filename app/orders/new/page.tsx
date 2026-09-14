@@ -1,5 +1,4 @@
 import { createOrderAction } from "@/app/actions";
-import { OrderDraftHeaderAction } from "@/components/order-draft-header-action";
 import { OrderForm } from "@/components/order-form";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
@@ -22,7 +21,7 @@ export default async function NewOrderPage({
 
   return (
     <div className="stack order-entry-page-shell order-create-page-shell">
-      <PageHeader action={<OrderDraftHeaderAction kind="order" />} title="Nuovo ordine" />
+      <PageHeader title="Nuovo ordine" />
       {continuationTitle ? (
         <section className="order-draft-banner order-entry-followup-banner">
           <div className="stack">

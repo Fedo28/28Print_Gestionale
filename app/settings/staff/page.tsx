@@ -46,14 +46,14 @@ export default async function StaffSettingsPage({
   const adminUsers = users.filter((user) => user.role === "ADMIN").length;
 
   return (
-    <div className="stack">
+    <div className="stack settings-page-shell settings-staff-page-shell">
       <PageHeader
         title="Profili Staff"
         action={<HistoryBackButton className="button ghost" fallbackHref="/settings" label="Torna alle impostazioni" />}
       />
 
       {searchParams?.created ? (
-        <div className="mini-item">
+        <div className="mini-item settings-feedback-card">
           <strong>Profilo creato per {searchParams.created}.</strong>
           {searchParams.nickname ? <div className="subtle">Nickname pronto: @{searchParams.nickname}</div> : null}
           <div className="subtle">
@@ -64,34 +64,36 @@ export default async function StaffSettingsPage({
         </div>
       ) : null}
 
-      <section className="grid stats-grid">
-        <article className="card card-pad compact-metric compact-metric-neutral">
+      <section className="grid settings-staff-stats-grid">
+        <article className="card card-pad compact-metric compact-metric-neutral settings-signal settings-signal-blue">
           <span className="compact-metric-label">Utenti attivi</span>
           <strong>{readyUsers}</strong>
         </article>
-        <article className="card card-pad compact-metric compact-metric-brand">
+        <article className="card card-pad compact-metric compact-metric-brand settings-signal settings-signal-lime">
           <span className="compact-metric-label">Admin</span>
           <strong>{adminUsers}</strong>
         </article>
-        <article className="card card-pad compact-metric compact-metric-warning">
+        <article className="card card-pad compact-metric compact-metric-warning settings-signal settings-signal-cyan">
           <span className="compact-metric-label">Inviti da finalizzare</span>
           <strong>{pendingInviteUsers}</strong>
         </article>
       </section>
 
-      <div className="grid grid-2">
-        <section className="card card-pad">
-          <div className="list-header">
+      <div className="grid settings-workbench-grid">
+        <section className="card card-pad settings-card settings-staff-create-card">
+          <div className="list-header settings-section-head">
             <div>
+              <span className="compact-kicker">Accessi</span>
               <h3>Nuovo profilo</h3>
             </div>
           </div>
           <StaffProfileForm />
         </section>
 
-        <section className="card card-pad">
-          <div className="list-header">
+        <section className="card card-pad settings-card settings-staff-invite-card">
+          <div className="list-header settings-section-head">
             <div>
+              <span className="compact-kicker">Email</span>
               <h3>Invito email</h3>
             </div>
             <div className="staff-user-pills">
@@ -106,13 +108,13 @@ export default async function StaffSettingsPage({
 
           {!inviteConfig.accessLoginUrl ? (
             <div className="empty">
-              Non riesco a ricavare un dominio valido per il link di accesso. Imposta STAFF_ACCESS_BASE_URL oppure usa l'app dal dominio definitivo del deploy.
+              Link accesso non configurato.
             </div>
           ) : null}
 
           {!mailDelivery.enabled ? (
             <div className="empty">
-              Per inviare davvero la mail dopo la profilazione servono le env <code>RESEND_API_KEY</code> e <code>MAIL_FROM</code>. Intanto il profilo viene creato e la bozza resta pronta con il link corretto.
+              Mail automatica non configurata.
             </div>
           ) : null}
 
@@ -126,9 +128,10 @@ export default async function StaffSettingsPage({
         </section>
       </div>
 
-      <section className="card card-pad">
-        <div className="list-header">
+      <section className="card card-pad settings-card settings-staff-list-card">
+        <div className="list-header settings-section-head">
           <div>
+            <span className="compact-kicker">Team</span>
             <h3>Staff registrato</h3>
           </div>
         </div>

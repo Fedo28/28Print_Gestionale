@@ -1,31 +1,28 @@
-import { CustomerType, Priority } from "@prisma/client";
+import { CustomerType } from "@prisma/client";
 import Link from "next/link";
 import { OrderSearchInput } from "@/components/order-search-input";
 import { QuotesTable } from "@/components/quotes-table";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
-import { customerTypeLabels, priorityLabels } from "@/lib/constants";
+import { customerTypeLabels } from "@/lib/constants";
 import {
   parseCustomerTypeFilter,
   parseOrderSortDirection,
   parseOrderSortField,
-  parsePriorityFilter,
   type CustomerTypeFilter,
   type OrderSortDirection,
-  type OrderSortField,
-  type PriorityFilter
+  type OrderSortField
 } from "@/lib/order-filters";
 import { getOrdersList } from "@/lib/orders";
-import { automaticPriorityValues } from "@/lib/priorities";
 
 export const dynamic = "force-dynamic";
 
 type QuotesDeliveryFilter = "ALL" | "PENDING" | "SCHEDULED";
+type QuotesSortField = Extract<OrderSortField, "customer" | "delivery" | "amount">;
 
 type Props = {
   searchParams?: {
     q?: string;
-    priority?: Priority | "ALL" | string;
     customerType?: CustomerType | "ALL" | string;
     delivery?: string;
     sort?: string;
@@ -35,10 +32,9 @@ type Props = {
 
 type QuotesPageFilters = {
   q?: string;
-  priority: PriorityFilter;
   customerType: CustomerTypeFilter;
   delivery: QuotesDeliveryFilter;
-  sort: OrderSortField;
+  sort: QuotesSortField;
   dir: OrderSortDirection;
 };
 
@@ -50,15 +46,16 @@ function parseQuotesDeliveryFilter(raw: string | null | undefined): QuotesDelive
   return "ALL";
 }
 
+function parseQuotesSortField(raw: string | null | undefined): QuotesSortField {
+  const parsed = parseOrderSortField(raw || null);
+  return parsed === "customer" || parsed === "amount" ? parsed : "delivery";
+}
+
 function buildQuotesHref(filters: Partial<QuotesPageFilters> = {}) {
   const params = new URLSearchParams();
 
   if (filters.q?.trim()) {
     params.set("q", filters.q.trim());
-  }
-
-  if (filters.priority && filters.priority !== "ALL") {
-    params.set("priority", filters.priority);
   }
 
   if (filters.customerType && filters.customerType !== "ALL") {
@@ -85,15 +82,13 @@ export default async function QuotesPage({ searchParams }: Props) {
   await requireAuth();
   const filters = {
     q: searchParams?.q?.trim() || undefined,
-    priority: parsePriorityFilter(searchParams?.priority || null),
     customerType: parseCustomerTypeFilter(searchParams?.customerType || null),
     delivery: parseQuotesDeliveryFilter(searchParams?.delivery),
-    sort: parseOrderSortField(searchParams?.sort || null) || "delivery",
+    sort: parseQuotesSortField(searchParams?.sort),
     dir: parseOrderSortDirection(searchParams?.dir || null) || "asc"
   };
   const quotesCollection = await getOrdersList({
     query: filters.q,
-    priority: filters.priority,
     customerType: filters.customerType,
     quote: "QUOTE",
     sort: filters.sort,
@@ -113,13 +108,6 @@ export default async function QuotesPage({ searchParams }: Props) {
           href: buildQuotesHref({ ...filters, q: undefined })
         }
       : null,
-    filters.priority !== "ALL"
-      ? {
-          key: "priority",
-          label: `Priorita: ${priorityLabels[filters.priority]}`,
-          href: buildQuotesHref({ ...filters, priority: "ALL" })
-        }
-      : null,
     filters.customerType !== "ALL"
       ? {
           key: "customerType",
@@ -135,7 +123,7 @@ export default async function QuotesPage({ searchParams }: Props) {
         }
       : null
   ].filter((entry): entry is { key: string; label: string; href: string } => Boolean(entry));
-  const hasAdvancedFilters = filters.priority !== "ALL" || filters.customerType !== "ALL" || filters.delivery !== "ALL";
+  const hasAdvancedFilters = filters.customerType !== "ALL" || filters.delivery !== "ALL";
 
   return (
     <div className="stack quotes-page-shell">
@@ -160,7 +148,6 @@ export default async function QuotesPage({ searchParams }: Props) {
                 initialValue={filters.q}
                 placeholder="Cerca codice, titolo, cliente o telefono"
                 requestParams={{
-                  priority: filters.priority !== "ALL" ? filters.priority : undefined,
                   customerType: filters.customerType !== "ALL" ? filters.customerType : undefined
                 }}
                 scope="quotes"
@@ -173,16 +160,6 @@ export default async function QuotesPage({ searchParams }: Props) {
           <details className="advanced-filters-panel" open={hasAdvancedFilters}>
             <summary>Filtri avanzati</summary>
             <div className="toolbar filters-bar advanced-filters-grid">
-              <div className="filters-field">
-                <select aria-label="Priorita" defaultValue={filters.priority} name="priority">
-                  <option value="ALL">Tutte le priorita</option>
-                  {automaticPriorityValues.map((value) => (
-                    <option key={value} value={value}>
-                      {priorityLabels[value]}
-                    </option>
-                  ))}
-                </select>
-              </div>
               <div className="filters-field">
                 <select aria-label="Tipo cliente" defaultValue={filters.customerType} name="customerType">
                   <option value="ALL">Tutti i clienti</option>

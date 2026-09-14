@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/page-header";
-import { normalizeMainPhaseForWorkflow } from "@/lib/constants";
+import { APP_TIMEZONE, normalizeMainPhaseForWorkflow } from "@/lib/constants";
 import { requireAuth } from "@/lib/auth";
 import { formatCompactDate, formatDate, formatDateKey, formatWeekdayLabel } from "@/lib/format";
 import { getDisplayOrderLabel } from "@/lib/order-display";
@@ -44,6 +44,23 @@ type CalendarWeekSnapshot = {
   days: CalendarDaySnapshot[];
   summary: CalendarLoadSummary;
 };
+
+type CalendarSignalTone = "blue" | "lime" | "red" | "cyan";
+
+type CalendarSignal = {
+  href: string;
+  label: string;
+  tone: CalendarSignalTone;
+  value: number;
+};
+
+type CalendarTimelineItem = {
+  order: CalendarOrder;
+  variant: "delivery" | "appointment";
+};
+
+const MAX_WEEK_DAY_ITEMS = 6;
+const MAX_DAY_OVERDUE_ITEMS = 5;
 
 export default async function CalendarPage({ searchParams }: CalendarPageProps) {
   await requireAuth();
@@ -128,64 +145,55 @@ function CalendarSwitchLink({
 }
 
 function DayCalendar({ snapshot }: { snapshot: CalendarDaySnapshot }) {
+  const entries = getCalendarTimelineItems(snapshot);
+  const overduePreview = snapshot.overdueOrders.slice(0, MAX_DAY_OVERDUE_ITEMS);
+  const hiddenOverdueCount = Math.max(0, snapshot.overdueOrders.length - MAX_DAY_OVERDUE_ITEMS);
+
   return (
     <div className="stack">
-      <CalendarSummaryGrid
-        view="day"
-        labelPrefix="oggi"
-        summary={snapshot.summary}
-        overdueLabel={snapshot.isToday ? "Arretrati già aperti" : "Arretrati prima di questa data"}
-      />
+      <CalendarFocusStrip summary={snapshot.summary} view="day" />
 
-      <div className="calendar-day-shell">
-        <section className="card card-pad compact-lane-card" id="calendar-day-deliveries">
+      <div className={`calendar-day-shell${snapshot.overdueOrders.length === 0 ? " calendar-day-shell-single" : ""}`}>
+        <section className="card card-pad compact-lane-card calendar-day-timeline" id="calendar-day-schedule">
           <div className="list-header compact-section-head calendar-lane-head">
             <div>
-              <h3>Lavori del giorno</h3>
+              <h3>Giornata</h3>
             </div>
-            <span className="pill calendar-count-badge">{snapshot.dueOrders.length}</span>
+            <span className="pill calendar-count-badge">{entries.length}</span>
           </div>
-          <div className="compact-order-list">
-            {snapshot.dueOrders.length === 0 ? (
-              <div className="empty">Nessun lavoro.</div>
+          <div className="compact-order-list calendar-timeline-list">
+            {entries.length === 0 ? (
+              <div className="calendar-slot-empty">Libero</div>
             ) : (
-              snapshot.dueOrders.map((order) => (
-                <CalendarOrderCard focusDate={snapshot.date} key={order.id} order={order} variant="delivery" />
-              ))
-            )}
-          </div>
-        </section>
-
-        <section className="card card-pad compact-lane-card" id="calendar-day-appointments">
-          <div className="list-header compact-section-head calendar-lane-head">
-            <div>
-              <h3>Appuntamenti del giorno</h3>
-            </div>
-            <span className="pill calendar-count-badge">{snapshot.appointmentOrders.length}</span>
-          </div>
-          <div className="compact-order-list">
-            {snapshot.appointmentOrders.length === 0 ? (
-              <div className="empty">Nessun appuntamento.</div>
-            ) : (
-              snapshot.appointmentOrders.map((order) => (
-                <CalendarOrderCard focusDate={snapshot.date} key={order.id} order={order} variant="appointment" />
+              entries.map((entry) => (
+                <CalendarOrderCard
+                  focusDate={snapshot.date}
+                  key={`${entry.order.id}-${entry.variant}`}
+                  order={entry.order}
+                  variant={entry.variant}
+                />
               ))
             )}
           </div>
         </section>
 
         {snapshot.overdueOrders.length > 0 ? (
-          <section className="card card-pad compact-lane-card calendar-day-wide" id="calendar-day-overdue">
+          <section className="card card-pad compact-lane-card calendar-day-overdue" id="calendar-day-overdue">
             <div className="list-header compact-section-head calendar-lane-head">
               <div>
-                <h3>Arretrati aperti</h3>
+                <h3>Arretrati</h3>
               </div>
               <span className="pill danger calendar-count-badge">{snapshot.overdueOrders.length}</span>
             </div>
             <div className="compact-order-list">
-              {snapshot.overdueOrders.map((order) => (
+              {overduePreview.map((order) => (
                 <CalendarOrderCard focusDate={snapshot.date} key={order.id} order={order} variant="overdue" />
               ))}
+              {hiddenOverdueCount > 0 ? (
+                <Link className="calendar-more calendar-more-danger" href={buildOrdersFilterHref({ view: "ACTIVE", preset: "OVERDUE" })} prefetch={false}>
+                  +{hiddenOverdueCount}
+                </Link>
+              ) : null}
             </div>
           </section>
         ) : null}
@@ -202,139 +210,111 @@ function WeekCalendar({
   focusDate: Date;
 }) {
   const activeDay = snapshot.days.find((day) => isSameDay(day.date, focusDate)) || snapshot.days[0];
+  const activeDayEntries = getCalendarTimelineItems(activeDay);
 
   return (
     <div className="stack">
-      <CalendarSummaryGrid
-        view="week"
-        labelPrefix="settimana"
-        summary={snapshot.summary}
-        overdueLabel="Arretrati prima della settimana"
-      />
+      <CalendarFocusStrip summary={snapshot.summary} view="week" />
 
-      {snapshot.summary.overdue > 0 ? (
-        <div className="calendar-callout">
-          <strong>{snapshot.summary.overdue} arretrati aperti</strong>
-          <span>Restano da smaltire prima o durante questa settimana.</span>
+      <div className="calendar-week-layout" id="calendar-week-work">
+        <div className="calendar-week-mobile">
+          <nav className="calendar-week-day-strip" aria-label="Giorni della settimana">
+            {snapshot.days.map((day) => {
+              const isActive = day.key === activeDay.key;
+
+              return (
+                <Link
+                  className={`calendar-week-day-link${isActive ? " active" : ""}${day.isToday ? " today" : ""}`}
+                  href={buildCalendarHref("week", day.date)}
+                  key={day.key}
+                  replace
+                  scroll={false}
+                >
+                  <span>{weekdayLabel(day.date, "compact")}</span>
+                  <strong>{day.date.getDate()}</strong>
+                  <small>{day.summary.workload + day.summary.appointments}</small>
+                </Link>
+              );
+            })}
+          </nav>
+
+          <article className="calendar-week-focus">
+            <div className="calendar-week-focus-head">
+              <div>
+                <strong>{weekdayLabel(activeDay.date)}</strong>
+                <span>{formatDate(activeDay.date)}</span>
+              </div>
+            </div>
+
+            <div className="calendar-week-focus-stats">
+              <span className="calendar-day-stat">Lav. {activeDay.summary.workload}</span>
+              {activeDay.summary.appointments > 0 ? <span className="calendar-day-stat success">App. {activeDay.summary.appointments}</span> : null}
+              {activeDay.summary.blocked > 0 ? <span className="calendar-day-stat warning">Sosp. {activeDay.summary.blocked}</span> : null}
+              {activeDay.summary.ready > 0 ? <span className="calendar-day-stat success">Pront. {activeDay.summary.ready}</span> : null}
+            </div>
+
+            <section className="calendar-week-focus-section">
+              <div className="calendar-section-head">
+                <strong>Giornata</strong>
+                <span>{activeDayEntries.length}</span>
+              </div>
+              <div className="calendar-mini-stack">
+                {activeDayEntries.length === 0 ? (
+                  <div className="calendar-slot-empty">Libero</div>
+                ) : (
+                  activeDayEntries.map((entry) => (
+                    <CalendarWeekItem key={`${entry.order.id}-${entry.variant}`} order={entry.order} variant={entry.variant} />
+                  ))
+                )}
+              </div>
+            </section>
+          </article>
         </div>
-      ) : null}
 
-      <div className="calendar-week-mobile">
-        <nav className="calendar-week-day-strip" aria-label="Giorni della settimana">
+        <div className="calendar-week-grid calendar-week-desktop">
           {snapshot.days.map((day) => {
-            const isActive = day.key === activeDay.key;
+            const entries = getCalendarTimelineItems(day);
+            const hiddenCount = Math.max(0, entries.length - MAX_WEEK_DAY_ITEMS);
 
             return (
-              <Link
-                className={`calendar-week-day-link${isActive ? " active" : ""}${day.isToday ? " today" : ""}`}
-                href={buildCalendarHref("week", day.date)}
-                key={day.key}
-                replace
-                scroll={false}
-              >
-                <span>{weekdayLabel(day.date, "compact")}</span>
-                <strong>{day.date.getDate()}</strong>
-                <small>{day.summary.workload + day.summary.appointments}</small>
-              </Link>
+              <article className={getWeekColumnClassName(day)} key={day.key}>
+                <div className="calendar-column-head">
+                  <div>
+                    <strong>{weekdayLabel(day.date)}</strong>
+                    <span className="subtle calendar-column-date">{formatCompactDate(day.date)}</span>
+                  </div>
+                  <Link className="calendar-day-open" href={buildCalendarHref("day", day.date)} prefetch={false}>
+                    Apri
+                  </Link>
+                </div>
+
+                <div className="calendar-column-stats">
+                  <span className="calendar-day-stat">Lav. {day.summary.workload}</span>
+                  {day.summary.appointments > 0 ? <span className="calendar-day-stat success">App. {day.summary.appointments}</span> : null}
+                  {day.summary.blocked > 0 ? <span className="calendar-day-stat warning">Sosp. {day.summary.blocked}</span> : null}
+                  {day.summary.ready > 0 ? <span className="calendar-day-stat success">Pront. {day.summary.ready}</span> : null}
+                </div>
+
+                <div className="calendar-column-body calendar-column-timeline">
+                  {entries.length === 0 ? (
+                    <div className="calendar-slot-empty">Libero</div>
+                  ) : (
+                    entries
+                      .slice(0, MAX_WEEK_DAY_ITEMS)
+                      .map((entry) => (
+                        <CalendarWeekItem key={`${entry.order.id}-${entry.variant}`} order={entry.order} variant={entry.variant} />
+                      ))
+                  )}
+                  {hiddenCount > 0 ? (
+                    <Link className="calendar-more" href={buildCalendarHref("day", day.date)} prefetch={false}>
+                      +{hiddenCount}
+                    </Link>
+                  ) : null}
+                </div>
+              </article>
             );
           })}
-        </nav>
-
-        <article className="calendar-week-focus">
-          <div className="calendar-week-focus-head">
-            <div>
-              <strong>{weekdayLabel(activeDay.date)}</strong>
-              <span>{formatDate(activeDay.date)}</span>
-            </div>
-          </div>
-
-          <div className="calendar-week-focus-stats">
-            <span className="calendar-day-stat">Lav. {activeDay.summary.workload}</span>
-            <span className="calendar-day-stat">App. {activeDay.summary.appointments}</span>
-            {activeDay.summary.blocked > 0 ? <span className="calendar-day-stat warning">Sosp. {activeDay.summary.blocked}</span> : null}
-            {activeDay.summary.ready > 0 ? <span className="calendar-day-stat success">Pront. {activeDay.summary.ready}</span> : null}
-          </div>
-
-          <section className="calendar-week-focus-section" id="calendar-week-work">
-            <div className="calendar-section-head">
-              <strong>Lavori</strong>
-              <span>{activeDay.dueOrders.length}</span>
-            </div>
-            <div className="calendar-mini-stack">
-              {activeDay.dueOrders.length === 0 ? (
-                <div className="calendar-slot-empty">Nessun lavoro in scadenza</div>
-              ) : (
-                activeDay.dueOrders.map((order) => <CalendarWeekItem key={order.id} order={order} variant="delivery" />)
-              )}
-            </div>
-          </section>
-
-          <section className="calendar-week-focus-section" id="calendar-week-appointments">
-            <div className="calendar-section-head">
-              <strong>Appuntamenti</strong>
-              <span>{activeDay.appointmentOrders.length}</span>
-            </div>
-            <div className="calendar-mini-stack">
-              {activeDay.appointmentOrders.length === 0 ? (
-                <div className="calendar-slot-empty">Nessun appuntamento</div>
-              ) : (
-                activeDay.appointmentOrders.map((order) => (
-                  <CalendarWeekItem key={`${order.id}-appointment`} order={order} variant="appointment" />
-                ))
-              )}
-            </div>
-          </section>
-        </article>
-      </div>
-
-      <div className="calendar-week-grid calendar-week-desktop">
-        {snapshot.days.map((day) => (
-          <article className={getWeekColumnClassName(day)} key={day.key}>
-            <div className="calendar-column-head">
-              <strong>{weekdayLabel(day.date)}</strong>
-              <span className="subtle calendar-column-date">{formatCompactDate(day.date)}</span>
-            </div>
-
-            <div className="calendar-column-stats">
-              <span className="calendar-day-stat">Lav. {day.summary.workload}</span>
-              <span className="calendar-day-stat">App. {day.summary.appointments}</span>
-              {day.summary.blocked > 0 ? <span className="calendar-day-stat warning">Sosp. {day.summary.blocked}</span> : null}
-              {day.summary.ready > 0 ? <span className="calendar-day-stat success">Pront. {day.summary.ready}</span> : null}
-            </div>
-
-            <div className="calendar-column-body">
-              <section className="calendar-column-section">
-                <div className="calendar-section-head">
-                  <strong>Lavori</strong>
-                  <span>{day.dueOrders.length}</span>
-                </div>
-                <div className="calendar-mini-stack">
-                  {day.dueOrders.length === 0 ? (
-                    <div className="calendar-slot-empty">Nessun lavoro in scadenza</div>
-                  ) : (
-                    day.dueOrders.map((order) => <CalendarWeekItem key={order.id} order={order} variant="delivery" />)
-                  )}
-                </div>
-              </section>
-
-              <section className="calendar-column-section">
-                <div className="calendar-section-head">
-                  <strong>Appuntamenti</strong>
-                  <span>{day.appointmentOrders.length}</span>
-                </div>
-                <div className="calendar-mini-stack">
-                  {day.appointmentOrders.length === 0 ? (
-                    <div className="calendar-slot-empty">Nessun appuntamento</div>
-                  ) : (
-                    day.appointmentOrders.map((order) => (
-                      <CalendarWeekItem key={`${order.id}-appointment`} order={order} variant="appointment" />
-                    ))
-                  )}
-                </div>
-              </section>
-            </div>
-          </article>
-        ))}
+        </div>
       </div>
     </div>
   );
@@ -398,6 +378,42 @@ function MonthCalendar({
         })}
       </div>
     </div>
+  );
+}
+
+function CalendarFocusStrip({ summary, view }: { summary: CalendarLoadSummary; view: CalendarView }) {
+  const signals = getCalendarSignals(summary, view);
+
+  return (
+    <nav className="calendar-focus-strip" aria-label="Segnali calendario">
+      {signals.map((signal) => (
+        <CalendarSignalLink key={signal.label} signal={signal} />
+      ))}
+    </nav>
+  );
+}
+
+function CalendarSignalLink({ signal }: { signal: CalendarSignal }) {
+  const className = `calendar-signal-link calendar-signal-${signal.tone}`;
+  const content = (
+    <>
+      <span>{signal.label}</span>
+      <strong>{signal.value}</strong>
+    </>
+  );
+
+  if (signal.href.startsWith("#")) {
+    return (
+      <a className={className} href={signal.href}>
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <Link className={className} href={signal.href} prefetch={false}>
+      {content}
+    </Link>
   );
 }
 
@@ -542,12 +558,12 @@ function getCalendarMetricHref(
 ) {
   switch (kind) {
     case "workload":
-      return view === "day" ? "#calendar-day-deliveries" : view === "week" ? "#calendar-week-work" : "#calendar-month-grid";
+      return view === "day" ? "#calendar-day-schedule" : view === "week" ? "#calendar-week-work" : "#calendar-month-grid";
     case "appointments":
       return view === "day"
-        ? "#calendar-day-appointments"
+        ? "#calendar-day-schedule"
         : view === "week"
-          ? "#calendar-week-appointments"
+          ? "#calendar-week-work"
           : "#calendar-month-grid";
     case "toStart":
       return buildOrdersFilterHref({ view: "ACTIVE", preset: "TO_START" });
@@ -562,6 +578,23 @@ function getCalendarMetricHref(
   }
 }
 
+function getCalendarSignals(summary: CalendarLoadSummary, view: CalendarView): CalendarSignal[] {
+  const baseSignals: CalendarSignal[] = [
+    { href: getCalendarMetricHref(view, "workload"), label: "Lavori", tone: "blue", value: summary.workload }
+  ];
+
+  const conditionalSignals: Array<CalendarSignal & { show: boolean }> = [
+    { href: getCalendarMetricHref(view, "appointments"), label: "App.", tone: "cyan", value: summary.appointments, show: summary.appointments > 0 },
+    { href: getCalendarMetricHref(view, "toStart"), label: "Da avviare", tone: "lime", value: summary.toStart, show: summary.toStart > 0 },
+    { href: getCalendarMetricHref(view, "working"), label: "In corso", tone: "blue", value: summary.working, show: summary.working > 0 },
+    { href: getCalendarMetricHref(view, "ready"), label: "Pronti", tone: "cyan", value: summary.ready, show: summary.ready > 0 },
+    { href: getCalendarMetricHref(view, "blocked"), label: "Sosp.", tone: "red", value: summary.blocked, show: summary.blocked > 0 },
+    { href: getCalendarMetricHref(view, "overdue"), label: "Arretrati", tone: "red", value: summary.overdue, show: summary.overdue > 0 }
+  ];
+
+  return [...conditionalSignals.filter((signal) => signal.tone === "red" && signal.show), ...baseSignals, ...conditionalSignals.filter((signal) => signal.tone !== "red" && signal.show)];
+}
+
 function CalendarOrderCard({
   order,
   focusDate,
@@ -573,6 +606,7 @@ function CalendarOrderCard({
 }) {
   const tone = getOrderTone(order, focusDate, variant);
   const title = getCalendarEntryTitle(order);
+  const meta = getCalendarEntryMeta(order, variant);
 
   return (
     <Link
@@ -581,7 +615,12 @@ function CalendarOrderCard({
       prefetch={false}
       title={`${order.customer.name} • ${getDisplayOrderLabel(order.orderCode, order.title)}`}
     >
-      <span className="calendar-entry-title">{title}</span>
+      <span className="calendar-entry-kind">{getCalendarEntryKindLabel(variant)}</span>
+      <span className="calendar-entry-copy">
+        <span className="calendar-entry-title">{title}</span>
+        <span className="calendar-entry-meta">{meta}</span>
+      </span>
+      <span className={`calendar-entry-phase calendar-entry-phase-${tone}`}>{getCalendarPhaseLabel(order)}</span>
     </Link>
   );
 }
@@ -593,14 +632,20 @@ function CalendarWeekItem({
   order: CalendarOrder;
   variant: "delivery" | "appointment";
 }) {
+  const tone = variant === "appointment" ? "success" : getOrderTone(order, new Date(order.deliveryAt), "delivery");
+
   return (
     <Link
-      className={`calendar-entry-link calendar-entry-link-compact calendar-entry-link-uniform${variant === "appointment" ? " calendar-entry-link-uniform-appointment" : ""}`}
+      className={`calendar-entry-link calendar-entry-link-compact calendar-entry-link-uniform calendar-entry-link-${tone}${variant === "appointment" ? " calendar-entry-link-uniform-appointment" : ""}`}
       href={`/orders/${order.id}`}
       prefetch={false}
       title={`${order.customer.name} • ${getDisplayOrderLabel(order.orderCode, order.title)}`}
     >
-      <span className="calendar-entry-title">{getCalendarEntryTitle(order)}</span>
+      <span className="calendar-entry-kind">{getCalendarEntryKindLabel(variant)}</span>
+      <span className="calendar-entry-copy">
+        <span className="calendar-entry-title">{getCalendarEntryTitle(order)}</span>
+        <span className="calendar-entry-meta">{getCalendarEntryMeta(order, variant)}</span>
+      </span>
     </Link>
   );
 }
@@ -869,6 +914,68 @@ function sortByAppointment(orders: CalendarOrder[]) {
 
 function getCalendarEntryTitle(order: CalendarOrder) {
   return order.customer.name;
+}
+
+function getCalendarTimelineItems(day: CalendarDaySnapshot): CalendarTimelineItem[] {
+  const entries = new Map<string, CalendarTimelineItem>();
+
+  for (const order of day.dueOrders) {
+    entries.set(order.id, { order, variant: "delivery" });
+  }
+
+  for (const order of day.appointmentOrders) {
+    entries.set(order.id, { order, variant: "appointment" });
+  }
+
+  return Array.from(entries.values()).sort((left, right) => getTimelineItemTime(left) - getTimelineItemTime(right));
+}
+
+function getTimelineItemTime(item: CalendarTimelineItem) {
+  const value = item.variant === "appointment" ? item.order.appointmentAt || item.order.deliveryAt : item.order.deliveryAt;
+  return new Date(value).getTime();
+}
+
+function getCalendarEntryKindLabel(variant: "delivery" | "appointment" | "overdue") {
+  if (variant === "appointment") {
+    return "App.";
+  }
+
+  return "Cons.";
+}
+
+function getCalendarEntryMeta(order: CalendarOrder, variant: "delivery" | "appointment" | "overdue") {
+  const label = getDisplayOrderLabel(order.orderCode, order.title);
+  const time = variant === "appointment" && order.appointmentAt ? formatCalendarTime(order.appointmentAt) : "";
+
+  return time ? `${label} - ${time}` : label;
+}
+
+function getCalendarPhaseLabel(order: CalendarOrder) {
+  if (order.operationalStatus !== "ATTIVO") {
+    return "Sosp.";
+  }
+
+  const phase = normalizeMainPhaseForWorkflow(order.mainPhase);
+
+  if (phase === "ACCETTATO") {
+    return "Da avviare";
+  }
+
+  if (phase === "SVILUPPO_COMPLETATO") {
+    return "Pronto";
+  }
+
+  return "In corso";
+}
+
+function formatCalendarTime(date: Date | string) {
+  const value = typeof date === "string" ? new Date(date) : date;
+
+  return new Intl.DateTimeFormat("it-IT", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: APP_TIMEZONE
+  }).format(value);
 }
 
 function getOrderTone(order: CalendarOrder, focusDate: Date, variant: "delivery" | "appointment" | "overdue") {

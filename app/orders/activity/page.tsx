@@ -6,9 +6,15 @@ import { getOrderRecentActivityFeed } from "@/lib/orders";
 
 export const dynamic = "force-dynamic";
 
-export default async function OrdersActivityPage() {
+export default async function OrdersActivityPage({
+  searchParams
+}: {
+  searchParams?: {
+    type?: string | string[];
+  };
+}) {
   await requireAuth();
-  const recentActivity = await getOrderRecentActivityFeed({ limit: 20, invoiceLimit: 20 });
+  const recentActivity = await getOrderRecentActivityFeed({ limit: 80, invoiceLimit: 80 });
 
   return (
     <div className="stack orders-activity-page-shell">
@@ -18,6 +24,7 @@ export default async function OrdersActivityPage() {
       />
 
       <OrdersRecentActivity
+        activeType={searchParams?.type}
         recentChanges={recentActivity.recentChanges}
         recentInvoiceChanges={recentActivity.recentInvoiceChanges}
         returnTo="/orders/activity#orders-recent-activity"

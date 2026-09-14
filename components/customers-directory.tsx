@@ -41,22 +41,16 @@ export function CustomersDirectory({ customers }: { customers: CustomerDirectory
           setQuery(customer.name);
           setHighlightedCustomerId(customer.id);
         }}
-        placeholder="Nome anche approssimativo, telefono, email, P.IVA..."
+        placeholder="Nome, telefono, email, P.IVA"
         query={query}
         selectedCustomerId={highlightedCustomerId}
       />
 
-      <div className="customers-directory-search-meta">
-        <span className="subtle">
-          {deferredQuery.trim()
-            ? visibleCustomers.length === 1
-              ? "1 cliente visibile"
-              : `${visibleCustomers.length} clienti visibili`
-            : customers.length === 1
-              ? "1 cliente in elenco"
-              : `${customers.length} clienti in elenco`}
-        </span>
-        {query.trim() ? (
+      {query.trim() ? (
+        <div className="customers-directory-search-meta">
+          <span className="subtle">
+            {visibleCustomers.length === 1 ? "1 risultato" : `${visibleCustomers.length} risultati`}
+          </span>
           <button
             className="ghost customers-directory-search-reset"
             onClick={() => {
@@ -67,8 +61,8 @@ export function CustomersDirectory({ customers }: { customers: CustomerDirectory
           >
             Azzera ricerca
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       <div className="mini-list customer-directory-list">
         {visibleCustomers.length === 0 ? (
@@ -80,50 +74,40 @@ export function CustomersDirectory({ customers }: { customers: CustomerDirectory
               customer.whatsapp && customer.whatsapp !== customer.phone ? `WA ${customer.whatsapp}` : null,
               customer.email ? customer.email : null
             ].filter((value): value is string => Boolean(value));
-            const visibleContactChips = contactChips.slice(0, 2);
-            const hiddenContactCount = Math.max(contactChips.length - visibleContactChips.length, 0);
+            const primaryContact = contactChips[0] || null;
+            const hiddenContactCount = Math.max(contactChips.length - 1, 0);
             const lastOrderLabel = customer.orders[0] ? formatDate(customer.orders[0].createdAt) : null;
 
             return (
               <article
                 className={`mini-item customer-directory-item${highlightedCustomerId === customer.id ? " customer-directory-item-highlighted" : ""}`}
+                data-customer-type={customer.type.toLowerCase()}
                 key={customer.id}
               >
                 <Link className="customer-directory-link" href={`/customers/${customer.id}`} prefetch={false}>
-                  <div className="customer-directory-head">
-                    <div className="customer-directory-title">
-                      <div className="customer-directory-name-row">
-                        <strong>{customer.name}</strong>
-                        <span className="customer-directory-type-badge">{customerTypeLabels[customer.type]}</span>
-                      </div>
-                      <div className="customer-directory-inline-meta">
-                        <span>{customer.orders.length === 1 ? "1 ordine" : `${customer.orders.length} ordini`}</span>
-                        <span>{lastOrderLabel ? `Ultimo ${lastOrderLabel}` : "Nessun ordine"}</span>
-                        <span>{contactChips.length > 0 ? `${contactChips.length} contatti` : "Nessun contatto"}</span>
-                      </div>
+                  <div className="customer-directory-title">
+                    <div className="customer-directory-name-row">
+                      <strong>{customer.name}</strong>
+                      <span className="customer-directory-type-badge">{customerTypeLabels[customer.type]}</span>
                     </div>
-                    <span className="pill customer-directory-open-pill">Apri</span>
+                    <div className="customer-directory-inline-meta">
+                      <span>{customer.orders.length === 1 ? "1 ordine" : `${customer.orders.length} ordini`}</span>
+                      <span>{lastOrderLabel ? `Ultimo ${lastOrderLabel}` : "Nessun ordine"}</span>
+                    </div>
                   </div>
 
                   <div className="customer-directory-contact-row">
-                    {visibleContactChips.length > 0 ? (
-                      visibleContactChips.map((entry) => (
-                        <span className="customer-directory-contact-chip" key={entry}>
-                          {entry}
-                        </span>
-                      )).concat(
-                        hiddenContactCount > 0
-                          ? [
-                              <span className="customer-directory-contact-chip is-muted" key={`${customer.id}-more`}>
-                                +{hiddenContactCount}
-                              </span>
-                            ]
-                          : []
-                      )
-                    ) : (
-                      <span className="customer-directory-contact-chip is-muted">Nessun contatto rapido</span>
-                    )}
+                    <span className={`customer-directory-contact-chip${primaryContact ? "" : " is-muted"}`}>
+                      {primaryContact || "Nessun contatto"}
+                    </span>
+                    {hiddenContactCount > 0 ? (
+                      <span className="customer-directory-contact-chip is-muted">+{hiddenContactCount}</span>
+                    ) : null}
                   </div>
+
+                  <span className="customer-directory-open-cue" aria-hidden="true">
+                    &gt;
+                  </span>
                 </Link>
               </article>
             );

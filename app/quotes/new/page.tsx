@@ -1,5 +1,5 @@
+import Link from "next/link";
 import { createQuoteAction } from "@/app/actions";
-import { OrderDraftHeaderAction } from "@/components/order-draft-header-action";
 import { OrderForm } from "@/components/order-form";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
@@ -22,7 +22,14 @@ export default async function NewQuotePage({
 
   return (
     <div className="stack order-entry-page-shell quote-create-page-shell">
-      <PageHeader action={<OrderDraftHeaderAction kind="quote" />} title="Nuovo preventivo" />
+      <PageHeader
+        title="Nuovo preventivo"
+        action={
+          <Link className="button secondary" href="/quotes" prefetch={false}>
+            Torna ai preventivi
+          </Link>
+        }
+      />
       {continuationTitle ? (
         <section className="order-draft-banner order-entry-followup-banner">
           <div className="stack">

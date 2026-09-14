@@ -7,6 +7,10 @@ export type SessionPayload = {
   exp: number;
 };
 
+type ExpiringSignedPayload = {
+  exp: number;
+};
+
 function isProductionRuntime() {
   return process.env.NODE_ENV === "production";
 }
@@ -33,13 +37,7 @@ function signPayload(payload: string) {
   return createHmac("sha256", secret).update(payload).digest("hex");
 }
 
-export function serializeSession(payload: SessionPayload) {
-  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = signPayload(encoded);
-  return `${encoded}.${signature}`;
-}
-
-export function readSession(cookieValue?: string | null): SessionPayload | null {
+function readVerifiedPayload(cookieValue?: string | null) {
   if (!cookieValue) {
     return null;
   }
@@ -66,12 +64,38 @@ export function readSession(cookieValue?: string | null): SessionPayload | null 
     return null;
   }
 
-  const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as SessionPayload;
+  try {
+    return JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+export function serializeExpiringSignedPayload<TPayload extends ExpiringSignedPayload>(payload: TPayload) {
+  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = signPayload(encoded);
+  return `${encoded}.${signature}`;
+}
+
+export function readExpiringSignedPayload<TPayload extends ExpiringSignedPayload>(cookieValue?: string | null): TPayload | null {
+  const payload = readVerifiedPayload(cookieValue) as TPayload | null;
+  if (!payload || typeof payload.exp !== "number") {
+    return null;
+  }
+
   if (payload.exp < Date.now()) {
     return null;
   }
 
   return payload;
+}
+
+export function serializeSession(payload: SessionPayload) {
+  return serializeExpiringSignedPayload(payload);
+}
+
+export function readSession(cookieValue?: string | null): SessionPayload | null {
+  return readExpiringSignedPayload<SessionPayload>(cookieValue);
 }
 
 export function hashPassword(password: string) {

@@ -18,6 +18,8 @@ type AuditLogInput = {
 export type ProjectRecentActivityEntry = {
   id: string;
   source: "audit" | "order";
+  entityType: AuditEntityType;
+  actionType: AuditActionType;
   categoryLabel: string;
   entityLabel: string;
   summary: string;
@@ -337,6 +339,8 @@ async function getRecentAuditActivity(limit: number) {
   return logs.map((entry) => ({
     id: `audit:${entry.id}`,
     source: "audit" as const,
+    entityType: entry.entityType,
+    actionType: entry.actionType,
     categoryLabel: getAuditCategoryLabel(entry.entityType),
     entityLabel: entry.entityLabel,
     summary: entry.title,
@@ -617,6 +621,8 @@ export async function getRecentProjectActivityFeed(options?: { limit?: number })
   const orderEntries = [...orderActivity.recentInvoiceChanges, ...orderActivity.recentChanges].map((entry) => ({
     id: `order:${entry.id}`,
     source: "order" as const,
+    entityType: "ORDER" as const,
+    actionType: "UPDATED" as const,
     categoryLabel: entry.categoryLabel,
     entityLabel: entry.orderLabel,
     summary: entry.summary,

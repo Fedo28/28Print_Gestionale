@@ -10,6 +10,7 @@ export type PaymentFilter = PaymentStatus | "ALL";
 export type InvoiceFilter = InvoiceStatus | "ALL";
 export type PriorityFilter = Priority | "ALL";
 export type CustomerTypeFilter = CustomerType | "ALL";
+export type ShopOrderFilter = "ALL" | "ONLINE";
 export type OrderSortField = "order" | "customer" | "delivery" | "priority" | "status" | "amount";
 export type OrderSortDirection = "asc" | "desc";
 export type DashboardPreset =
@@ -59,6 +60,7 @@ export type OrderListFilters = {
   invoice?: InvoiceFilter;
   priority?: PriorityFilter;
   customerType?: CustomerTypeFilter;
+  shop?: ShopOrderFilter;
   quote?: QuoteFilter;
   preset?: DashboardPreset;
   sort?: OrderSortField;
@@ -104,6 +106,10 @@ export function parsePriorityFilter(raw: string | null): PriorityFilter {
 
 export function parseCustomerTypeFilter(raw: string | null): CustomerTypeFilter {
   return raw && customerTypes.includes(raw as CustomerType) ? (raw as CustomerType) : "ALL";
+}
+
+export function parseShopOrderFilter(raw: string | null): ShopOrderFilter {
+  return raw === "online" || raw === "ONLINE" ? "ONLINE" : "ALL";
 }
 
 export function parseOrderSortField(raw: string | null): OrderSortField | undefined {
@@ -184,6 +190,10 @@ export function buildOrdersFilterHref(filters: OrderListFilters) {
 
   if (filters.customerType && filters.customerType !== "ALL") {
     params.set("customerType", filters.customerType);
+  }
+
+  if (filters.shop === "ONLINE") {
+    params.set("shop", "online");
   }
 
   if (filters.quote && filters.quote !== "ALL") {

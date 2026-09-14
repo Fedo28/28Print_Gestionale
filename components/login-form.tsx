@@ -29,20 +29,35 @@ export function LoginForm({
   const [state, formAction] = useFormState(loginAction, initialState);
 
   return (
-    <div className="stack">
-      {healthMessage ? <div className="empty">{healthMessage}</div> : null}
-      {state.error ? <div className="empty">{state.error}</div> : null}
+    <div className="stack login-form-shell">
+      {healthMessage ? <div className="empty login-feedback">{healthMessage}</div> : null}
+      {state.error ? <div className="empty login-feedback">{state.error}</div> : null}
 
-      <form action={formAction} className="stack">
+      <form action={formAction} className="stack login-form">
         <div className="field full">
           <label htmlFor="nickname">Nickname</label>
-          <input autoCapitalize="off" defaultValue={defaultNickname} id="nickname" name="nickname" required spellCheck={false} />
+          <input
+            autoCapitalize="off"
+            autoComplete="username"
+            defaultValue={defaultNickname}
+            id="nickname"
+            name="nickname"
+            required
+            spellCheck={false}
+          />
         </div>
         <div className="field full">
           <label htmlFor="password">Password</label>
-          <input defaultValue={defaultPassword} id="password" name="password" type="password" required />
+          <input
+            autoComplete="current-password"
+            defaultValue={defaultPassword}
+            id="password"
+            name="password"
+            required
+            type="password"
+          />
         </div>
-        <div className="button-row">
+        <div className="button-row login-submit-row">
           <SubmitButton />
         </div>
       </form>

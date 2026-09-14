@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 
 export default async function ActivityTrashPage() {
   await requireAuth();
-  const deletedEntries = await getDeletedEntityFeed({ limit: 40 });
+  const deletedEntries = await getDeletedEntityFeed({ limit: 80 });
+  const restorableCount = deletedEntries.filter((entry) => entry.canRestore).length;
 
   return (
     <div className="stack activity-page-shell">
@@ -27,6 +28,27 @@ export default async function ActivityTrashPage() {
       />
 
       <section className="card card-pad activity-page-card" id="activity-trash-feed">
+        <div className="stack deleted-activity-workspace">
+          <section className="activity-signal-grid activity-trash-signal-grid" aria-label="Riepilogo cestino">
+            <article className="activity-signal is-red">
+              <span>Eliminati</span>
+              <strong>{deletedEntries.length}</strong>
+            </article>
+            <article className="activity-signal is-lime">
+              <span>Ripristinabili</span>
+              <strong>{restorableCount}</strong>
+            </article>
+          </section>
+
+          <nav className="activity-mode-tabs" aria-label="Archivio attività">
+            <Link className="activity-mode-tab" href="/activity#activity-feed">
+              Modifiche
+            </Link>
+            <Link className="activity-mode-tab is-active" href="/activity/trash#activity-trash-feed">
+              Cestino <span>{deletedEntries.length}</span>
+            </Link>
+          </nav>
+        </div>
         <DeletedActivityList entries={deletedEntries} returnTo="/activity/trash#activity-trash-feed" />
       </section>
     </div>

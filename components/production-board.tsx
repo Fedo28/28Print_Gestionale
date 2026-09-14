@@ -6,10 +6,8 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { moveOrderInProductionAction } from "@/app/actions";
-import { QuickOrderControls } from "@/components/quick-order-controls";
 import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
-import { StatusPills } from "@/components/status-pills";
-import { normalizeMainPhaseForWorkflow, operationalStatusLabels } from "@/lib/constants";
+import { normalizeMainPhaseForWorkflow, operationalStatusLabels, paymentStatusLabels } from "@/lib/constants";
 import { formatCompactDate } from "@/lib/format";
 import { getDisplayOrderLabel } from "@/lib/order-display";
 import type { getProductionQueues } from "@/lib/orders";
@@ -17,7 +15,7 @@ import { getWorkdayHighlight } from "@/lib/workday-highlights";
 
 type ProductionOrder = Awaited<ReturnType<typeof getProductionQueues>>["planning"][number];
 type QueueKey = "planning" | "working" | "blocked" | "ready";
-type ProductionTarget = "PLANNING" | "WORKING" | "READY" | "BLOCKED";
+type ProductionTarget = "PLANNING" | "WORKING" | "READY" | "BLOCKED" | "DELIVERED";
 
 const VISIBLE_ORDERS_PER_QUEUE = 6;
 
@@ -27,6 +25,43 @@ const queueDetails: Record<QueueKey, { title: string }> = {
   blocked: { title: "Sospesi" },
   ready: { title: "Pronti" }
 };
+
+function getPaymentTone(paymentStatus: ProductionOrder["paymentStatus"]) {
+  if (paymentStatus === "PAGATO") {
+    return "lime";
+  }
+
+  if (paymentStatus === "NON_PAGATO") {
+    return "ink";
+  }
+
+  return "blue";
+}
+
+function ProductionCardBadges({
+  order,
+  queue,
+  shopOnlineOrderCode,
+  whatsappNotified,
+  workdayHighlight
+}: {
+  order: ProductionOrder;
+  queue: QueueKey;
+  shopOnlineOrderCode: string | null;
+  whatsappNotified: boolean;
+  workdayHighlight: ReturnType<typeof getWorkdayHighlight>;
+}) {
+  return (
+    <div className="production-card-badges">
+      {shopOnlineOrderCode ? <span className="production-card-badge tone-lime">Shop online</span> : null}
+      {order.priority === "URGENTE" ? <span className="production-card-badge tone-red">Urgente</span> : null}
+      <span className={`production-card-badge tone-${getPaymentTone(order.paymentStatus)}`}>{paymentStatusLabels[order.paymentStatus]}</span>
+      {whatsappNotified ? <span className="production-card-badge tone-cyan">Avvisato</span> : null}
+      {workdayHighlight === "weekend" ? <span className="production-card-badge tone-ink">Weekend</span> : null}
+      {queue === "blocked" ? <span className="production-card-badge tone-red">{operationalStatusLabels[order.operationalStatus]}</span> : null}
+    </div>
+  );
+}
 
 const suspensionOptions: Array<{ status: OperationalStatus; label: string }> = [
   { status: "IN_ATTESA_FILE", label: "Mi manca un file" },
@@ -136,13 +171,15 @@ function ProductionCard({
   const hasWhatsapp = Boolean((order.customer.whatsapp || order.customer.phone || "").replace(/[^\d+]/g, ""));
   const nextAction = getNextAction(queue);
   const urgent = order.priority === "URGENTE";
+  const shopOnlineOrderCode = getProductionShopOnlineOrderCode(order);
 
   return (
     <article
       aria-busy={isMoving}
       className={`compact-order-item compact-order-item-dashboard compact-order-item-dense workday-highlight-card production-order-card${
         workdayHighlight ? ` ${workdayHighlight}` : ""
-      }${whatsappNotified ? " whatsapp-notified" : ""}${urgent ? " production-order-card-urgent" : ""}${isMoving ? " is-moving" : ""}`}
+      }${shopOnlineOrderCode ? " is-shop-online" : ""}${whatsappNotified ? " whatsapp-notified" : ""}${urgent ? " production-order-card-urgent" : ""}${isMoving ? " is-moving" : ""}`}
+      data-queue={queue}
       draggable={!isMoving}
       onDragEnd={onDragEnd}
       onDragStart={(event) => onDragStart(event, order.id)}
@@ -152,17 +189,6 @@ function ProductionCard({
           <span aria-hidden="true" className="production-drag-handle" title="Trascina ordine">
             <DragGlyph />
           </span>
-          <QuickOrderControls
-            align="start"
-            hasWhatsapp={hasWhatsapp}
-            orderId={order.id}
-            phase={order.mainPhase}
-            placement="above"
-            readyWhatsappSentAt={order.readyWhatsappSentAt}
-            showStatus={false}
-            showWhatsapp={false}
-            status={order.operationalStatus}
-          />
           <Link className="order-code" href={`/orders/${order.id}`} draggable={false}>
             {order.customer.name}
           </Link>
@@ -170,14 +196,28 @@ function ProductionCard({
 
         <div className="subtle compact-order-customer">{getDisplayOrderLabel(order.orderCode, order.title)}</div>
         <div className="hint compact-order-meta">Consegna {formatCompactDate(order.deliveryAt)}</div>
-        {whatsappNotified ? <div className="hint order-whatsapp-status">Cliente avvisato</div> : null}
-        {workdayHighlight === "weekend" ? <div className="hint">Consegna in weekend</div> : null}
+        {shopOnlineOrderCode ? (
+          <div className="shop-online-card-meta">
+            <span className="pill shop-online-pill">Shop online</span>
+            <span>{shopOnlineOrderCode}</span>
+          </div>
+        ) : null}
         {queue === "blocked" ? <div className="hint production-blocked-note">{order.operationalNote || operationalStatusLabels[order.operationalStatus]}</div> : null}
       </div>
 
       <div className="production-card-actions">
         {queue === "ready" ? (
-          <ReadyWhatsAppButton compact hasPhone={hasWhatsapp} notifiedAt={order.readyWhatsappSentAt} orderId={order.id} showLabel />
+          <>
+            <ReadyWhatsAppButton compact hasPhone={hasWhatsapp} label="Messaggio" notifiedAt={order.readyWhatsappSentAt} orderId={order.id} showLabel />
+            <button
+              className="button ghost production-card-action production-card-action-delivered"
+              disabled={isMoving}
+              onClick={() => onMove(order, "DELIVERED")}
+              type="button"
+            >
+              Consegnato
+            </button>
+          </>
         ) : queue === "blocked" ? (
           <button className="button ghost production-card-action" disabled={isMoving} onClick={() => onMove(order, getTargetForQueue(getPhaseQueue(order)))} type="button">
             Riprendi
@@ -196,9 +236,13 @@ function ProductionCard({
         )}
       </div>
 
-      <StatusPills hideNeutralStatus linked={false} payment={order.paymentStatus} phase={order.mainPhase} status={order.operationalStatus} />
+      <ProductionCardBadges order={order} queue={queue} shopOnlineOrderCode={shopOnlineOrderCode} whatsappNotified={whatsappNotified} workdayHighlight={workdayHighlight} />
     </article>
   );
+}
+
+function getProductionShopOnlineOrderCode(order: ProductionOrder) {
+  return order.salesOrderLinks?.find((link) => link.salesOrder.origin === "SHOP_ONLINE")?.salesOrder.orderCode || null;
 }
 
 function ProductionLane({
@@ -231,12 +275,14 @@ function ProductionLane({
   const [isExpanded, setIsExpanded] = useState(false);
   const visibleOrders = isExpanded ? orders : orders.slice(0, VISIBLE_ORDERS_PER_QUEUE);
   const details = queueDetails[queue];
+  const isEmpty = orders.length === 0;
+  const isQuietEmpty = queue === "blocked" && isEmpty && !draggedOrderId;
 
   return (
     <section
       className={`card card-pad compact-lane-card queue-column-card production-lane${isDropActive ? " is-drop-active" : ""}${
         canDrop ? " can-drop" : ""
-      }`}
+      }${isEmpty ? " is-empty" : ""}${isQuietEmpty ? " is-empty-quiet" : ""}`}
       data-queue={queue}
       onDragOver={(event) => onDragOver(event, queue)}
       onDrop={(event) => onDrop(event, queue)}
@@ -249,8 +295,8 @@ function ProductionLane({
       </div>
 
       <div className="compact-order-list">
-        {orders.length === 0 ? (
-          <div className="empty">{draggedOrderId && canDrop ? "Rilascia qui l'ordine" : "Nessun ordine in questa coda."}</div>
+        {isEmpty ? (
+          isQuietEmpty ? null : <div className="empty">{draggedOrderId && canDrop ? "Rilascia qui" : "Vuota"}</div>
         ) : (
           <div className="compact-order-grid compact-order-grid-dense queue-grid-dense">
             {visibleOrders.map((order) => (
@@ -471,27 +517,34 @@ export function ProductionBoard({ queues }: { queues: Awaited<ReturnType<typeof 
     setUndoOrder(null);
   }
 
+  function renderLane(queue: QueueKey) {
+    return (
+      <ProductionLane
+        canDrop={Boolean(draggedOrder && getAllowedDropQueues(draggedOrder).includes(queue))}
+        draggedOrderId={draggedOrderId}
+        isDropActive={dropQueue === queue}
+        isMoving={isMovingOrderId !== null}
+        key={queue}
+        onDragEnd={handleDragEnd}
+        onDragOver={handleDragOver}
+        onDragStart={handleDragStart}
+        onDrop={handleDrop}
+        onMove={moveOrder}
+        onSuspend={openSuspension}
+        orders={boardQueues[queue]}
+        queue={queue}
+      />
+    );
+  }
+
   return (
     <>
       <div className="production-board" aria-label="Bacheca produzione">
-        <div className="grid grid-2 production-board-grid">
-          {(Object.keys(queueDetails) as QueueKey[]).map((queue) => (
-            <ProductionLane
-              canDrop={Boolean(draggedOrder && getAllowedDropQueues(draggedOrder).includes(queue))}
-              draggedOrderId={draggedOrderId}
-              isDropActive={dropQueue === queue}
-              isMoving={isMovingOrderId !== null}
-              key={queue}
-              onDragEnd={handleDragEnd}
-              onDragOver={handleDragOver}
-              onDragStart={handleDragStart}
-              onDrop={handleDrop}
-              onMove={moveOrder}
-              onSuspend={openSuspension}
-              orders={boardQueues[queue]}
-              queue={queue}
-            />
-          ))}
+        <div className="production-board-grid">
+          {renderLane("planning")}
+          {renderLane("working")}
+          {renderLane("ready")}
+          {renderLane("blocked")}
         </div>
       </div>
 

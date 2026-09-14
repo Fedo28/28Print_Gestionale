@@ -10,6 +10,7 @@ export function ReadyWhatsAppButton({
   disabled = false,
   compact = false,
   showLabel = false,
+  label,
   notifiedAt
 }: {
   orderId: string;
@@ -17,6 +18,7 @@ export function ReadyWhatsAppButton({
   disabled?: boolean;
   compact?: boolean;
   showLabel?: boolean;
+  label?: string;
   notifiedAt?: Date | string | null;
 }) {
   const router = useRouter();
@@ -67,7 +69,7 @@ export function ReadyWhatsAppButton({
           <path d="M4.5 7.5A2.5 2.5 0 0 1 7 5h10a2.5 2.5 0 0 1 2.5 2.5v9A2.5 2.5 0 0 1 17 19H7a2.5 2.5 0 0 1-2.5-2.5v-9Z" />
           <path d="m6 8l6 5l6-5" />
         </svg>
-        {showLabel ? <span>{hasAlreadyNotified ? "Reinvia" : "Avvisa"}</span> : null}
+        {showLabel ? <span>{label || (hasAlreadyNotified ? "Reinvia" : "Avvisa")}</span> : null}
       </button>
       {!compact && message ? <p className="hint">{message}</p> : null}
       {!compact && !message && hasAlreadyNotified ? <p className="hint">{`Avvisato il ${formatDateTime(notifiedAt!)}`}</p> : null}

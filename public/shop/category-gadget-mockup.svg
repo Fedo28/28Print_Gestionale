@@ -1,0 +1,56 @@
+<svg width="1200" height="760" viewBox="0 0 1200 760" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gadget-bg" x1="0" y1="0" x2="1200" y2="760" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#03152D"/>
+      <stop offset="0.45" stop-color="#092D61"/>
+      <stop offset="1" stop-color="#06080F"/>
+    </linearGradient>
+    <linearGradient id="gadget-shirt" x1="300" y1="80" x2="700" y2="690" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F4EFE5"/>
+      <stop offset="1" stop-color="#C8C1B4"/>
+    </linearGradient>
+    <linearGradient id="gadget-cyan" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#20D9F2"/>
+      <stop offset="1" stop-color="#0785C4"/>
+    </linearGradient>
+    <filter id="gadget-shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="32" stdDeviation="30" flood-color="#000000" flood-opacity="0.42"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="760" fill="url(#gadget-bg)"/>
+  <circle cx="1000" cy="140" r="300" fill="#D61E3A" opacity="0.16"/>
+  <circle cx="140" cy="650" r="310" fill="#20D9F2" opacity="0.13"/>
+  <path d="M755 0H1200V132H686L755 0Z" fill="#D61E3A"/>
+  <path d="M0 625H812L742 760H0V625Z" fill="#D9FF00"/>
+  <g opacity="0.18">
+    <path d="M90 122H1110" stroke="#EAF6FF" stroke-width="1"/>
+    <path d="M90 254H1110" stroke="#EAF6FF" stroke-width="1"/>
+    <path d="M90 386H1110" stroke="#EAF6FF" stroke-width="1"/>
+    <path d="M90 518H1110" stroke="#EAF6FF" stroke-width="1"/>
+    <path d="M244 58V702" stroke="#EAF6FF" stroke-width="1"/>
+    <path d="M444 58V702" stroke="#EAF6FF" stroke-width="1"/>
+    <path d="M644 58V702" stroke="#EAF6FF" stroke-width="1"/>
+    <path d="M844 58V702" stroke="#EAF6FF" stroke-width="1"/>
+  </g>
+  <g filter="url(#gadget-shadow)">
+    <path d="M446 115H596L641 184L772 240L715 360L657 337V636H385V337L327 360L270 240L401 184L446 115Z" fill="url(#gadget-shirt)"/>
+    <path d="M448 116C476 148 522 165 596 116L641 184C615 213 584 229 549 231C507 233 459 213 401 184L448 116Z" fill="#E8E2D8"/>
+    <path d="M480 286C541 232 616 239 660 299C697 351 680 428 621 470C573 504 506 496 463 452C418 406 426 334 480 286Z" fill="#7B1335" opacity="0.95"/>
+    <path d="M536 314C575 289 626 310 642 352C657 391 636 432 598 447C552 466 502 437 499 388C497 357 511 331 536 314Z" fill="#F4EFE5" opacity="0.95"/>
+    <path d="M546 338C571 322 602 334 612 360C622 386 609 414 584 423C556 433 526 416 524 386C522 366 531 348 546 338Z" fill="#7B1335" opacity="0.95"/>
+    <g transform="translate(736 300)">
+      <path d="M92 0C152 0 190 44 182 104L160 272C156 304 128 328 96 328H72C40 328 12 304 8 272L-14 104C-22 44 16 0 76 0H92Z" fill="url(#gadget-cyan)"/>
+      <rect x="45" y="-46" width="78" height="74" rx="28" fill="#33D8F0"/>
+      <rect x="36" y="122" width="96" height="28" fill="#F4EFE5" opacity="0.55"/>
+      <rect x="50" y="164" width="70" height="12" fill="#061A38" opacity="0.7"/>
+    </g>
+    <g transform="translate(168 378)">
+      <path d="M0 46C0 20 21 0 47 0H174C200 0 221 20 221 46V150C221 176 200 196 174 196H47C21 196 0 176 0 150V46Z" fill="#F8FAFC"/>
+      <path d="M221 58H254C288 58 315 85 315 119C315 153 288 180 254 180H221V142H253C266 142 277 132 277 119C277 106 266 96 253 96H221V58Z" fill="#F8FAFC"/>
+      <rect x="38" y="48" width="146" height="22" fill="#D61E3A"/>
+      <rect x="38" y="92" width="106" height="16" fill="#061A38"/>
+      <rect x="38" y="128" width="130" height="12" fill="#20D9F2"/>
+    </g>
+  </g>
+  <rect width="1200" height="760" fill="#000000" opacity="0.03"/>
+</svg>

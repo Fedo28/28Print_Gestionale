@@ -1,12 +1,11 @@
 import Link from "next/link";
-import { Priority } from "@prisma/client";
 import { confirmQuoteAction } from "@/app/actions";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
-import { priorityLabels } from "@/lib/constants";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import { getDisplayOrderLabel } from "@/lib/order-display";
 import type { OrderSortDirection, OrderSortField } from "@/lib/order-filters";
-import { getPriorityToneClass } from "@/lib/priorities";
+
+type QuoteSortField = Extract<OrderSortField, "customer" | "delivery" | "amount">;
 
 type QuoteRow = {
   id: string;
@@ -14,7 +13,6 @@ type QuoteRow = {
   title: string;
   deliveryAt: Date | string;
   schedulePending: boolean;
-  priority: Priority;
   totalCents: number;
   balanceDueCents: number;
   customer: {
@@ -57,11 +55,11 @@ export function QuotesTable({
   buildSortHref
 }: {
   quotes: QuoteRow[];
-  sortField: OrderSortField;
+  sortField: QuoteSortField;
   sortDirection: OrderSortDirection;
-  buildSortHref: (field: OrderSortField) => string;
+  buildSortHref: (field: QuoteSortField) => string;
 }) {
-  const sortableHeaders: Array<{ field: OrderSortField; label: string }> = [
+  const sortableHeaders: Array<{ field: QuoteSortField; label: string }> = [
     { field: "customer", label: "Cliente e preventivo" },
     { field: "delivery", label: "Consegna stimata" },
     { field: "amount", label: "Totale" }
@@ -89,38 +87,38 @@ export function QuotesTable({
       <tbody>
         {quotes.length === 0 ? (
           <tr>
-              <td colSpan={4}>
+            <td colSpan={4}>
               <div className="empty">Nessun preventivo trovato.</div>
             </td>
           </tr>
         ) : (
           quotes.map((quote) => {
-            const priorityToneClass = getPriorityToneClass(quote.priority);
             const displayLabel = getDisplayOrderLabel(quote.orderCode, quote.title);
             return (
-            <tr className={`quote-row ${priorityToneClass}`} key={quote.id}>
-              <td data-label="Cliente e preventivo">
-                <Link className="quote-customer-link" href={`/orders/${quote.id}`}>
-                  <strong>{quote.customer.name}</strong>
-                  <span>{displayLabel}</span>
-                  {quote.customer.phone ? <small>{quote.customer.phone}</small> : null}
-                </Link>
-              </td>
-              <td className={`quotes-table-delivery-cell ${priorityToneClass}`} data-label="Consegna stimata">
-                <div className={`order-deadline-chip ${priorityToneClass}${quote.schedulePending ? " delivered" : ""}`}>
-                  <strong>{quote.schedulePending ? "Da definire" : formatDateTime(quote.deliveryAt)}</strong>
-                  <span>{quote.schedulePending ? "Pianificazione" : priorityLabels[quote.priority]}</span>
-                </div>
-              </td>
-              <td data-label="Totale">
-                <div className="strong">{formatCurrency(quote.totalCents)}</div>
-                <div className="subtle">Preventivo</div>
-              </td>
-              <td className="quotes-table-actions-cell" data-label="Adesso">
-                <QuotePrimaryAction quoteId={quote.id} schedulePending={quote.schedulePending} />
-              </td>
-            </tr>
-          )})
+              <tr className={quote.schedulePending ? "quote-row quote-row-pending" : "quote-row"} key={quote.id}>
+                <td data-label="Cliente e preventivo">
+                  <Link className="quote-customer-link" href={`/orders/${quote.id}`}>
+                    <strong>{quote.customer.name}</strong>
+                    <span>{displayLabel}</span>
+                    {quote.customer.phone ? <small>{quote.customer.phone}</small> : null}
+                  </Link>
+                </td>
+                <td className="quotes-table-delivery-cell" data-label="Consegna stimata">
+                  <div className={`order-deadline-chip quote-deadline-chip${quote.schedulePending ? " quote-deadline-chip-pending" : ""}`}>
+                    <strong>{quote.schedulePending ? "Da definire" : formatDateTime(quote.deliveryAt)}</strong>
+                    <span>{quote.schedulePending ? "Pianificazione" : "Data stimata"}</span>
+                  </div>
+                </td>
+                <td data-label="Totale">
+                  <div className="strong">{formatCurrency(quote.totalCents)}</div>
+                  <div className="subtle">Preventivo</div>
+                </td>
+                <td className="quotes-table-actions-cell" data-label="Adesso">
+                  <QuotePrimaryAction quoteId={quote.id} schedulePending={quote.schedulePending} />
+                </td>
+              </tr>
+            );
+          })
         )}
       </tbody>
     </table>

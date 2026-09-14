@@ -8,6 +8,11 @@ import { UndoButtonContent } from "@/components/undo-button-content";
 import { useUndoHistory } from "@/components/use-undo-history";
 import { getCatalogServiceSearchScore, normalizeCatalogServiceSearchValue } from "@/lib/catalog-search";
 import { normalizeCustomerSearchValue } from "@/lib/customer-search";
+import {
+  isLabelCalculatorFormat,
+  resolveServiceCatalogPriceMode
+} from "@/lib/domain/catalog/service-catalog";
+import { quoteCatalogService } from "@/lib/domain/pricing/service-pricing";
 import { isLabelCalculatorMaterialService } from "@/lib/label-calculator";
 import {
   customerTypeLabels,
@@ -36,18 +41,15 @@ import {
   type OrderDraftSnapshot
 } from "@/lib/order-drafts";
 import {
-  type CatalogPriceMode,
   computeLineTotalWithAdjustmentsCents,
   computeEffectiveUnitPriceCents,
   formatDiscountSummary,
   formatExtraSummary,
-  getTieredUnitPrice,
   parseFlexibleAdjustmentInput,
   parseQuantityValue,
   parseQuantityTiers,
   type QuantityTier,
-  type DiscountModeValue,
-  usesLineTotalQuantityTiers
+  type DiscountModeValue
 } from "@/lib/pricing";
 
 type CustomerWithOrders = Customer & { orders: { id: string }[] };
@@ -79,8 +81,6 @@ type LabelCalculatorDraft = {
   materialServiceId: string;
   singleCut: boolean;
 };
-
-const LABEL_CALCULATOR_FORMAT_PREFIX = "Calcolatore etichette";
 
 const emptyItem = (): ItemState => ({
   bodyMode: false,
@@ -142,14 +142,6 @@ function normalizeEditorItems(items: ItemState[]) {
   return nextItems.length > 0 ? nextItems : [emptyItem()];
 }
 
-function getCatalogPriceModeForService(service: ServiceCatalog | undefined): CatalogPriceMode {
-  return usesLineTotalQuantityTiers(service) ? "LINE_TOTAL" : "UNIT";
-}
-
-function isLabelCalculatorFormat(format: string | null | undefined) {
-  return normalizeCatalogServiceSearchValue(format || "").startsWith(normalizeCatalogServiceSearchValue(LABEL_CALCULATOR_FORMAT_PREFIX));
-}
-
 function createEmptyLabelCalculatorDraft(): LabelCalculatorDraft {
   return {
     widthCm: "",
@@ -174,7 +166,7 @@ function parseLabelCalculatorFormat(format: string | null | undefined) {
 }
 
 function buildLabelCalculatorFormat(widthCm: string, heightCm: string) {
-  return `${LABEL_CALCULATOR_FORMAT_PREFIX} • ${widthCm}x${heightCm} cm`;
+  return `Calcolatore etichette • ${widthCm}x${heightCm} cm`;
 }
 
 function computeLabelCalculatorTotalCents(
@@ -1056,24 +1048,21 @@ export function OrderForm({
       return "";
     }
 
-    let cents = service.basePriceCents;
-
-    try {
-      cents = getTieredUnitPrice(service.basePriceCents, quantity, service.quantityTiers);
-    } catch {
-      cents = service.basePriceCents;
-    }
+    const cents = quoteCatalogService({
+      service,
+      quantity
+    }).catalogBasePriceCents;
 
     return (cents / 100).toFixed(2).replace(".", ",");
   }
 
   function getCatalogPriceModeForItem(item: ItemState) {
-    if (isLabelCalculatorFormat(item.format)) {
-      return "LINE_TOTAL";
-    }
-
     const service = catalogServices.find((entry) => entry.id === item.serviceCatalogId);
-    return getCatalogPriceModeForService(service);
+    return resolveServiceCatalogPriceMode({
+      format: item.format,
+      serviceCatalogCode: service?.code,
+      serviceCatalogName: service?.name
+    });
   }
 
   function getServiceSuggestions(query: string) {
@@ -1507,7 +1496,7 @@ export function OrderForm({
     ? `Bozza recuperata da ${formatDateTime(draftRestoredAt)}`
     : lastDraftSavedAt
       ? `Ultimo salvataggio ${formatDateTime(lastDraftSavedAt)}`
-      : "Nessuna bozza salvata";
+      : null;
   const mobileContinueLabel =
     mobileStep === "customer"
       ? "Vai ai dettagli"
@@ -1541,6 +1530,22 @@ export function OrderForm({
     isMobileViewport && openMobileItemIndex !== null && items[openMobileItemIndex]
       ? buildLineEditorState(items[openMobileItemIndex], openMobileItemIndex)
       : null;
+
+  function getOrderStepMeta(step: MobileOrderStep) {
+    if (step === "customer") {
+      return reviewCustomerName;
+    }
+
+    if (step === "details") {
+      return reviewDelivery === "Da definire" ? "Date" : reviewDelivery;
+    }
+
+    if (step === "items") {
+      return `${filledRows} righe`;
+    }
+
+    return formatCurrency(previewTotalCents);
+  }
 
   function buildLineEditorState(item: ItemState, index: number) {
     const selectedService = catalogServices.find((entry) => entry.id === item.serviceCatalogId);
@@ -1709,72 +1714,70 @@ export function OrderForm({
           />
           {canUseCatalogTools ? (
             <div className="order-line-service-tools">
-              {hasTierEntries ? <span className="pill order-line-tier-badge">Prezzo a scaglioni</span> : null}
-              <button
-                className="ghost order-line-service-action order-line-tier-toggle"
-                onClick={(event) => {
-                  event.preventDefault();
-                  if (catalogDraftRowIndex === index) {
-                    closeInlineCatalogDraft();
-                  } else {
-                    closeLabelCalculator();
-                    openInlineCatalogDraft(index);
-                  }
-                }}
-                type="button"
-              >
-                {catalogDraftRowIndex === index ? "Chiudi nuovo servizio" : "Nuovo in catalogo"}
-              </button>
-              <button
-                className="ghost order-line-service-action order-line-calculator-toggle"
-                disabled={labelCalculatorMaterials.length === 0}
-                onClick={(event) => {
-                  event.preventDefault();
-                  if (labelCalculatorRowIndex === index) {
-                    closeLabelCalculator();
-                  } else {
-                    closeInlineCatalogDraft();
-                    openLabelCalculator(index);
-                  }
-                }}
-                type="button"
-              >
-                Calcolatore etichette
-              </button>
-              {deactivatableService ? (
+              {labelCalculatorMaterials.length > 0 ? (
                 <button
-                  className="ghost order-line-service-action order-line-catalog-remove"
-                  disabled={catalogMutatingServiceId === deactivatableService.id}
+                  className="ghost order-line-service-action order-line-calculator-toggle"
                   onClick={(event) => {
                     event.preventDefault();
-                    void deactivateCatalogService(index, deactivatableService);
+                    if (labelCalculatorRowIndex === index) {
+                      closeLabelCalculator();
+                    } else {
+                      closeInlineCatalogDraft();
+                      openLabelCalculator(index);
+                    }
                   }}
                   type="button"
                 >
-                  {catalogMutatingServiceId === deactivatableService.id ? "Disattivazione..." : "Disattiva dal catalogo"}
+                  Calcola etichette
                 </button>
               ) : null}
-              <button
-                className="ghost order-line-service-action order-line-tier-toggle"
-                disabled={!hasTierEntries}
-                onClick={(event) => {
-                  event.preventDefault();
-                  if (!hasTierEntries) {
-                    return;
-                  }
-
-                  setOpenTierIndex((current) => (current === index ? null : index));
-                }}
-                type="button"
-              >
-                Scaglioni
-              </button>
+              {hasTierEntries ? (
+                <button
+                  className="ghost order-line-service-action order-line-tier-toggle"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    setOpenTierIndex((current) => (current === index ? null : index));
+                  }}
+                  type="button"
+                >
+                  Scaglioni
+                </button>
+              ) : null}
+              <details className="order-line-tools-menu">
+                <summary>Catalogo</summary>
+                <div className="order-line-tools-menu-panel">
+                  <button
+                    className="ghost order-line-service-action order-line-tier-toggle"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      if (catalogDraftRowIndex === index) {
+                        closeInlineCatalogDraft();
+                      } else {
+                        closeLabelCalculator();
+                        openInlineCatalogDraft(index);
+                      }
+                    }}
+                    type="button"
+                  >
+                    {catalogDraftRowIndex === index ? "Chiudi nuovo servizio" : "Nuovo in catalogo"}
+                  </button>
+                  {deactivatableService ? (
+                    <button
+                      className="ghost order-line-service-action order-line-catalog-remove"
+                      disabled={catalogMutatingServiceId === deactivatableService.id}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        void deactivateCatalogService(index, deactivatableService);
+                      }}
+                      type="button"
+                    >
+                      {catalogMutatingServiceId === deactivatableService.id ? "Disattivazione..." : "Disattiva dal catalogo"}
+                    </button>
+                  ) : null}
+                </div>
+              </details>
             </div>
-          ) : (
-            <div className="order-line-service-tools order-line-service-tools-body">
-              <span className="pill order-line-body-pill">Voce libera non collegata al catalogo</span>
-            </div>
-          )}
+          ) : null}
           {showSuggestions ? (
             <div className="order-line-suggestions">
               {suggestions.length > 0 ? (
@@ -2281,7 +2284,7 @@ export function OrderForm({
     return (
       <div className="order-mobile-panel-head">
         <div className="order-mobile-panel-tools">
-          <span className="subtle">{mobileDraftStatusMessage}</span>
+          {mobileDraftStatusMessage ? <span className="subtle">{mobileDraftStatusMessage}</span> : null}
           <div className="button-row">
             <button
               className="secondary"
@@ -2331,8 +2334,8 @@ export function OrderForm({
     >
       {selectedCustomerId ? <input name="customerId" type="hidden" value={selectedCustomerId} /> : null}
       {isQuoteMode ? <input name="isQuote" type="hidden" value="true" /> : null}
-      <section className="order-mobile-flow" aria-label="Percorso nuovo ordine">
-        <nav className="order-mobile-stepper" aria-label="Passaggi nuovo ordine">
+      <section className="order-mobile-flow" aria-label={isQuoteMode ? "Percorso nuovo preventivo" : "Percorso nuovo ordine"}>
+        <nav className="order-mobile-stepper" aria-label={isQuoteMode ? "Passaggi nuovo preventivo" : "Passaggi nuovo ordine"}>
           {MOBILE_ORDER_STEPS.map((step) => (
             <button
               aria-current={mobileStep === step.id ? "step" : undefined}
@@ -2342,6 +2345,7 @@ export function OrderForm({
               type="button"
             >
               <strong>{step.label}</strong>
+              <span className="order-mobile-step-meta">{getOrderStepMeta(step.id)}</span>
             </button>
           ))}
         </nav>
@@ -2577,8 +2581,8 @@ export function OrderForm({
         <div className="order-lines-stack">
           {items.map((item, index) => {
             const lineState = buildLineEditorState(item, index);
-            const lineHeadline = item.label.trim() || item.serviceQuery.trim() || (item.bodyMode ? "Voce a corpo" : `Riga ${index + 1}`);
-            const lineSummaryParts = [item.bodyMode ? "A corpo" : `Qta ${formatQuantity(lineState.lineQuantity)}`];
+            const lineHeadline = item.label.trim() || item.serviceQuery.trim() || (item.bodyMode ? "Voce a corpo" : "Nuova lavorazione");
+            const lineSummaryParts = [`Qta ${formatQuantity(lineState.lineQuantity)}`];
             if (item.photoFormat.trim()) {
               lineSummaryParts.push(item.photoFormat.trim());
             } else if (item.format.trim()) {
@@ -2625,9 +2629,9 @@ export function OrderForm({
                   <div className="order-line-head-main">
                     <div className="order-line-index">#{index + 1}</div>
                     <div className="order-line-head-copy">
-                      <strong className="order-line-heading-label">{item.bodyMode ? "A corpo" : `Riga ${index + 1}`}</strong>
+                      <strong className="order-line-heading-label">{lineHeadline}</strong>
                       <span className="order-line-mobile-summary">
-                        <span>{lineHeadline}</span>
+                        <span>{item.bodyMode ? "A corpo" : `Riga ${index + 1}`}</span>
                         <span>{lineSummaryParts.join(" • ")}</span>
                       </span>
                     </div>
@@ -2826,10 +2830,12 @@ export function OrderForm({
                 <span>Appuntamento</span>
                 <strong>{reviewAppointment}</strong>
               </div>
-              <div className="order-mobile-review-chip">
-                <span>Priorita</span>
-                <strong>{reviewPriority}</strong>
-              </div>
+              {!isQuoteMode ? (
+                <div className="order-mobile-review-chip">
+                  <span>Priorita</span>
+                  <strong>{reviewPriority}</strong>
+                </div>
+              ) : null}
               <div className="order-mobile-review-chip">
                 <span>Stato fattura</span>
                 <strong>{reviewInvoice}</strong>

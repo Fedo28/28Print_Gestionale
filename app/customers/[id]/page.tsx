@@ -75,15 +75,16 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
         }
       />
 
-      <section className="card card-pad customer-detail-overview-card">
+      <section className="card card-pad customer-detail-overview-card customer-detail-card">
         <div className="customer-detail-overview-head">
           <div className="customer-detail-overview-copy">
-            <span className="compact-kicker">Scheda cliente</span>
-            <span className="pill">{customerTypeLabels[customer.type]}</span>
-            <strong>{customer.name}</strong>
-            <span className="subtle">Aggiornato il {formatDateTime(lastCustomerUpdate)}</span>
+            <div className="customer-detail-title-line">
+              <span className="compact-kicker">Scheda cliente</span>
+              <span className="pill">{customerTypeLabels[customer.type]}</span>
+            </div>
+            <span className="subtle">{formatDateTime(lastCustomerUpdate)}</span>
           </div>
-          <div className="customer-detail-overview-actions">
+          <nav className="customer-detail-overview-actions" aria-label="Sezioni cliente">
             <Link className="compact-link" href="#customer-orders-panel">
               Ordini
             </Link>
@@ -101,7 +102,7 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
             <Link className="compact-link" href="#customer-history-panel">
               Storico
             </Link>
-          </div>
+          </nav>
         </div>
 
         <div className="customer-detail-stat-grid">
@@ -137,20 +138,20 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
               </a>
             ))
           ) : (
-            <span className="customer-detail-contact-chip is-muted">Completa i recapiti per trovarlo e contattarlo piu velocemente.</span>
+            <span className="customer-detail-contact-chip is-muted">Nessun recapito salvato</span>
           )}
         </div>
       </section>
 
-      <div className="grid grid-2 customer-detail-grid">
-        <section className="card card-pad">
+      <div className="grid grid-2 customer-detail-grid customer-detail-top-grid">
+        <section className="card card-pad customer-detail-card customer-detail-form-card">
           <div className="list-header customer-detail-section-head">
             <div>
               <span className="compact-kicker">Anagrafica</span>
               <h3>Aggiorna cliente</h3>
             </div>
           </div>
-          <form action={updateCustomerAction} className="form-grid">
+          <form action={updateCustomerAction} className="form-grid customer-detail-form-grid">
             <input name="id" type="hidden" value={customer.id} />
             <div className="field wide">
               <label htmlFor="name">Nome / Ragione sociale</label>
@@ -211,7 +212,7 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
           </form>
         </section>
 
-        <section className="card card-pad">
+        <section className="card card-pad customer-detail-card customer-detail-history-card">
           <div className="list-header customer-detail-section-head" id="customer-history-panel">
             <div>
               <span className="compact-kicker">Cronologia</span>
@@ -224,7 +225,7 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
               <div className="empty">Nessuna modifica registrata su questa scheda.</div>
             ) : (
               recentActivity.map((entry) => (
-                <article className="mini-item" key={entry.id}>
+                <article className="mini-item customer-detail-activity-item" key={entry.id}>
                   <div className="list-header">
                     <strong>{entry.title}</strong>
                     <span>{formatDateTime(entry.createdAt)}</span>
@@ -241,8 +242,8 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
         </section>
       </div>
 
-      <div className="grid grid-2 customer-detail-grid">
-        <section className="card card-pad" id="customer-orders-panel">
+      <div className="grid grid-2 customer-detail-grid customer-detail-list-grid">
+        <section className="card card-pad customer-detail-card customer-detail-list-card" id="customer-orders-panel">
           <div className="list-header customer-detail-section-head">
             <div>
               <span className="compact-kicker">Operativo</span>
@@ -255,28 +256,29 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
               <div className="empty">Nessun ordine collegato.</div>
             ) : (
               customerOrders.map((order) => (
-                <article className="mini-item" key={order.id}>
-                  <div className="list-header">
+                <article className="mini-item customer-detail-linked-item" key={order.id}>
+                  <div className="customer-detail-linked-main">
                     <Link href={`/orders/${order.id}`} prefetch={false}>
-                      <strong>{customer.name}</strong>
+                      <strong>{getDisplayOrderLabel(order.orderCode, order.title)}</strong>
                     </Link>
-                    <span>{formatCurrency(order.totalCents)}</span>
+                    <span className="subtle">{formatDateTime(order.deliveryAt)}</span>
                   </div>
-                  <div className="subtle">{getDisplayOrderLabel(order.orderCode, order.title)}</div>
-                  <div className="subtle">{formatDateTime(order.deliveryAt)}</div>
-                  <StatusPills
-                    isQuote={order.isQuote}
-                    phase={order.mainPhase}
-                    status={order.operationalStatus}
-                    payment={order.paymentStatus}
-                  />
+                  <div className="customer-detail-linked-side">
+                    <strong>{formatCurrency(order.totalCents)}</strong>
+                    <StatusPills
+                      isQuote={order.isQuote}
+                      phase={order.mainPhase}
+                      status={order.operationalStatus}
+                      payment={order.paymentStatus}
+                    />
+                  </div>
                 </article>
               ))
             )}
           </div>
         </section>
 
-        <section className="card card-pad" id="customer-quotes-panel">
+        <section className="card card-pad customer-detail-card customer-detail-list-card" id="customer-quotes-panel">
           <div className="list-header customer-detail-section-head">
             <div>
               <span className="compact-kicker">Commerciale</span>
@@ -289,21 +291,22 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
               <div className="empty">Nessun preventivo collegato.</div>
             ) : (
               customerQuotes.map((order) => (
-                <article className="mini-item" key={order.id}>
-                  <div className="list-header">
+                <article className="mini-item customer-detail-linked-item" key={order.id}>
+                  <div className="customer-detail-linked-main">
                     <Link href={`/orders/${order.id}`} prefetch={false}>
-                      <strong>{customer.name}</strong>
+                      <strong>{getDisplayOrderLabel(order.orderCode, order.title)}</strong>
                     </Link>
-                    <span>{formatCurrency(order.totalCents)}</span>
+                    <span className="subtle">{formatDateTime(order.deliveryAt)}</span>
                   </div>
-                  <div className="subtle">{getDisplayOrderLabel(order.orderCode, order.title)}</div>
-                  <div className="subtle">{formatDateTime(order.deliveryAt)}</div>
-                  <StatusPills
-                    isQuote={order.isQuote}
-                    phase={order.mainPhase}
-                    status={order.operationalStatus}
-                    payment={order.paymentStatus}
-                  />
+                  <div className="customer-detail-linked-side">
+                    <strong>{formatCurrency(order.totalCents)}</strong>
+                    <StatusPills
+                      isQuote={order.isQuote}
+                      phase={order.mainPhase}
+                      status={order.operationalStatus}
+                      payment={order.paymentStatus}
+                    />
+                  </div>
                 </article>
               ))
             )}
@@ -311,8 +314,8 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
         </section>
       </div>
 
-      <div className="grid grid-2 customer-detail-grid">
-        <section className="card card-pad" id="customer-purchase-notes-panel">
+      <div className="grid grid-2 customer-detail-grid customer-detail-list-grid">
+        <section className="card card-pad customer-detail-card customer-detail-list-card" id="customer-purchase-notes-panel">
           <div className="list-header customer-detail-section-head">
             <div>
               <span className="compact-kicker">Acquisti</span>
@@ -328,7 +331,7 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
               <div className="empty">Nessuna nota da ordinare collegata.</div>
             ) : (
               customer.purchaseNotes.map((note) => (
-                <article className="mini-item" key={note.id}>
+                <article className="mini-item customer-detail-linked-item" key={note.id}>
                   <div className="list-header">
                     <strong>{note.completedAt ? "Ordinato" : "Da fare"}</strong>
                     <span>{formatDateTime(note.completedAt || note.updatedAt)}</span>
@@ -350,7 +353,7 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
           </div>
         </section>
 
-        <section className="card card-pad" id="customer-billboards-panel">
+        <section className="card card-pad customer-detail-card customer-detail-list-card" id="customer-billboards-panel">
           <div className="list-header customer-detail-section-head">
             <div>
               <span className="compact-kicker">Impianti</span>
@@ -363,7 +366,7 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
               <div className="empty">Nessuna prenotazione cartelloni collegata.</div>
             ) : (
               customer.billboardBookings.map((booking) => (
-                <article className="mini-item" key={booking.id}>
+                <article className="mini-item customer-detail-linked-item" key={booking.id}>
                   <div className="list-header">
                     <Link href={`/billboards?date=${formatDateKey(booking.startsAt)}`} prefetch={false}>
                       <strong>{booking.billboardAsset.name}</strong>

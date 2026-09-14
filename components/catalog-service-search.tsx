@@ -16,6 +16,10 @@ type CatalogServiceSearchProps = {
     unit: ServiceUnitValue;
     quantityTiers: string | null;
     active: boolean;
+    onlineActive: boolean;
+    onlineSlug: string | null;
+    createJobAutomatically: boolean;
+    shopSortOrder: number;
   }>;
 };
 
@@ -68,6 +72,31 @@ function ServiceResultCard({ service }: { service: CatalogServiceSearchProps["se
           <label className="toggle-field" htmlFor={`service-active-${service.id}`}>
             <input defaultChecked={service.active} id={`service-active-${service.id}`} name="active" type="checkbox" />
             <span>{service.active ? "Attivo" : "Disattivato"}</span>
+          </label>
+        </div>
+        <div className="field service-admin-toggle">
+          <label className="toggle-field" htmlFor={`service-online-${service.id}`}>
+            <input defaultChecked={service.onlineActive} id={`service-online-${service.id}`} name="onlineActive" type="checkbox" />
+            <span>{service.onlineActive ? "Pubblicato shop" : "Solo gestionale"}</span>
+          </label>
+        </div>
+        <div className="field">
+          <label htmlFor={`service-shop-slug-${service.id}`}>Slug shop</label>
+          <input defaultValue={service.onlineSlug || ""} id={`service-shop-slug-${service.id}`} name="onlineSlug" placeholder="stampa-documenti" />
+        </div>
+        <div className="field">
+          <label htmlFor={`service-shop-order-${service.id}`}>Ordine shop</label>
+          <input defaultValue={String(service.shopSortOrder || 0)} id={`service-shop-order-${service.id}`} min="0" name="shopSortOrder" type="number" />
+        </div>
+        <div className="field service-admin-toggle">
+          <label className="toggle-field" htmlFor={`service-job-auto-${service.id}`}>
+            <input
+              defaultChecked={service.createJobAutomatically}
+              id={`service-job-auto-${service.id}`}
+              name="createJobAutomatically"
+              type="checkbox"
+            />
+            <span>{service.createJobAutomatically ? "Commessa auto" : "Commessa manuale"}</span>
           </label>
         </div>
         <div className="button-row service-admin-actions">

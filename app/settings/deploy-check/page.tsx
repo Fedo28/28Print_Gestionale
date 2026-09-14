@@ -62,7 +62,7 @@ export default async function DeployCheckPage() {
   const dbFingerprint = maskDatabaseFingerprint(process.env.DATABASE_URL);
 
   return (
-    <div className="stack">
+    <div className="stack settings-page-shell settings-deploy-page-shell">
       <PageHeader
         action={
           <Link className="button ghost" href="/settings">
@@ -72,21 +72,27 @@ export default async function DeployCheckPage() {
         title="Controllo deploy"
       />
 
-      <section className="card card-pad">
-        <div className="grid grid-2">
-          <div className="mini-item">
+      <section className="card card-pad settings-card settings-deploy-runtime-card">
+        <div className="list-header settings-section-head">
+          <div>
+            <span className="compact-kicker">Runtime</span>
+            <h3>Ambiente</h3>
+          </div>
+        </div>
+        <div className="grid settings-deploy-grid">
+          <div className="mini-item settings-deploy-item">
             <strong>Ambiente runtime</strong>
             <div className="subtle">{process.env.VERCEL_ENV || "local"}</div>
           </div>
-          <div className="mini-item">
+          <div className="mini-item settings-deploy-item">
             <strong>Node environment</strong>
             <div className="subtle">{process.env.NODE_ENV || "non definito"}</div>
           </div>
-          <div className="mini-item">
+          <div className="mini-item settings-deploy-item">
             <strong>Database attivo</strong>
             <div className="subtle">{dbFingerprint}</div>
           </div>
-          <div className="mini-item">
+          <div className="mini-item settings-deploy-item">
             <strong>Archivio allegati</strong>
             <div className="subtle">
               {attachmentMode === "blob" ? "Vercel Blob" : "Filesystem locale"} •{" "}
@@ -96,45 +102,47 @@ export default async function DeployCheckPage() {
         </div>
       </section>
 
-      <section className="card card-pad">
-        <div className="list-header">
+      <section className="card card-pad settings-card settings-deploy-counts-card">
+        <div className="list-header settings-section-head">
           <div>
+            <span className="compact-kicker">Archivio</span>
             <h3>Conteggi archivio</h3>
           </div>
         </div>
-        <div className="grid grid-2">
-          <div className="mini-item">
-            <strong>Utenti</strong>
-            <div className="subtle">{usersCount}</div>
-          </div>
-          <div className="mini-item">
-            <strong>Clienti</strong>
-            <div className="subtle">{customersCount}</div>
-          </div>
-          <div className="mini-item">
-            <strong>Ordini attivi</strong>
-            <div className="subtle">{activeOrdersCount}</div>
-          </div>
-          <div className="mini-item">
-            <strong>Preventivi</strong>
-            <div className="subtle">{quotesCount}</div>
-          </div>
-          <div className="mini-item">
-            <strong>Totale schede</strong>
-            <div className="subtle">{ordersCount}</div>
-          </div>
+        <div className="grid settings-deploy-count-grid">
+          <article className="settings-signal settings-signal-blue">
+            <span>Utenti</span>
+            <strong>{usersCount}</strong>
+          </article>
+          <article className="settings-signal settings-signal-lime">
+            <span>Clienti</span>
+            <strong>{customersCount}</strong>
+          </article>
+          <article className="settings-signal settings-signal-cyan">
+            <span>Ordini attivi</span>
+            <strong>{activeOrdersCount}</strong>
+          </article>
+          <article className="settings-signal settings-signal-neutral">
+            <span>Preventivi</span>
+            <strong>{quotesCount}</strong>
+          </article>
+          <article className="settings-signal settings-signal-blue">
+            <span>Totale schede</span>
+            <strong>{ordersCount}</strong>
+          </article>
         </div>
       </section>
 
-      <div className="grid grid-2">
-        <section className="card card-pad">
-          <div className="list-header">
+      <div className="grid settings-deploy-latest-grid">
+        <section className="card card-pad settings-card settings-deploy-latest-card">
+          <div className="list-header settings-section-head">
             <div>
+              <span className="compact-kicker">Ultima scheda</span>
               <h3>Ultimo ordine</h3>
             </div>
           </div>
           {latestOrder ? (
-            <div className="mini-item">
+            <div className="mini-item settings-deploy-item">
               <strong>{latestOrder.customer.name}</strong>
               <div className="subtle">{latestOrder.orderCode} • {latestOrder.title}</div>
               <div className="subtle">{formatDateTime(latestOrder.createdAt)}</div>
@@ -145,14 +153,15 @@ export default async function DeployCheckPage() {
           )}
         </section>
 
-        <section className="card card-pad">
-          <div className="list-header">
+        <section className="card card-pad settings-card settings-deploy-latest-card">
+          <div className="list-header settings-section-head">
             <div>
+              <span className="compact-kicker">Ultima scheda</span>
               <h3>Ultimo preventivo</h3>
             </div>
           </div>
           {latestQuote ? (
-            <div className="mini-item">
+            <div className="mini-item settings-deploy-item">
               <strong>{latestQuote.customer.name}</strong>
               <div className="subtle">{latestQuote.orderCode} • {latestQuote.title}</div>
               <div className="subtle">{formatDateTime(latestQuote.createdAt)}</div>

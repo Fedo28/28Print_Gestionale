@@ -45,6 +45,12 @@ type FeedbackState =
 
 type NotesTab = "pending" | "completed";
 type DrawerMode = "create" | "edit";
+type PurchaseNoteStats = {
+  total: number;
+  blocking: number;
+  urgent: number;
+  linked: number;
+};
 
 const EXIT_ANIMATION_MS = 320;
 const DEFAULT_URGENCY: PurchaseNoteUrgency = "NORMALE";
@@ -91,6 +97,151 @@ function matchesCategoryFilter(note: PurchaseNoteView, categoryKey: OrderMateria
   return parsedMaterialNote.categoryCounts[categoryKey].trim().length > 0;
 }
 
+function getPurchaseNoteStats(notes: PurchaseNoteView[]): PurchaseNoteStats {
+  return {
+    total: notes.length,
+    blocking: notes.filter((note) => note.urgency === "BLOCCANTE").length,
+    urgent: notes.filter((note) => note.urgency === "URGENTE").length,
+    linked: notes.filter((note) => Boolean(note.order)).length
+  };
+}
+
+function getPurchaseNoteMaterialDetails(note: PurchaseNoteView) {
+  const parsedMaterialNote = parseOrderMaterialNoteContent(note.content);
+
+  return {
+    categoryEntries: getOrderMaterialCategoryEntries(parsedMaterialNote.categoryCounts),
+    content: parsedMaterialNote.content
+  };
+}
+
+function PurchaseNotesSignalStrip({
+  activeTab,
+  isFiltered,
+  stats
+}: {
+  activeTab: NotesTab;
+  isFiltered: boolean;
+  stats: PurchaseNoteStats;
+}) {
+  const baseLabel = isFiltered ? "Visibili" : activeTab === "pending" ? "Aperte" : "Fatte";
+  const signals = [
+    { label: baseLabel, tone: "blue", value: stats.total, show: true },
+    { label: "Bloccanti", tone: "red", value: stats.blocking, show: stats.blocking > 0 },
+    { label: "Urgenti", tone: "red", value: stats.urgent, show: stats.urgent > 0 },
+    { label: "Collegate", tone: "cyan", value: stats.linked, show: stats.linked > 0 }
+  ] as const;
+
+  return (
+    <div className="purchase-notes-signal-strip" aria-label="Riepilogo da ordinare">
+      {signals
+        .filter((signal) => signal.show)
+        .map((signal) => (
+          <span className={`purchase-notes-signal purchase-notes-signal-${signal.tone}`} key={signal.label}>
+            <span>{signal.label}</span>
+            <strong>{signal.value}</strong>
+          </span>
+        ))}
+    </div>
+  );
+}
+
+function PurchaseNoteCard({
+  isBusy,
+  isSliding = false,
+  mode,
+  note,
+  onDelete,
+  onEdit,
+  onStatus
+}: {
+  isBusy: boolean;
+  isSliding?: boolean;
+  mode: NotesTab;
+  note: PurchaseNoteView;
+  onDelete: (noteId: string) => void;
+  onEdit: (note: PurchaseNoteView) => void;
+  onStatus: (noteId: string) => void;
+}) {
+  const urgencyTone = getUrgencyToneClass(note.urgency);
+  const materialDetails = getPurchaseNoteMaterialDetails(note);
+  const dateValue = mode === "completed" ? note.completedAt || note.updatedAt : note.createdAt;
+  const dateLabel = mode === "completed" ? `Fatto ${formatDateTime(dateValue)}` : formatDateTime(dateValue);
+  const statusLabel = mode === "pending" ? "Fatto" : "Ripristina";
+  const busyLabel = mode === "pending" ? "Invio..." : "Aggiorno...";
+  const orderStatusLabel =
+    note.order && note.order.operationalStatus !== "ATTIVO" ? operationalStatusLabels[note.order.operationalStatus] : null;
+
+  return (
+    <article
+      className={`purchase-note-item purchase-note-item-${mode} purchase-note-urgency-${urgencyTone}${isBusy ? " is-busy" : ""}${isSliding ? " is-sliding-out" : ""}`}
+    >
+      <div className="purchase-note-urgency-rail" aria-hidden="true" />
+
+      <div className="purchase-note-item-main">
+        <div className="purchase-note-item-head">
+          <div className="purchase-note-item-title">
+            {note.customerId ? (
+              <Link className="purchase-note-customer-link" href={`/customers/${note.customerId}`} prefetch={false}>
+                {note.customerName}
+              </Link>
+            ) : (
+              <strong>{note.customerName}</strong>
+            )}
+            <time dateTime={dateValue}>{dateLabel}</time>
+          </div>
+
+          <span className={`purchase-note-urgency-badge purchase-note-urgency-badge-${urgencyTone}`}>
+            {purchaseNoteUrgencyLabels[note.urgency]}
+          </span>
+        </div>
+
+        <div className="purchase-note-context-row">
+          {note.order ? (
+            <Link className="purchase-note-order-link" href={`/orders/${note.order.id}`} prefetch={false}>
+              {buildOrderLinkLabel(note)}
+            </Link>
+          ) : null}
+          {orderStatusLabel ? <span className="purchase-note-order-status">{orderStatusLabel}</span> : null}
+        </div>
+
+        {materialDetails.categoryEntries.length > 0 ? (
+          <div className="purchase-note-material-grid">
+            {materialDetails.categoryEntries.map((entry) => (
+              <span className="purchase-note-material-chip" key={entry.key}>
+                <span>{entry.label}</span>
+                <strong>{entry.quantity}</strong>
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {materialDetails.content ? <p className="purchase-note-item-content">{materialDetails.content}</p> : null}
+      </div>
+
+      <div className="purchase-note-item-side">
+        <button
+          className={`button primary purchase-note-primary-action${mode === "completed" ? " is-restore" : ""}`}
+          disabled={isBusy}
+          onClick={() => onStatus(note.id)}
+          type="button"
+        >
+          {isBusy ? busyLabel : statusLabel}
+        </button>
+
+        <div className="purchase-note-side-actions">
+          <button className="button ghost purchase-note-secondary-action" disabled={isBusy} onClick={() => onEdit(note)} type="button">
+            Modifica
+          </button>
+          <button className="button ghost purchase-note-secondary-action danger" disabled={isBusy} onClick={() => onDelete(note.id)} type="button">
+            Elimina
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export function PurchaseNotesWorkspace({
   customers,
   pendingNotes,
@@ -134,9 +285,11 @@ export function PurchaseNotesWorkspace({
   );
   const filteredPendingNotes = visiblePendingNotes.filter((note) => matchesCategoryFilter(note, activeCategoryFilter));
   const filteredCompletedNotes = visibleCompletedNotes.filter((note) => matchesCategoryFilter(note, activeCategoryFilter));
+  const activeNotes = activeTab === "pending" ? filteredPendingNotes : filteredCompletedNotes;
+  const activeStats = getPurchaseNoteStats(activeNotes);
   const canSubmit = normalizedCustomerQuery.length > 0 && normalizedContent.length > 0;
-  const pendingCount = filteredPendingNotes.length;
-  const completedCount = filteredCompletedNotes.length;
+  const pendingCount = visiblePendingNotes.length;
+  const completedCount = visibleCompletedNotes.length;
   const editingNote =
     editingNoteId
       ? [...visiblePendingNotes, ...visibleCompletedNotes].find((entry) => entry.id === editingNoteId) ?? null
@@ -144,8 +297,6 @@ export function PurchaseNotesWorkspace({
   const isDrawerLinkedToOrder = drawerMode === "edit" && Boolean(editingNote?.order);
   const drawerTitle = drawerMode === "edit" ? "Modifica nota ordine" : "Nuova nota ordine";
   const drawerSubmitLabel = drawerMode === "edit" ? "Salva modifiche" : "Salva nota";
-  const activeListCount = activeTab === "pending" ? filteredPendingNotes.length : filteredCompletedNotes.length;
-  const activeListTotalCount = activeTab === "pending" ? visiblePendingNotes.length : visibleCompletedNotes.length;
 
   useEffect(() => {
     setVisiblePendingNotes(pendingNotes);
@@ -552,16 +703,8 @@ export function PurchaseNotesWorkspace({
       />
 
       <section className="card card-pad purchase-notes-list-card">
-        <div className="list-header purchase-notes-section-head">
-          <div>
-            <span className="compact-kicker">Lista operativa</span>
-            <h3>{activeTab === "pending" ? "Da ordinare" : "Archivio acquisti"}</h3>
-          </div>
-          <span className="pill">{activeListCount} visibili</span>
-        </div>
-
-        <div className="purchase-notes-toolbar">
-          <div className="purchase-notes-toolbar-head">
+        <div className="purchase-notes-command-panel">
+          <div className="purchase-notes-command-row">
             <div className="purchase-notes-tabs" role="tablist" aria-label="Liste ordini da fare">
               <button
                 aria-selected={activeTab === "pending"}
@@ -585,16 +728,9 @@ export function PurchaseNotesWorkspace({
               </button>
             </div>
 
-            {isRefreshing || activeCategoryFilter ? (
-              <div className="purchase-notes-toolbar-meta">
-                {activeCategoryFilter ? (
-                  <span className="subtle">
-                    {`${activeListCount} di ${activeListTotalCount} ${activeListTotalCount === 1 ? "nota" : "note"}`}
-                  </span>
-                ) : null}
-                {isRefreshing ? <span className="subtle">Aggiorno lista...</span> : null}
-              </div>
-            ) : null}
+            {isRefreshing ? <span className="purchase-notes-refresh-pill">Aggiorno</span> : null}
+
+            <PurchaseNotesSignalStrip activeTab={activeTab} isFiltered={Boolean(activeCategoryFilter)} stats={activeStats} />
           </div>
 
           <div className="purchase-notes-toolbar-filters">
@@ -616,7 +752,7 @@ export function PurchaseNotesWorkspace({
 
             {activeCategoryFilter ? (
               <button className="button ghost purchase-notes-filter-clear" onClick={() => setActiveCategoryFilter("")} type="button">
-                Azzera filtro
+                Azzera
               </button>
             ) : null}
           </div>
@@ -636,72 +772,20 @@ export function PurchaseNotesWorkspace({
                 const isSliding = slidingNoteIds.includes(note.id);
 
                 return (
-                  <article
-                    className={`purchase-note-item${isBusy ? " is-busy" : ""}${isSliding ? " is-sliding-out" : ""}`}
+                  <PurchaseNoteCard
+                    isBusy={isBusy}
+                    isSliding={isSliding}
                     key={note.id}
-                  >
-                    <div className="purchase-note-item-main">
-                      <div className="purchase-note-item-head">
-                        <div className="purchase-note-item-title">
-                        {note.customerId ? (
-                          <Link className="purchase-note-customer-link" href={`/customers/${note.customerId}`} prefetch={false}>
-                            {note.customerName}
-                          </Link>
-                        ) : (
-                          <strong>{note.customerName}</strong>
-                        )}
-                        <span>{`Inserito il ${formatDateTime(note.createdAt)}`}</span>
-                        {note.order ? (
-                          <Link className="purchase-note-order-link" href={`/orders/${note.order.id}`} prefetch={false}>
-                            {buildOrderLinkLabel(note)}
-                          </Link>
-                        ) : null}
-                      </div>
-                      <div className="purchase-note-pill-row">
-                        <span className={`pill ${getUrgencyToneClass(note.urgency)}`}>{purchaseNoteUrgencyLabels[note.urgency]}</span>
-                        <span className="pill">{note.order ? "Ordine collegato" : note.customerId ? "Cliente rubrica" : "Cliente libero"}</span>
-                        {note.order ? <span className="pill status">{operationalStatusLabels[note.order.operationalStatus]}</span> : null}
-                      </div>
-                    </div>
-                    <p className="purchase-note-item-content">{note.content}</p>
-                    </div>
-
-                    <div className="purchase-note-item-side">
-                      <div className="purchase-note-side-actions">
-                        <button className="button ghost purchase-note-secondary-action" disabled={isBusy} onClick={() => openEditDrawer(note)} type="button">
-                          Modifica
-                        </button>
-                        <button
-                          className="button ghost purchase-note-secondary-action danger"
-                          disabled={isBusy}
-                          onClick={() => {
-                            void handleDelete(note.id);
-                          }}
-                          type="button"
-                        >
-                          Elimina
-                        </button>
-                      </div>
-
-                      <button
-                        aria-label="Sposta tra gli ordini fatti"
-                        className="button ghost purchase-note-status-button"
-                        disabled={isBusy}
-                        onClick={() => {
-                          void handleComplete(note.id);
-                        }}
-                        title="Sposta tra gli ordini fatti"
-                        type="button"
-                      >
-                        <svg aria-hidden="true" className="glyph" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
-                          <path d="M4 12h10" />
-                          <path d="m10 6 6 6-6 6" />
-                          <path d="m15.5 8.5 2 2 3-3" />
-                        </svg>
-                      </button>
-                      <span className="purchase-note-item-side-label">{isBusy ? "Invio..." : "Segna fatto"}</span>
-                    </div>
-                  </article>
+                    mode="pending"
+                    note={note}
+                    onDelete={(noteId) => {
+                      void handleDelete(noteId);
+                    }}
+                    onEdit={openEditDrawer}
+                    onStatus={(noteId) => {
+                      void handleComplete(noteId);
+                    }}
+                  />
                 );
               })}
             </div>
@@ -725,68 +809,19 @@ export function PurchaseNotesWorkspace({
               const isBusy = busyNoteIds.includes(note.id);
 
               return (
-                <article className={`purchase-note-item${isBusy ? " is-busy" : ""}`} key={note.id}>
-                  <div className="purchase-note-item-main">
-                    <div className="purchase-note-item-head">
-                      <div className="purchase-note-item-title">
-                        {note.customerId ? (
-                          <Link className="purchase-note-customer-link" href={`/customers/${note.customerId}`} prefetch={false}>
-                            {note.customerName}
-                          </Link>
-                        ) : (
-                          <strong>{note.customerName}</strong>
-                        )}
-                        <span>{`Ordinato il ${formatDateTime(note.completedAt || note.updatedAt)}`}</span>
-                        {note.order ? (
-                          <Link className="purchase-note-order-link" href={`/orders/${note.order.id}`} prefetch={false}>
-                            {buildOrderLinkLabel(note)}
-                          </Link>
-                        ) : null}
-                      </div>
-                      <div className="purchase-note-pill-row">
-                        <span className={`pill ${getUrgencyToneClass(note.urgency)}`}>{purchaseNoteUrgencyLabels[note.urgency]}</span>
-                        <span className="pill status">Archivio</span>
-                        {note.order ? <span className="pill">{operationalStatusLabels[note.order.operationalStatus]}</span> : null}
-                      </div>
-                    </div>
-                    <p className="purchase-note-item-content">{note.content}</p>
-                  </div>
-
-                  <div className="purchase-note-item-side">
-                    <div className="purchase-note-side-actions">
-                      <button className="button ghost purchase-note-secondary-action" disabled={isBusy} onClick={() => openEditDrawer(note)} type="button">
-                        Modifica
-                      </button>
-                      <button
-                        className="button ghost purchase-note-secondary-action danger"
-                        disabled={isBusy}
-                        onClick={() => {
-                          void handleDelete(note.id);
-                        }}
-                        type="button"
-                      >
-                        Elimina
-                      </button>
-                    </div>
-
-                    <button
-                      aria-label="Riporta tra gli ordini da fare"
-                      className="button ghost purchase-note-status-button done"
-                      disabled={isBusy}
-                      onClick={() => {
-                        void handleReopen(note.id);
-                      }}
-                      title="Riporta tra gli ordini da fare"
-                      type="button"
-                    >
-                      <svg aria-hidden="true" className="glyph" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
-                        <path d="M20 12H10" />
-                        <path d="m14 6-6 6 6 6" />
-                      </svg>
-                    </button>
-                    <span className="purchase-note-item-side-label">{isBusy ? "Aggiorno..." : "Ripristina"}</span>
-                  </div>
-                </article>
+                <PurchaseNoteCard
+                  isBusy={isBusy}
+                  key={note.id}
+                  mode="completed"
+                  note={note}
+                  onDelete={(noteId) => {
+                    void handleDelete(noteId);
+                  }}
+                  onEdit={openEditDrawer}
+                  onStatus={(noteId) => {
+                    void handleReopen(noteId);
+                  }}
+                />
               );
             })}
           </div>

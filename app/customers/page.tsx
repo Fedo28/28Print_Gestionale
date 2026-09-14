@@ -76,7 +76,8 @@ export default async function CustomersPage({ searchParams }: Props) {
           <nav className="customers-type-switch" aria-label="Filtro tipo cliente">
             {typeTabs.map((tab) => (
               <Link
-                className={`customers-type-link${filters.type === tab.key ? " active" : ""}`}
+                aria-current={filters.type === tab.key ? "page" : undefined}
+                className={`customers-type-link customers-type-link-${tab.key.toLowerCase()}${filters.type === tab.key ? " active" : ""}`}
                 href={tab.href}
                 key={tab.key}
                 prefetch={false}
