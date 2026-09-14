@@ -2,7 +2,19 @@
 
 import { useEffect, useState } from "react";
 
-export function OrderEditToggleButton({ targetId }: { targetId: string }) {
+export function OrderEditToggleButton({
+  targetId,
+  className = "button secondary order-detail-edit-toggle-button",
+  label = "Modifica",
+  openLabel = "Chiudi modifica",
+  showIcon = false
+}: {
+  targetId: string;
+  className?: string;
+  label?: string;
+  openLabel?: string;
+  showIcon?: boolean;
+}) {
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
@@ -39,21 +51,24 @@ export function OrderEditToggleButton({ targetId }: { targetId: string }) {
       aria-controls={targetId}
       aria-expanded={isOpen}
       aria-label={isOpen ? "Chiudi modifica ordine" : "Apri modifica ordine"}
-      className="page-head-title-glyph page-head-title-toggle"
+      className={className}
       onClick={handleClick}
       title={isOpen ? "Chiudi modifica" : "Modifica ordine"}
       type="button"
     >
-      <svg aria-hidden="true" className="glyph" viewBox="0 0 24 24">
-        <path
-          d="m5 16 9.7-9.7a2.1 2.1 0 0 1 3 3L8 19H5v-3Z"
-          fill="none"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="1.9"
-        />
-      </svg>
+      {showIcon ? (
+        <svg aria-hidden="true" className="glyph" viewBox="0 0 24 24">
+          <path
+            d="m5 16 9.7-9.7a2.1 2.1 0 0 1 3 3L8 19H5v-3Z"
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1.9"
+          />
+        </svg>
+      ) : null}
+      <span>{isOpen ? openLabel : label}</span>
     </button>
   );
 }

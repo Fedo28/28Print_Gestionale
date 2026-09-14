@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { MouseEvent, ReactNode } from "react";
 import { GlobalSearch } from "@/components/global-search";
+import { ShopOrderNotificationCenter } from "@/components/shop-order-notification-center";
 import brandLogo from "../logo.png";
 
 type NavTone = "neutral" | "sky" | "coral" | "lilac" | "rose" | "amber" | "mint" | "teal";
@@ -40,6 +41,16 @@ const navItems = [
   tone: NavTone;
 }>;
 
+const utilityItems = [
+  { href: "/activity", label: "Attivita", icon: "history" },
+  { href: "/settings", label: "Impostazioni", icon: "settings" },
+  { href: "/logout", label: "Logout", icon: "logout" }
+] as const satisfies ReadonlyArray<{
+  href: string;
+  label: string;
+  icon: NavIcon;
+}>;
+
 const COMPACT_NAV_MEDIA_QUERY = "(max-width: 1180px)";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -47,6 +58,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const isLoginRoute = pathname === "/login";
   const isPrintRoute = pathname.endsWith("/print");
+  const isShopRoute = pathname === "/shop" || pathname.startsWith("/shop/");
   const isDashboardRoute = pathname === "/";
   const isActivityRoute = pathname.startsWith("/activity");
   const isSettingsRoute = pathname.startsWith("/settings");
@@ -67,6 +79,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [pathname]);
 
   useEffect(() => {
+    if (isLoginRoute || isPrintRoute || isShopRoute) {
+      return;
+    }
+
     const schedulePrefetch = () => {
       for (const item of navItems) {
         router.prefetch(item.href);
@@ -88,7 +104,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       window.clearTimeout(prefetchHandle);
     };
-  }, [router]);
+  }, [isLoginRoute, isPrintRoute, isShopRoute, router]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -192,6 +208,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     return <main className="print-route-layout">{children}</main>;
   }
 
+  if (isShopRoute) {
+    return <main className="shop-route-layout">{children}</main>;
+  }
+
   function handleCloseMobileNav() {
     setIsMobileNavOpen(false);
   }
@@ -240,6 +260,44 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
+  function renderUtilityLinks(options?: { mobile?: boolean; onNavigate?: () => void }) {
+    return (
+      <>
+        {utilityItems.map((item) => {
+          const active =
+            item.href === "/activity" ? isActivityRoute : item.href === "/settings" ? isSettingsRoute : false;
+          const className = [
+            options?.mobile ? "mobile-nav-utility-link" : "sidebar-utility-link",
+            active ? "active" : "",
+            item.href === "/logout" ? "utility-link-logout" : ""
+          ]
+            .filter(Boolean)
+            .join(" ");
+
+          return item.href === "/logout" ? (
+            <a className={className} href={item.href} key={item.href} onClick={options?.onNavigate}>
+              <span aria-hidden="true" className="nav-icon">
+                <ShellGlyph kind={item.icon} />
+              </span>
+              <span className="nav-copy">
+                <span>{item.label}</span>
+              </span>
+            </a>
+          ) : (
+            <Link className={className} href={item.href} key={item.href} onClick={options?.onNavigate}>
+              <span aria-hidden="true" className="nav-icon">
+                <ShellGlyph kind={item.icon} />
+              </span>
+              <span className="nav-copy">
+                <span>{item.label}</span>
+              </span>
+            </Link>
+          );
+        })}
+      </>
+    );
+  }
+
   return (
     <div className={`shell page-tone-${activeNavItem.tone}`}>
       <aside className="sidebar">
@@ -259,7 +317,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <div className="sidebar-nav-panel">
+            <div className="sidebar-section-label">Operativo</div>
             <nav className="nav-list">{renderNavLinks()}</nav>
+          </div>
+
+          <div className="sidebar-utility-panel">
+            <div className="sidebar-section-label">Sistema</div>
+            {renderUtilityLinks()}
           </div>
         </div>
       </aside>
@@ -267,15 +331,17 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="shell-content">
         <div className="mobile-topbar">
           <Link aria-label="Vai alla dashboard" className="mobile-brand" href="/">
-            <Image
-              alt="28 Print"
-              className="mobile-brand-logo"
-              height={112}
-              priority
-              sizes="120px"
-              src={brandLogo}
-              width={112}
-            />
+            <span className="mobile-brand-mark">
+              <Image
+                alt="28 Print"
+                className="mobile-brand-logo"
+                height={72}
+                priority
+                sizes="72px"
+                src={brandLogo}
+                width={72}
+              />
+            </span>
           </Link>
 
           <button
@@ -294,6 +360,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span className="mobile-search-trigger-label">Cerca</span>
             </span>
           </button>
+
+          {isCompactViewport ? <ShopOrderNotificationCenter compact /> : null}
 
           <button
             aria-controls="mobile-navigation-drawer"
@@ -381,41 +449,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               </button>
             </div>
 
+            <div className="mobile-nav-section-label">Operativo</div>
             <nav className="nav-list mobile-nav-list">{renderNavLinks({ onNavigate: handleMobileNavLinkClick })}</nav>
             <div className="mobile-nav-utilities">
-              <div className="mobile-nav-section-label">Utility rapide</div>
-              <Link
-                className="mobile-nav-utility-link"
-                href="/activity"
-                onClick={handleMobileNavLinkClick}
-              >
-                <span aria-hidden="true" className="nav-icon">
-                  <ShellGlyph kind="history" />
-                </span>
-                <span className="nav-copy">
-                  <span>Ultime modifiche</span>
-                </span>
-              </Link>
-              <Link
-                className="mobile-nav-utility-link"
-                href="/settings"
-                onClick={handleMobileNavLinkClick}
-              >
-                <span aria-hidden="true" className="nav-icon">
-                  <ShellGlyph kind="settings" />
-                </span>
-                <span className="nav-copy">
-                  <span>Impostazioni</span>
-                </span>
-              </Link>
-              <a className="mobile-nav-utility-link mobile-nav-utility-link-logout" href="/logout" onClick={handleCloseMobileNav}>
-                <span aria-hidden="true" className="nav-icon">
-                  <ShellGlyph kind="logout" />
-                </span>
-                <span className="nav-copy">
-                  <span>Logout</span>
-                </span>
-              </a>
+              <div className="mobile-nav-section-label">Utility</div>
+              {renderUtilityLinks({ mobile: true, onNavigate: handleCloseMobileNav })}
             </div>
           </div>
         </div>
@@ -426,31 +464,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span aria-hidden className="stage-glow stage-glow-c" />
           {!isCompactViewport ? (
             <div className="shell-toolbar">
-              <GlobalSearch />
+              <div className="shell-toolbar-search">
+                <GlobalSearch />
+              </div>
               <div className="shell-toolbar-actions">
-                <Link
-                  aria-label="Apri ultime modifiche"
-                  className={`shell-toolbar-icon-link shell-toolbar-history-link${isActivityRoute ? " active" : ""}`}
-                  href="/activity"
-                >
-                  <ShellGlyph kind="history" />
-                </Link>
-                <Link
-                  aria-label="Apri impostazioni"
-                  className={`shell-toolbar-icon-link shell-toolbar-settings-link${isSettingsRoute ? " active" : ""}`}
-                  href="/settings"
-                >
-                  <ShellGlyph kind="settings" />
-                </Link>
-                <a
-                  className="shell-toolbar-link"
-                  href="/logout"
-                >
-                  <span aria-hidden="true" className="shell-toolbar-link-icon">
-                    <ShellGlyph kind="logout" />
-                  </span>
-                  <span>Logout</span>
-                </a>
+                <ShopOrderNotificationCenter />
               </div>
             </div>
           ) : null}

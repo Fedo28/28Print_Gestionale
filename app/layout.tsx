@@ -102,6 +102,11 @@ export const metadata: Metadata = {
   title: "Gestionale 28 Print",
   description: "Gestionale ordini per stampa digitale",
   applicationName: "Gestionale 28 Print",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "28 Print"
+  },
   icons: {
     icon: [
       { url: brandLogo.src, type: "image/png" }
@@ -112,7 +117,8 @@ export const metadata: Metadata = {
     apple: [
       { url: brandLogo.src, type: "image/png" }
     ]
-  }
+  },
+  manifest: "/manifest.webmanifest"
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

@@ -1,20 +1,36 @@
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
 import { formatCurrency, formatQuantity } from "@/lib/format";
-import { getSalesStats, type SalesStatsMonth, type SalesStatsTopItem, type SalesStatsTrend } from "@/lib/orders";
+import { getSalesStats, type SalesStatsMonth, type SalesStatsTopItem } from "@/lib/orders";
 
 export const dynamic = "force-dynamic";
 
 export default async function StatsPage() {
   await requireAuth();
   const stats = await getSalesStats();
+  const months = stats.monthlyTrend;
   const currentMonth = stats.summaryCurrentMonth;
-  const totalRevenue = stats.monthlyTrend.reduce((sum, month) => sum + month.revenueCents, 0);
-  const totalQuantity = stats.monthlyTrend.reduce((sum, month) => sum + month.quantity, 0);
+  const totalRevenue = months.reduce((sum, month) => sum + month.revenueCents, 0);
+  const totalQuantity = months.reduce((sum, month) => sum + month.quantity, 0);
+  const totalOrders = months.reduce((sum, month) => sum + month.ordersCount, 0);
+  const activeMonths = months.filter((month) => month.revenueCents > 0 || month.ordersCount > 0 || month.quantity > 0);
+  const averageOrderCents = currentMonth.ordersCount > 0
+    ? Math.round(currentMonth.revenueCents / currentMonth.ordersCount)
+    : 0;
+  const averageMonthCents = activeMonths.length > 0 ? Math.round(totalRevenue / activeMonths.length) : 0;
+  const maxRevenueCents = Math.max(...months.map((month) => month.revenueCents), 1);
+  const bestMonth = months.reduce<SalesStatsMonth | null>((best, month) => {
+    if (!best || month.revenueCents > best.revenueCents) {
+      return month;
+    }
+
+    return best;
+  }, null);
 
   return (
-    <div className="stack">
+    <div className="stack stats-page-shell">
       <PageHeader
         title="Statistiche"
         action={
@@ -24,83 +40,78 @@ export default async function StatsPage() {
         }
       />
 
-      <section className="grid stats-summary-grid">
-        <StatsMetricCard
-          title="Fatturato mese"
-          value={formatCurrency(currentMonth.revenueCents)}
-          hint={currentMonth.label}
-          tone="brand"
-        />
-        <StatsMetricCard
-          title="Vs mese prima"
-          value={formatTrendValue(currentMonth)}
-          hint={formatTrendHint(currentMonth)}
-          tone={getTrendTone(currentMonth.trend)}
-        />
-        <StatsMetricCard
-          title="Ordini mese"
-          value={String(currentMonth.ordersCount)}
-          hint="Ordini confermati"
-          tone="neutral"
-        />
-        <StatsMetricCard
-          title="Quantita mese"
-          value={formatQuantity(currentMonth.quantity)}
-          hint="Righe vendute"
-          tone="success"
-        />
+      <section className="stats-overview-grid">
+        <article className="card card-pad stats-hero-card">
+          <div className="stats-hero-top">
+            <span className="compact-kicker">Mese corrente</span>
+            <span className={`stats-delta stats-delta-${currentMonth.trend}`}>
+              {formatTrendValue(currentMonth)}
+            </span>
+          </div>
+          <div className="stats-hero-value">
+            <span>{currentMonth.label}</span>
+            <strong>{formatCurrency(currentMonth.revenueCents)}</strong>
+          </div>
+          <div className="stats-hero-bottom">
+            <div>
+              <span>Ordini</span>
+              <strong>{currentMonth.ordersCount}</strong>
+            </div>
+            <div>
+              <span>Pezzi</span>
+              <strong>{formatQuantity(currentMonth.quantity)}</strong>
+            </div>
+            <div>
+              <span>Ticket medio</span>
+              <strong>{formatCurrency(averageOrderCents)}</strong>
+            </div>
+          </div>
+        </article>
+
+        <div className="stats-signal-grid">
+          <StatsSignal label="Totale 12 mesi" value={formatCurrency(totalRevenue)} tone="blue" />
+          <StatsSignal label="Ordini" value={String(totalOrders)} tone="lime" />
+          <StatsSignal label="Pezzi" value={formatQuantity(totalQuantity)} tone="cyan" />
+          <StatsSignal label="Media mese" value={formatCurrency(averageMonthCents)} tone="neutral" />
+        </div>
       </section>
 
       <section className="grid stats-main-grid">
         <article className="card card-pad stats-trend-card">
-          <div className="list-header">
+          <div className="stats-panel-head">
             <div>
-              <span className="compact-kicker">Ultimi 12 mesi</span>
-              <h3>Andamento mese su mese</h3>
+              <span className="compact-kicker">Andamento</span>
+              <h3>Vendite 12 mesi</h3>
             </div>
             <div className="stats-period-meta">
-              <strong>{formatCurrency(totalRevenue)}</strong>
-              <span className="subtle">{formatQuantity(totalQuantity)} pezzi complessivi</span>
+              <span>Best</span>
+              <strong>{bestMonth?.label || "-"}</strong>
             </div>
           </div>
 
-          <div className="stats-trend-list">
-            {stats.monthlyTrend.map((month) => (
-              <article className="mini-item stats-trend-item" key={month.monthKey}>
-                <div className="stats-trend-head">
-                  <div>
-                    <strong>{month.label}</strong>
-                    <div className="subtle">
-                      {month.ordersCount} ordini • {formatQuantity(month.quantity)} pezzi
-                    </div>
-                  </div>
-                  <div className={`stats-delta stats-delta-${month.trend}`}>{formatTrendValue(month)}</div>
-                </div>
-                <div className="stats-trend-values">
-                  <strong>{formatCurrency(month.revenueCents)}</strong>
-                  <span className="hint">{formatTrendHint(month)}</span>
-                </div>
-              </article>
+          <div className="stats-trend-chart">
+            {months.map((month) => (
+              <StatsTrendRow month={month} maxRevenueCents={maxRevenueCents} key={month.monthKey} />
             ))}
           </div>
         </article>
 
         <div className="grid stats-top-grid">
           <article className="card card-pad stats-top-card">
-            <div className="list-header">
+            <div className="stats-panel-head">
               <div>
                 <span className="compact-kicker">Top vendite</span>
-                <h3>Per fatturato</h3>
+                <h3>Fatturato</h3>
               </div>
             </div>
             <StatsTopList items={stats.topByRevenue.slice(0, 8)} metric="revenue" total={totalRevenue} />
           </article>
 
           <article className="card card-pad stats-top-card">
-            <div className="list-header">
+            <div className="stats-panel-head">
               <div>
                 <span className="compact-kicker">Top vendite</span>
-                <h3>Per quantita</h3>
+                <h3>Quantita</h3>
               </div>
             </div>
             <StatsTopList items={stats.topByQuantity.slice(0, 8)} metric="quantity" total={totalQuantity} />
@@ -111,22 +122,50 @@ export default async function StatsPage() {
   );
 }
 
-function StatsMetricCard({
-  title,
+function StatsSignal({
+  label,
   value,
-  hint,
   tone
 }: {
-  title: string;
+  label: string;
   value: string;
-  hint: string;
-  tone: "neutral" | "brand" | "success" | "up" | "down" | "new";
+  tone: "blue" | "lime" | "cyan" | "neutral";
 }) {
   return (
-    <article className={`card card-pad stats-metric-card stats-metric-${tone}`}>
-      <span className="compact-kicker">{title}</span>
+    <article className={`stats-signal-card stats-signal-${tone}`}>
+      <span>{label}</span>
       <strong>{value}</strong>
-      <span className="hint">{hint}</span>
+    </article>
+  );
+}
+
+function StatsTrendRow({
+  month,
+  maxRevenueCents
+}: {
+  month: SalesStatsMonth;
+  maxRevenueCents: number;
+}) {
+  const barWidth = maxRevenueCents > 0
+    ? Math.min(100, Math.round((month.revenueCents / maxRevenueCents) * 100))
+    : 0;
+  const visibleBarWidth = month.revenueCents > 0 ? Math.max(4, barWidth) : 0;
+  const style = { "--bar-width": `${visibleBarWidth}%` } as CSSProperties;
+
+  return (
+    <article className={`stats-trend-row stats-trend-row-${month.trend}`} style={style}>
+      <div className="stats-trend-month">
+        <strong>{formatCompactMonthLabel(month.label)}</strong>
+        <span>{month.ordersCount} ordini</span>
+      </div>
+      <div className="stats-trend-bar-track">
+        <span className="stats-trend-bar" />
+        <span className="stats-trend-qty">{formatQuantity(month.quantity)} pezzi</span>
+      </div>
+      <div className="stats-trend-value">
+        <strong>{formatCurrency(month.revenueCents)}</strong>
+      </div>
+      <div className={`stats-delta stats-delta-${month.trend}`}>{formatTrendValue(month)}</div>
     </article>
   );
 }
@@ -150,20 +189,27 @@ function StatsTopList({
         const share = total > 0
           ? Math.round(((metric === "revenue" ? item.revenueCents : item.quantity) / total) * 1000) / 10
           : 0;
+        const shareWidth = share > 0 ? Math.max(4, Math.min(100, share)) : 0;
+        const style = { "--bar-width": `${shareWidth}%` } as CSSProperties;
 
         return (
-          <article className="mini-item stats-top-item" key={item.key}>
+          <article className="stats-top-item" key={item.key}>
             <div className="stats-top-rank">{index + 1}</div>
             <div className="stats-top-copy">
-              <div className="list-header">
+              <div className="stats-top-title-row">
                 <strong>{item.label}</strong>
-                {item.catalogCode ? <span className="stats-code-tag">{item.catalogCode}</span> : null}
               </div>
-              <div className="subtle">{item.orderCount} ordini coinvolti</div>
+              <div className="stats-top-meta">
+                {item.catalogCode ? <span className="stats-code-tag">{item.catalogCode}</span> : null}
+                <span>{item.orderCount} ordini</span>
+              </div>
+              <div className="stats-top-meter" style={style}>
+                <span />
+              </div>
             </div>
             <div className="stats-top-aside">
               <strong>{metric === "revenue" ? formatCurrency(item.revenueCents) : formatQuantity(item.quantity)}</strong>
-              <span className="hint">{share.toLocaleString("it-IT", { maximumFractionDigits: 1 })}% quota</span>
+              <span>{share.toLocaleString("it-IT", { maximumFractionDigits: 1 })}%</span>
             </div>
           </article>
         );
@@ -185,31 +231,12 @@ function formatTrendValue(month: SalesStatsMonth) {
   return `${sign}${month.deltaRevenuePct.toLocaleString("it-IT", { maximumFractionDigits: 1 })}%`;
 }
 
-function formatTrendHint(month: SalesStatsMonth) {
-  if (month.trend === "new") {
-    return `Primo movimento rispetto al mese precedente (${formatCurrency(month.deltaRevenueCents)})`;
+function formatCompactMonthLabel(label: string) {
+  const [month, year] = label.split(" ");
+
+  if (!month || !year) {
+    return label;
   }
 
-  if (month.trend === "flat") {
-    return "Andamento stabile rispetto al mese precedente";
-  }
-
-  const sign = month.deltaRevenueCents > 0 ? "+" : "";
-  return `${sign}${formatCurrency(month.deltaRevenueCents)} rispetto al mese precedente`;
-}
-
-function getTrendTone(trend: SalesStatsTrend) {
-  if (trend === "up") {
-    return "up" as const;
-  }
-
-  if (trend === "down") {
-    return "down" as const;
-  }
-
-  if (trend === "new") {
-    return "new" as const;
-  }
-
-  return "neutral" as const;
+  return `${month.slice(0, 3)} ${year.slice(-2)}`;
 }

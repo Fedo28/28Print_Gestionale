@@ -14,16 +14,16 @@ describe("billboards domain", () => {
 
     expect(assets).toHaveLength(26);
     expect(assets[0]).toMatchObject({
-      code: "CARTELLONE_01",
-      name: "Cartellone 01",
+      code: "1001",
+      name: "1001 - Zona PAM Via Nomentana",
       kind: "CARTELLONE",
       sortOrder: 1,
       active: true,
-      location: null
+      location: "Mentana (RM) - incrocio Via S. Pertini - 4x3 m - 42.047301, 12.626579"
     });
     expect(assets[23]).toMatchObject({
-      code: "CARTELLONE_24",
-      name: "Cartellone 24",
+      code: "1026",
+      name: "1026 - Via P. Togliatti Bifacciale",
       kind: "CARTELLONE",
       sortOrder: 24
     });

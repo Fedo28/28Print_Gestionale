@@ -3107,7 +3107,7 @@ function buildAssetPerformanceSeries(
   bookings: PlainMonthBooking[],
   seasonStartYear: number
 ) {
-  const assetPalette = ["#2456c4", "#2d8f62", "#d97706", "#9333ea", "#0f766e", "#d9485f", "#4f46e5", "#8b5cf6"];
+  const assetPalette = ["#255cff", "#d9ff3f", "#00d8ff", "#ff5b4d", "#162235", "#8fb3ff"];
   const assetRows = assets.map((asset) => {
     const assetBookings = bookings.filter((booking) => booking.billboardAssetId === asset.id);
     const months = BILLBOARD_PERFORMANCE_MONTHS.map((month) =>
