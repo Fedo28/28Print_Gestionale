@@ -2,6 +2,7 @@ import type { MainPhase, Prisma } from "@prisma/client";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import { getDisplayOrderLabel } from "@/lib/order-display";
 import { prisma } from "@/lib/prisma";
+import { resolveShopNotificationSource } from "@/lib/shop-notification-source";
 
 const pendingShopOnlineOperationalOrderWhere = {
   isQuote: false,
@@ -50,7 +51,13 @@ export async function listPendingShopOnlineOperationalOrders(limit = 8) {
               select: {
                 orderCode: true,
                 createdAt: true,
-                totalCents: true
+                totalCents: true,
+                customerAccount: {
+                  select: {
+                    email: true,
+                    emailNormalized: true
+                  }
+                }
               }
             }
           }
@@ -63,6 +70,11 @@ export async function listPendingShopOnlineOperationalOrders(limit = 8) {
     count,
     orders: orders.map((order) => {
       const shopOrder = order.salesOrderLinks[0]?.salesOrder;
+      const notificationSource = resolveShopNotificationSource({
+        customerAccountEmail: shopOrder?.customerAccount?.email,
+        customerAccountEmailNormalized: shopOrder?.customerAccount?.emailNormalized,
+        customerName: order.customer.name
+      });
 
       return {
         id: order.id,
@@ -75,7 +87,9 @@ export async function listPendingShopOnlineOperationalOrders(limit = 8) {
         deliveryLabel: formatDateTime(order.deliveryAt),
         shopOrderCode: shopOrder?.orderCode || "Shop online",
         shopTotalLabel: shopOrder ? formatCurrency(shopOrder.totalCents) : formatCurrency(order.totalCents),
-        mainPhase: order.mainPhase
+        mainPhase: order.mainPhase,
+        sourceLabel: notificationSource.label,
+        sourceTone: notificationSource.tone
       };
     })
   };

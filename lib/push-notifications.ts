@@ -1,6 +1,7 @@
 import webPush from "web-push";
 import { formatCurrency } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
+import { resolveShopNotificationSource, type ShopNotificationSourceTone } from "@/lib/shop-notification-source";
 
 export type StaffPushClientConfig = {
   enabled: boolean;
@@ -23,6 +24,8 @@ type StaffPushNotificationPayload = {
   orderCode: string;
   orderId: string;
   shopOrderCode: string;
+  sourceLabel: string;
+  sourceTone: ShopNotificationSourceTone;
   tag: string;
   title: string;
   totalLabel: string;
@@ -233,14 +236,19 @@ export async function sendShopOnlineOrderPushNotification(input: ShopOnlinePushI
     };
   }
 
+  const notificationSource = resolveShopNotificationSource({
+    customerName: input.customerName
+  });
   const payload: StaffPushNotificationPayload = {
     body: `${input.customerName} - ${formatCurrency(input.totalCents)}`,
     href: `/orders/${input.internalOrderId}`,
     orderCode: input.internalOrderCode,
     orderId: input.internalOrderId,
     shopOrderCode: input.salesOrderCode,
+    sourceLabel: notificationSource.label,
+    sourceTone: notificationSource.tone,
     tag: `28print-shop-order-${input.internalOrderId}`,
-    title: "Nuovo ordine shop online",
+    title: notificationSource.tone === "rick" ? "Nuovo ordine Rick" : "Nuovo ordine shop online",
     totalLabel: formatCurrency(input.totalCents),
     type: "SHOP_ONLINE_ORDER_RECEIVED"
   };

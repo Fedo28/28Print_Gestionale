@@ -30,6 +30,9 @@
   --success-soft: rgba(47, 125, 91, 0.14);
   --warning-soft: rgba(155, 122, 47, 0.14);
   --danger-soft: rgba(166, 85, 90, 0.14);
+  --shop-rick-orange: #ff8a00;
+  --shop-rick-orange-soft: #fff0d5;
+  --shop-rick-orange-ink: #512600;
   --shadow-sm: 0 12px 28px rgba(79, 67, 129, 0.12);
   --shadow-md: 0 22px 48px rgba(77, 68, 118, 0.16);
   --shadow-lg: 0 34px 88px rgba(72, 59, 123, 0.2);
@@ -43134,6 +43137,12 @@ button.theme-toggle.toolbar-theme-toggle {
   color: var(--shop-lime-ink);
 }
 
+.shop-notification-trigger.has-rick-orders {
+  border-color: var(--shop-rick-orange);
+  background: var(--shop-rick-orange);
+  color: var(--shop-rick-orange-ink);
+}
+
 .shop-notification-trigger .shop-notification-badge {
   position: absolute;
   top: -8px;
@@ -43270,12 +43279,22 @@ button.theme-toggle.toolbar-theme-toggle {
   text-decoration: none;
 }
 
+.shop-notification-item.is-rick {
+  border-left-color: var(--shop-rick-orange);
+  background: var(--shop-rick-orange-soft);
+}
+
 .shop-notification-item span {
   color: var(--shop-lime-muted);
   font-size: 0.72rem;
   font-weight: 950;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.shop-notification-item.is-rick span,
+.shop-notification-item.is-rick strong {
+  color: var(--shop-rick-orange-ink);
 }
 
 .shop-notification-item strong {
@@ -43715,12 +43734,11 @@ button.theme-toggle.toolbar-theme-toggle {
 }
 
 .shop-notification-trigger.is-detailed {
-  width: auto;
-  min-width: 118px;
+  width: 54px;
+  min-width: 54px;
   min-height: 54px;
-  gap: 10px;
-  justify-content: flex-start;
-  padding: 0 12px;
+  justify-content: center;
+  padding: 0;
   border: 2px solid #255cff;
   background: #ffffff;
   color: #255cff;
@@ -43738,29 +43756,16 @@ button.theme-toggle.toolbar-theme-toggle {
   color: #255cff;
 }
 
-.shop-notification-copy {
-  display: grid;
-  grid-template-columns: auto auto;
-  gap: 8px;
-  align-items: baseline;
-  color: inherit;
+.shop-notification-trigger.is-detailed.has-rick-orders {
+  border-color: var(--shop-rick-orange);
+  background: var(--shop-rick-orange);
+  color: var(--shop-rick-orange-ink);
 }
 
-.shop-notification-copy span {
-  font-size: 0.72rem;
-  font-weight: 950;
-  letter-spacing: 0.12em;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
-.shop-notification-copy strong {
-  color: inherit;
-  font-family: var(--font-display), sans-serif;
-  font-size: 1.35rem;
-  font-weight: 950;
-  letter-spacing: -0.04em;
-  line-height: 1;
+.shop-notification-trigger.has-rick-orders .shop-notification-badge {
+  border-color: var(--shop-rick-orange-soft);
+  background: #152235;
+  color: #ffffff;
 }
 
 @media (max-width: 1180px) {

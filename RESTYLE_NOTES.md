@@ -17,3 +17,4 @@
 - Impostazioni: hub tecnico ripulito con segnali rapidi, catalogo come banco principale, nuovo servizio/import Excel in sezioni compatte; staff e controllo deploy riallineati allo stile shop-light.
 - Attività: archivio operativo con segnali rapidi, filtri area/tipo, timeline raggruppata per giorno e cestino coerente; rosso solo per eliminazioni, lime per ripristini.
 - Login e cronologia ordini: accesso ripulito senza note interne; cronologia ordini trasformata in timeline unica con segnali, filtri per tipo modifica e azioni di ripristino nel punto giusto.
+- Prossima sessione: rivedere catalogo prezzi e quantita; il lavoro e importante e va affrontato con calma prima di riaprire lo shop.
