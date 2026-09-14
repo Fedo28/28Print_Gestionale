@@ -330,12 +330,19 @@ export function ShopOrderNotificationCenter({ compact = false }: { compact?: boo
         aria-controls="shop-notification-panel"
         aria-expanded={isOpen}
         aria-label={count > 0 ? `Notifiche shop, ${count} ordini da evadere` : "Notifiche shop"}
-        className={`shop-notification-trigger${count > 0 ? " has-orders" : ""}${pushStatus === "active" ? " is-push-active" : ""}`}
+        className={`shop-notification-trigger${compact ? "" : " is-detailed"}${count > 0 ? " has-orders" : ""}${pushStatus === "active" ? " is-push-active" : ""}`}
         onClick={() => setIsOpen((current) => !current)}
         type="button"
       >
         <BellIcon />
-        {count > 0 ? <span>{count}</span> : null}
+        {compact ? (
+          count > 0 ? <span className="shop-notification-badge">{count}</span> : null
+        ) : (
+          <span className="shop-notification-copy" aria-hidden="true">
+            <span>Shop</span>
+            <strong>{count}</strong>
+          </span>
+        )}
       </button>
 
       {isOpen ? (

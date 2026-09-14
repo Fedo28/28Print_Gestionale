@@ -43134,7 +43134,7 @@ button.theme-toggle.toolbar-theme-toggle {
   color: var(--shop-lime-ink);
 }
 
-.shop-notification-trigger > span {
+.shop-notification-trigger .shop-notification-badge {
   position: absolute;
   top: -8px;
   right: -8px;
@@ -43597,5 +43597,189 @@ button.theme-toggle.toolbar-theme-toggle {
   .order-detail-shop-online-details > summary,
   .order-detail-shop-online-grid {
     padding: 10px;
+  }
+}
+
+/* Shell final pass: single shop notification slot and lighter search head. */
+.shell .brand {
+  min-height: 176px !important;
+  align-items: start !important;
+  justify-content: center !important;
+  padding: 14px 10px !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.shell .brand-logo {
+  display: block !important;
+  width: 132px !important;
+  max-width: 132px !important;
+  height: auto !important;
+  border: 0 !important;
+  background: transparent !important;
+  filter: none !important;
+  opacity: 1 !important;
+}
+
+.shell .shell-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: end;
+  margin: 0 -18px 16px;
+  padding: 18px 18px 12px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: linear-gradient(180deg, rgba(242, 246, 251, 0.98) 0%, rgba(242, 246, 251, 0.98) 78%, rgba(242, 246, 251, 0) 100%) !important;
+  box-shadow: none !important;
+}
+
+.shell .shell-toolbar-search,
+.shell .shell-toolbar-search .global-search,
+.shell .shell-toolbar-search .global-search-grid {
+  min-width: 0;
+  width: 100%;
+}
+
+.shell .shell-toolbar-search .global-search-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: end;
+}
+
+.shell .shell-toolbar-search .global-search-column,
+.shell .shell-toolbar-search .global-search-form {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.shell .shell-toolbar-search .global-search-label {
+  min-height: 16px;
+  padding: 0 0 0 2px;
+  color: #53667d;
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.13em;
+  line-height: 1;
+}
+
+.shell .shell-toolbar-search .global-search-field-shell {
+  min-height: 54px;
+  padding-inline: 14px;
+  border: 0 !important;
+  border-bottom: 2px solid #c9d8e8 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.shell .shell-toolbar-search .global-search-field-shell:focus-within {
+  border-bottom-color: #255cff !important;
+  background: transparent !important;
+}
+
+.shell .shell-toolbar-search .global-search-field-shell input {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: 52px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.shell .shell-toolbar-search .global-search-field-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]) {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+.shell .shell-toolbar-actions {
+  align-self: end;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.shell .shell-toolbar-actions .shop-notification-center {
+  align-self: flex-end;
+}
+
+.shop-notification-trigger.is-detailed {
+  width: auto;
+  min-width: 118px;
+  min-height: 54px;
+  gap: 10px;
+  justify-content: flex-start;
+  padding: 0 12px;
+  border: 2px solid #255cff;
+  background: #ffffff;
+  color: #255cff;
+}
+
+.shop-notification-trigger.is-detailed.has-orders {
+  border-color: var(--shop-lime-flat);
+  background: var(--shop-lime-flat);
+  color: var(--shop-lime-ink);
+}
+
+.shop-notification-trigger.is-detailed.is-push-active:not(.has-orders) {
+  border-color: #255cff;
+  background: #ffffff;
+  color: #255cff;
+}
+
+.shop-notification-copy {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 8px;
+  align-items: baseline;
+  color: inherit;
+}
+
+.shop-notification-copy span {
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.shop-notification-copy strong {
+  color: inherit;
+  font-family: var(--font-display), sans-serif;
+  font-size: 1.35rem;
+  font-weight: 950;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+@media (max-width: 1180px) {
+  .shell .brand-logo {
+    width: 96px !important;
+    max-width: 96px !important;
+  }
+
+  .shell .shell-toolbar {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .mobile-topbar .shop-notification-trigger {
+    width: 48px;
+    min-width: 48px;
+    min-height: 48px;
+    padding: 0;
+    justify-content: center;
   }
 }
