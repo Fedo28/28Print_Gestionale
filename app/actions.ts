@@ -58,8 +58,11 @@ import {
 } from "@/lib/orders";
 import { authenticateUser, createSessionForUser, describeLoginFailure, requireAdmin, requireAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { sendRickManualOrderPushNotification } from "@/lib/push-notifications";
 import { getRequestBaseUrl } from "@/lib/request-url";
 import { saveSetting } from "@/lib/settings";
+import { createRickManualOrderNotification } from "@/lib/shop-notification-inbox";
+import { resolveShopNotificationSource } from "@/lib/shop-notification-source";
 import { cleanupOrderAttachments } from "@/lib/storage";
 import { buildOrderMaterialNoteContent, getOrderMaterialCategoryEntriesFromFormData } from "@/lib/order-material-note";
 import {
@@ -194,6 +197,152 @@ function buildNextOrderEntryHref(options: {
   params.set("continuation", options.continuation);
 
   return `${basePath}?${params.toString()}`;
+}
+
+type CreatedManualOrder = Awaited<ReturnType<typeof createOrder>>;
+
+async function recordRickManualOrderCreationNotification(order: CreatedManualOrder, actorUserId: string) {
+  if (order.isQuote) {
+    return;
+  }
+
+  const actor = await prisma.user.findUnique({
+    where: {
+      id: actorUserId
+    },
+    select: {
+      email: true,
+      id: true,
+      name: true,
+      nickname: true
+    }
+  });
+
+  if (!actor) {
+    return;
+  }
+
+  const source = resolveShopNotificationSource({
+    staffEmail: actor.email,
+    staffName: actor.name,
+    staffNickname: actor.nickname
+  });
+
+  if (source.tone !== "rick") {
+    return;
+  }
+
+  const notification = await createRickManualOrderNotification({
+    actorEmail: actor.email,
+    actorName: actor.name,
+    actorNickname: actor.nickname,
+    actorUserId: actor.id,
+    customerName: order.customer.name,
+    orderCode: order.orderCode,
+    orderId: order.id,
+    title: order.title,
+    totalCents: order.totalCents
+  });
+
+  const dedupeKey = `staff.order.rick_push:${order.id}`;
+  const existingEvent = await prisma.domainEvent.findUnique({
+    where: {
+      dedupeKey
+    },
+    select: {
+      status: true
+    }
+  });
+
+  if (existingEvent?.status === "PROCESSED") {
+    return;
+  }
+
+  try {
+    const pushResult = await sendRickManualOrderPushNotification({
+      actorUserId: actor.id,
+      customerName: order.customer.name,
+      orderCode: order.orderCode,
+      orderId: order.id,
+      totalCents: order.totalCents
+    });
+
+    await prisma.domainEvent.upsert({
+      where: {
+        dedupeKey
+      },
+      update: {
+        payloadJson: {
+          ...pushResult,
+          actorUserId: actor.id,
+          notificationEventId: notification.eventId,
+          orderId: order.id,
+          sourceTone: notification.source.tone,
+          stage: "created"
+        },
+        processedAt: new Date(),
+        status: pushResult.sent > 0 ? "PROCESSED" : "FAILED"
+      },
+      create: {
+        topic: "staff.order.rick_push",
+        entityType: "Order",
+        entityId: order.id,
+        dedupeKey,
+        payloadJson: {
+          ...pushResult,
+          actorUserId: actor.id,
+          notificationEventId: notification.eventId,
+          orderId: order.id,
+          sourceTone: notification.source.tone,
+          stage: "created"
+        },
+        processedAt: new Date(),
+        status: pushResult.sent > 0 ? "PROCESSED" : "FAILED"
+      }
+    });
+  } catch (error) {
+    await prisma.domainEvent.upsert({
+      where: {
+        dedupeKey
+      },
+      update: {
+        payloadJson: {
+          actorUserId: actor.id,
+          error: error instanceof Error ? error.message : "Invio push non riuscito.",
+          notificationEventId: notification.eventId,
+          orderId: order.id,
+          sourceTone: notification.source.tone,
+          stage: "created"
+        },
+        processedAt: new Date(),
+        status: "FAILED"
+      },
+      create: {
+        topic: "staff.order.rick_push",
+        entityType: "Order",
+        entityId: order.id,
+        dedupeKey,
+        payloadJson: {
+          actorUserId: actor.id,
+          error: error instanceof Error ? error.message : "Invio push non riuscito.",
+          notificationEventId: notification.eventId,
+          orderId: order.id,
+          sourceTone: notification.source.tone,
+          stage: "created"
+        },
+        processedAt: new Date(),
+        status: "FAILED"
+      }
+    });
+  }
+}
+
+async function notifyRickManualOrderCreation(order: CreatedManualOrder, actorUserId: string) {
+  try {
+    await recordRickManualOrderCreationNotification(order, actorUserId);
+  } catch (error) {
+    console.error("Rick manual order notification failed", error);
+  }
 }
 
 const purchaseNoteAuditSelect = {
@@ -743,10 +892,11 @@ export async function deleteCustomerAction(formData: FormData) {
 }
 
 export async function createOrderAction(formData: FormData) {
-  await requireAuth();
+  const session = await requireAuth();
   const postSubmitAction = parsePostSubmitAction(formData);
   const input = parseOrderFormInput(formData);
   const order = await createOrder(input);
+  await notifyRickManualOrderCreation(order, session.userId);
 
   revalidateOperationalSurfaces(order.id);
   if (input.materialNote) {

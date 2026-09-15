@@ -4,6 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { resolveShopNotificationSource, type ShopNotificationSourceTone } from "@/lib/shop-notification-source";
 
 export const SHOP_SALES_ORDER_NOTIFICATION_TOPIC = "shop.sales_order.notification";
+export const RICK_MANUAL_ORDER_NOTIFICATION_TOPIC = "staff.order.rick_notification";
+const ORDER_NOTIFICATION_TOPICS = [
+  SHOP_SALES_ORDER_NOTIFICATION_TOPIC,
+  RICK_MANUAL_ORDER_NOTIFICATION_TOPIC
+];
 
 type ShopSalesOrderNotificationInput = {
   customerAccountEmail?: string | null;
@@ -14,6 +19,18 @@ type ShopSalesOrderNotificationInput = {
   staffEmail?: string | null;
   staffName?: string | null;
   staffNickname?: string | null;
+  totalCents: number;
+};
+
+type RickManualOrderNotificationInput = {
+  actorEmail?: string | null;
+  actorName?: string | null;
+  actorNickname?: string | null;
+  actorUserId: string;
+  customerName: string;
+  orderCode: string;
+  orderId: string;
+  title: string;
   totalCents: number;
 };
 
@@ -92,10 +109,59 @@ export async function createShopSalesOrderNotification(input: ShopSalesOrderNoti
   };
 }
 
+export async function createRickManualOrderNotification(input: RickManualOrderNotificationInput) {
+  const payload = {
+    actorEmail: input.actorEmail || null,
+    actorName: input.actorName || null,
+    actorNickname: input.actorNickname || null,
+    actorUserId: input.actorUserId,
+    customerName: input.customerName,
+    href: `/orders/${input.orderId}`,
+    orderCode: input.orderCode,
+    orderId: input.orderId,
+    sourceLabel: "Rick",
+    sourceTone: "rick",
+    title: input.title,
+    totalCents: input.totalCents
+  } satisfies Prisma.InputJsonObject;
+
+  const event = await prisma.domainEvent.upsert({
+    where: {
+      dedupeKey: `staff.notification.rick_order:${input.orderId}`
+    },
+    update: {
+      payloadJson: payload,
+      processedAt: null,
+      status: "PENDING"
+    },
+    create: {
+      topic: RICK_MANUAL_ORDER_NOTIFICATION_TOPIC,
+      entityType: "Order",
+      entityId: input.orderId,
+      dedupeKey: `staff.notification.rick_order:${input.orderId}`,
+      payloadJson: payload,
+      status: "PENDING"
+    },
+    select: {
+      id: true
+    }
+  });
+
+  return {
+    eventId: event.id,
+    source: {
+      label: "Rick",
+      tone: "rick" as const
+    }
+  };
+}
+
 export async function listUnreadShopSalesOrderNotifications(limit = 8) {
   const safeLimit = Math.max(1, limit);
   const where = {
-    topic: SHOP_SALES_ORDER_NOTIFICATION_TOPIC,
+    topic: {
+      in: ORDER_NOTIFICATION_TOPICS
+    },
     status: "PENDING"
   } satisfies Prisma.DomainEventWhereInput;
   const [count, events] = await Promise.all([
@@ -108,7 +174,8 @@ export async function listUnreadShopSalesOrderNotifications(limit = 8) {
         createdAt: true,
         entityId: true,
         id: true,
-        payloadJson: true
+        payloadJson: true,
+        topic: true
       }
     })
   ]);
@@ -117,6 +184,29 @@ export async function listUnreadShopSalesOrderNotifications(limit = 8) {
     count,
     orders: events.map((event) => {
       const payload = event.payloadJson;
+      if (event.topic === RICK_MANUAL_ORDER_NOTIFICATION_TOPIC) {
+        const orderId = getPayloadString(payload, "orderId") || event.entityId;
+        const orderCode = getPayloadString(payload, "orderCode") || "Ordine Rick";
+        const customerName = getPayloadString(payload, "customerName") || "Cliente";
+        const totalCents = getPayloadNumber(payload, "totalCents") || 0;
+
+        return {
+          notificationId: event.id,
+          id: event.id,
+          href: getPayloadString(payload, "href") || `/orders/${orderId}`,
+          orderCode,
+          title: getPayloadString(payload, "title") || "Ordine Rick",
+          customerName,
+          totalLabel: formatCurrency(totalCents),
+          createdLabel: formatDateTime(getPayloadDate(payload, "createdAt") || event.createdAt),
+          deliveryLabel: "",
+          shopOrderCode: orderCode,
+          shopTotalLabel: formatCurrency(totalCents),
+          sourceLabel: "Rick",
+          sourceTone: "rick" as ShopNotificationSourceTone
+        };
+      }
+
       const salesOrderId = getPayloadString(payload, "salesOrderId") || event.entityId;
       const salesOrderCode = getPayloadString(payload, "salesOrderCode") || "Ordine shop";
       const customerName = getPayloadString(payload, "customerName") || "Cliente shop";
@@ -151,7 +241,9 @@ export async function markShopSalesOrderNotificationRead(notificationId: string)
   await prisma.domainEvent.updateMany({
     where: {
       id,
-      topic: SHOP_SALES_ORDER_NOTIFICATION_TOPIC
+      topic: {
+        in: ORDER_NOTIFICATION_TOPICS
+      }
     },
     data: {
       processedAt: new Date(),

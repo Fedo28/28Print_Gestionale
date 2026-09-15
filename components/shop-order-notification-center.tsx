@@ -363,7 +363,7 @@ export function ShopOrderNotificationCenter({ compact = false }: { compact?: boo
           <div className="shop-notification-head">
             <div>
               <strong>Notifiche</strong>
-              <span>Nuovi ordini shop</span>
+              <span>Nuovi ordini</span>
             </div>
           </div>
 
@@ -399,7 +399,7 @@ export function ShopOrderNotificationCenter({ compact = false }: { compact?: boo
                 </Link>
               ))
             ) : (
-              <div className="shop-notification-empty">{isLoading ? "Controllo ordini shop..." : "Nessun ordine shop da evadere."}</div>
+              <div className="shop-notification-empty">{isLoading ? "Controllo notifiche..." : "Nessuna notifica nuova."}</div>
             )}
           </div>
         </div>

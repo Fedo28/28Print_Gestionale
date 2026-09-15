@@ -9,17 +9,17 @@ self.addEventListener("push", (event) => {
     }
   }
 
-  const title = payload.title || "28Print shop";
+  const title = payload.title || "28Print";
   const options = {
     badge: "/shop/stampa-documenti-illustration.png",
-    body: payload.body || "Nuovo ordine shop online da evadere.",
+    body: payload.body || "Nuovo ordine da controllare.",
     data: {
-      href: payload.href || "/orders?shop=online&preset=TO_DO"
+      href: payload.href || "/orders"
     },
     icon: "/shop/stampa-documenti-illustration.png",
     renotify: true,
     requireInteraction: true,
-    tag: payload.tag || "28print-shop-online",
+    tag: payload.tag || "28print-order-notification",
     vibrate: [120, 60, 120]
   };
 
@@ -31,7 +31,7 @@ self.addEventListener("notificationclick", (event) => {
 
   const href = event.notification.data && event.notification.data.href
     ? event.notification.data.href
-    : "/orders?shop=online&preset=TO_DO";
+    : "/orders";
   const targetUrl = new URL(href, self.location.origin).href;
 
   event.waitUntil(

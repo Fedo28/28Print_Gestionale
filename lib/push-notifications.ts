@@ -29,7 +29,7 @@ type StaffPushNotificationPayload = {
   tag: string;
   title: string;
   totalLabel: string;
-  type: "SHOP_ONLINE_ORDER_RECEIVED";
+  type: "SHOP_ONLINE_ORDER_RECEIVED" | "RICK_ORDER_CREATED";
 };
 
 type ShopOnlinePushInput = {
@@ -49,6 +49,14 @@ type ShopIncomingSalesOrderPushInput = {
   staffEmail?: string | null;
   staffName?: string | null;
   staffNickname?: string | null;
+  totalCents: number;
+};
+
+type RickManualOrderPushInput = {
+  actorUserId: string;
+  customerName: string;
+  orderCode: string;
+  orderId: string;
   totalCents: number;
 };
 
@@ -209,7 +217,10 @@ function getPushErrorMessage(error: unknown) {
   return "Invio push non riuscito.";
 }
 
-async function sendStaffPushNotificationPayload(payload: StaffPushNotificationPayload) {
+async function sendStaffPushNotificationPayload(
+  payload: StaffPushNotificationPayload,
+  options?: { excludeUserId?: string | null }
+) {
   const config = getWebPushServerConfig();
   if (!config) {
     return {
@@ -226,6 +237,7 @@ async function sendStaffPushNotificationPayload(payload: StaffPushNotificationPa
   const subscriptions = await prisma.staffPushSubscription.findMany({
     where: {
       active: true,
+      ...(options?.excludeUserId ? { userId: { not: options.excludeUserId } } : {}),
       user: {
         active: true
       }
@@ -355,4 +367,24 @@ export async function sendShopIncomingSalesOrderPushNotification(input: ShopInco
   };
 
   return sendStaffPushNotificationPayload(payload);
+}
+
+export async function sendRickManualOrderPushNotification(input: RickManualOrderPushInput) {
+  const payload: StaffPushNotificationPayload = {
+    body: `${input.customerName} - ${formatCurrency(input.totalCents)}`,
+    href: `/orders/${input.orderId}`,
+    orderCode: input.orderCode,
+    orderId: input.orderId,
+    shopOrderCode: input.orderCode,
+    sourceLabel: "Rick",
+    sourceTone: "rick",
+    tag: `28print-rick-order-${input.orderId}`,
+    title: "Nuovo ordine Rick",
+    totalLabel: formatCurrency(input.totalCents),
+    type: "RICK_ORDER_CREATED"
+  };
+
+  return sendStaffPushNotificationPayload(payload, {
+    excludeUserId: input.actorUserId
+  });
 }
