@@ -11,8 +11,12 @@ import { buildOrderCode, normalizeForUniqueness } from "@/lib/orders";
 import { computeAutomaticPriority } from "@/lib/priorities";
 import { normalizeQuantityValue } from "@/lib/pricing";
 import { prisma } from "@/lib/prisma";
-import { sendShopOnlineOrderPushNotification } from "@/lib/push-notifications";
+import {
+  sendShopIncomingSalesOrderPushNotification,
+  sendShopOnlineOrderPushNotification
+} from "@/lib/push-notifications";
 import { getShopServiceByIdForOrderCreation } from "@/lib/shop-catalog";
+import { resolveShopNotificationSource } from "@/lib/shop-notification-source";
 import { customerShopSalesOrderItemFileSelect } from "@/lib/shop-order-files";
 import {
   buildShopDocumentBundleDetailedSummary,
@@ -77,6 +81,12 @@ const customerShopOrderDetailSelect = {
       name: true,
       email: true,
       phone: true
+    }
+  },
+  customerAccount: {
+    select: {
+      email: true,
+      emailNormalized: true
     }
   },
   billingSnapshot: {
@@ -227,6 +237,7 @@ export type CreateShopSalesOrderInput = {
   customerNote?: string | null;
   sourcePath?: string | null;
   allowPreviewFallback?: boolean;
+  staffActorUserId?: string | null;
 };
 
 export type CreateShopSalesOrderBillingInput = {
@@ -247,6 +258,13 @@ export type CreateShopSalesOrderBillingInput = {
   taxCode?: string | null;
   vatNumber?: string | null;
 };
+
+type ShopStaffActorNotificationSource = {
+  email: string;
+  id: string;
+  name: string;
+  nickname: string;
+} | null;
 
 export function buildShopSalesOrderCode(now = new Date(), suffix = randomBytes(3).toString("hex").toUpperCase()) {
   return `SHOP-${formatDateKey(now).replaceAll("-", "")}-${suffix}`;
@@ -572,6 +590,7 @@ export async function createShopSalesOrder(input: CreateShopSalesOrderInput) {
     throw new Error("Sessione cliente non valida.");
   }
 
+  const staffActorUserId = String(input.staffActorUserId || "").trim();
   const allowPreviewFallback = Boolean(input.allowPreviewFallback);
   const invoiceRequested = Boolean(input.invoiceRequested);
   const serviceLabel = String(input.serviceLabel || "").trim();
@@ -596,7 +615,7 @@ export async function createShopSalesOrder(input: CreateShopSalesOrderInput) {
     throw new Error(billingValidationError);
   }
 
-  return prisma.$transaction(async (tx) => {
+  const createdOrderResult = await prisma.$transaction(async (tx) => {
     const account = await tx.customerAccount.findUnique({
       where: { id: customerAccountId },
       include: {
@@ -614,6 +633,21 @@ export async function createShopSalesOrder(input: CreateShopSalesOrderInput) {
     if (!account || account.status !== "ACTIVE") {
       throw new Error("Account cliente non disponibile.");
     }
+
+    const staffActor = staffActorUserId
+      ? await tx.user.findFirst({
+          where: {
+            active: true,
+            id: staffActorUserId
+          },
+          select: {
+            email: true,
+            id: true,
+            name: true,
+            nickname: true
+          }
+        })
+      : null;
 
     const service = await getShopServiceByIdForOrderCreation(input.serviceId, {
       allowPreviewFallback,
@@ -740,6 +774,10 @@ export async function createShopSalesOrder(input: CreateShopSalesOrderInput) {
               orderCode: order.orderCode,
               customerId: order.customer.id,
               customerAccountId: account.id,
+              staffActorEmail: staffActor?.email || null,
+              staffActorId: staffActor?.id || null,
+              staffActorName: staffActor?.name || null,
+              staffActorNickname: staffActor?.nickname || null,
               totalCents: order.totalCents,
               invoiceRequested,
               previewFallbackUsed: !service.onlineActive
@@ -747,7 +785,10 @@ export async function createShopSalesOrder(input: CreateShopSalesOrderInput) {
           }
         });
 
-        return order;
+        return {
+          order,
+          staffActor
+        };
       } catch (error) {
         if (
           error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -765,6 +806,123 @@ export async function createShopSalesOrder(input: CreateShopSalesOrderInput) {
 
     throw new Error("Impossibile generare un codice ordine shop univoco.");
   });
+
+  await recordIncomingShopSalesOrderPushNotification(
+    createdOrderResult.order,
+    createdOrderResult.staffActor
+  );
+
+  return createdOrderResult.order;
+}
+
+async function recordIncomingShopSalesOrderPushNotification(
+  order: CustomerShopOrderDetail,
+  staffActor: ShopStaffActorNotificationSource
+) {
+  const notificationSource = resolveShopNotificationSource({
+    customerAccountEmail: order.customerAccount?.email,
+    customerAccountEmailNormalized: order.customerAccount?.emailNormalized,
+    customerName: order.customer.name,
+    staffEmail: staffActor?.email,
+    staffName: staffActor?.name,
+    staffNickname: staffActor?.nickname
+  });
+
+  if (notificationSource.tone !== "rick") {
+    return;
+  }
+
+  const dedupeKey = `shop.sales_order.staff_push:${order.id}`;
+  const existingEvent = await prisma.domainEvent.findUnique({
+    where: {
+      dedupeKey
+    },
+    select: {
+      status: true
+    }
+  });
+
+  if (existingEvent?.status === "PROCESSED") {
+    return;
+  }
+
+  try {
+    const pushResult = await sendShopIncomingSalesOrderPushNotification({
+      customerAccountEmail: order.customerAccount?.email,
+      customerAccountEmailNormalized: order.customerAccount?.emailNormalized,
+      customerName: order.customer.name,
+      salesOrderCode: order.orderCode,
+      salesOrderId: order.id,
+      staffEmail: staffActor?.email,
+      staffName: staffActor?.name,
+      staffNickname: staffActor?.nickname,
+      totalCents: order.totalCents
+    });
+
+    await prisma.domainEvent.upsert({
+      where: {
+        dedupeKey
+      },
+      update: {
+        payloadJson: {
+          ...pushResult,
+          salesOrderId: order.id,
+          sourceTone: notificationSource.tone,
+          staffActorId: staffActor?.id || null,
+          stage: "created"
+        },
+        status: pushResult.sent > 0 ? "PROCESSED" : "FAILED",
+        processedAt: new Date()
+      },
+      create: {
+        topic: "shop.sales_order.staff_push",
+        entityType: "SalesOrder",
+        entityId: order.id,
+        dedupeKey,
+        payloadJson: {
+          ...pushResult,
+          salesOrderId: order.id,
+          sourceTone: notificationSource.tone,
+          staffActorId: staffActor?.id || null,
+          stage: "created"
+        },
+        status: pushResult.sent > 0 ? "PROCESSED" : "FAILED",
+        processedAt: new Date()
+      }
+    });
+  } catch (error) {
+    await prisma.domainEvent.upsert({
+      where: {
+        dedupeKey
+      },
+      update: {
+        payloadJson: {
+          error: error instanceof Error ? error.message : "Invio push non riuscito.",
+          salesOrderId: order.id,
+          sourceTone: notificationSource.tone,
+          staffActorId: staffActor?.id || null,
+          stage: "created"
+        },
+        status: "FAILED",
+        processedAt: new Date()
+      },
+      create: {
+        topic: "shop.sales_order.staff_push",
+        entityType: "SalesOrder",
+        entityId: order.id,
+        dedupeKey,
+        payloadJson: {
+          error: error instanceof Error ? error.message : "Invio push non riuscito.",
+          salesOrderId: order.id,
+          sourceTone: notificationSource.tone,
+          staffActorId: staffActor?.id || null,
+          stage: "created"
+        },
+        status: "FAILED",
+        processedAt: new Date()
+      }
+    });
+  }
 }
 
 type PaidShopCheckoutResult = {
@@ -786,6 +944,20 @@ async function recordShopStaffPushNotification(checkoutResult: PaidShopCheckoutR
     return;
   }
 
+  const dedupeKey = `shop.sales_order.staff_push:${checkoutResult.salesOrderId}`;
+  const existingEvent = await prisma.domainEvent.findUnique({
+    where: {
+      dedupeKey
+    },
+    select: {
+      status: true
+    }
+  });
+
+  if (existingEvent?.status === "PROCESSED") {
+    return;
+  }
+
   try {
     const pushResult = await sendShopOnlineOrderPushNotification({
       customerName: checkoutResult.customerName,
@@ -797,7 +969,7 @@ async function recordShopStaffPushNotification(checkoutResult: PaidShopCheckoutR
 
     await prisma.domainEvent.upsert({
       where: {
-        dedupeKey: `shop.sales_order.staff_push:${checkoutResult.salesOrderId}`
+        dedupeKey
       },
       update: {
         payloadJson: {
@@ -812,7 +984,7 @@ async function recordShopStaffPushNotification(checkoutResult: PaidShopCheckoutR
         topic: "shop.sales_order.staff_push",
         entityType: "SalesOrder",
         entityId: checkoutResult.salesOrderId,
-        dedupeKey: `shop.sales_order.staff_push:${checkoutResult.salesOrderId}`,
+        dedupeKey,
         payloadJson: {
           ...pushResult,
           internalOrderId: checkoutResult.internalOrderId,
@@ -825,7 +997,7 @@ async function recordShopStaffPushNotification(checkoutResult: PaidShopCheckoutR
   } catch (error) {
     await prisma.domainEvent.upsert({
       where: {
-        dedupeKey: `shop.sales_order.staff_push:${checkoutResult.salesOrderId}`
+        dedupeKey
       },
       update: {
         payloadJson: {
@@ -840,7 +1012,7 @@ async function recordShopStaffPushNotification(checkoutResult: PaidShopCheckoutR
         topic: "shop.sales_order.staff_push",
         entityType: "SalesOrder",
         entityId: checkoutResult.salesOrderId,
-        dedupeKey: `shop.sales_order.staff_push:${checkoutResult.salesOrderId}`,
+        dedupeKey,
         payloadJson: {
           error: error instanceof Error ? error.message : "Invio push non riuscito.",
           internalOrderId: checkoutResult.internalOrderId,

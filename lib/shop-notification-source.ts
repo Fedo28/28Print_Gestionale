@@ -23,10 +23,20 @@ export function resolveShopNotificationSource(input: {
   customerAccountEmail?: string | null;
   customerAccountEmailNormalized?: string | null;
   customerName?: string | null;
+  staffEmail?: string | null;
+  staffName?: string | null;
+  staffNickname?: string | null;
 }): ShopNotificationSource {
   const emailLocalPart = String(input.customerAccountEmail || input.customerAccountEmailNormalized || "").split("@")[0];
+  const staffEmailLocalPart = String(input.staffEmail || "").split("@")[0];
 
-  if (hasRickToken(input.customerName) || hasRickToken(emailLocalPart)) {
+  if (
+    hasRickToken(input.customerName) ||
+    hasRickToken(emailLocalPart) ||
+    hasRickToken(input.staffName) ||
+    hasRickToken(input.staffNickname) ||
+    hasRickToken(staffEmailLocalPart)
+  ) {
     return {
       label: "Rick",
       tone: "rick"

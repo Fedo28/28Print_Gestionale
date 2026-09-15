@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { clearCustomerAccountSession, createCustomerAccountSession } from "@/lib/customer-account-auth";
+import { getSession } from "@/lib/auth";
 import { clearShopBetaAccess, grantShopBetaAccess } from "@/lib/shop-beta-gate";
 import {
   authenticateCustomerAccount,
@@ -118,6 +119,7 @@ export async function createShopSalesOrderAction(
   formData: FormData
 ): Promise<ShopOrderActionState> {
   const session = await requireCustomerAccountAuth();
+  const staffSession = getSession();
 
   try {
     const documentBundle = parseShopDocumentBundlePayload(String(formData.get("documentBundle") || ""));
@@ -141,7 +143,8 @@ export async function createShopSalesOrderAction(
       invoiceRequested: String(formData.get("invoiceRequested") || "") === "on",
       customerNote: String(formData.get("customerNote") || ""),
       sourcePath: String(formData.get("sourcePath") || ""),
-      allowPreviewFallback: process.env.NODE_ENV !== "production"
+      allowPreviewFallback: process.env.NODE_ENV !== "production",
+      staffActorUserId: staffSession?.userId
     });
 
     revalidatePath("/shop");

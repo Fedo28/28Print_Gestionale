@@ -40,6 +40,18 @@ type ShopOnlinePushInput = {
   totalCents: number;
 };
 
+type ShopIncomingSalesOrderPushInput = {
+  customerAccountEmail?: string | null;
+  customerAccountEmailNormalized?: string | null;
+  customerName: string;
+  salesOrderCode: string;
+  salesOrderId: string;
+  staffEmail?: string | null;
+  staffName?: string | null;
+  staffNickname?: string | null;
+  totalCents: number;
+};
+
 function readOptionalEnv(name: string) {
   const value = process.env[name]?.trim();
   return value || null;
@@ -197,7 +209,7 @@ function getPushErrorMessage(error: unknown) {
   return "Invio push non riuscito.";
 }
 
-export async function sendShopOnlineOrderPushNotification(input: ShopOnlinePushInput) {
+async function sendStaffPushNotificationPayload(payload: StaffPushNotificationPayload) {
   const config = getWebPushServerConfig();
   if (!config) {
     return {
@@ -236,22 +248,6 @@ export async function sendShopOnlineOrderPushNotification(input: ShopOnlinePushI
     };
   }
 
-  const notificationSource = resolveShopNotificationSource({
-    customerName: input.customerName
-  });
-  const payload: StaffPushNotificationPayload = {
-    body: `${input.customerName} - ${formatCurrency(input.totalCents)}`,
-    href: `/orders/${input.internalOrderId}`,
-    orderCode: input.internalOrderCode,
-    orderId: input.internalOrderId,
-    shopOrderCode: input.salesOrderCode,
-    sourceLabel: notificationSource.label,
-    sourceTone: notificationSource.tone,
-    tag: `28print-shop-order-${input.internalOrderId}`,
-    title: notificationSource.tone === "rick" ? "Nuovo ordine Rick" : "Nuovo ordine shop online",
-    totalLabel: formatCurrency(input.totalCents),
-    type: "SHOP_ONLINE_ORDER_RECEIVED"
-  };
   const sentAt = new Date();
   let disabled = 0;
   let failed = 0;
@@ -312,4 +308,51 @@ export async function sendShopOnlineOrderPushNotification(input: ShopOnlinePushI
     failed,
     sent
   };
+}
+
+export async function sendShopOnlineOrderPushNotification(input: ShopOnlinePushInput) {
+  const notificationSource = resolveShopNotificationSource({
+    customerName: input.customerName
+  });
+  const payload: StaffPushNotificationPayload = {
+    body: `${input.customerName} - ${formatCurrency(input.totalCents)}`,
+    href: `/orders/${input.internalOrderId}`,
+    orderCode: input.internalOrderCode,
+    orderId: input.internalOrderId,
+    shopOrderCode: input.salesOrderCode,
+    sourceLabel: notificationSource.label,
+    sourceTone: notificationSource.tone,
+    tag: `28print-shop-order-${input.internalOrderId}`,
+    title: notificationSource.tone === "rick" ? "Nuovo ordine Rick" : "Nuovo ordine shop online",
+    totalLabel: formatCurrency(input.totalCents),
+    type: "SHOP_ONLINE_ORDER_RECEIVED"
+  };
+
+  return sendStaffPushNotificationPayload(payload);
+}
+
+export async function sendShopIncomingSalesOrderPushNotification(input: ShopIncomingSalesOrderPushInput) {
+  const notificationSource = resolveShopNotificationSource({
+    customerAccountEmail: input.customerAccountEmail,
+    customerAccountEmailNormalized: input.customerAccountEmailNormalized,
+    customerName: input.customerName,
+    staffEmail: input.staffEmail,
+    staffName: input.staffName,
+    staffNickname: input.staffNickname
+  });
+  const payload: StaffPushNotificationPayload = {
+    body: `${input.customerName} - ${formatCurrency(input.totalCents)}`,
+    href: `/orders/shop-preview/${input.salesOrderId}`,
+    orderCode: input.salesOrderCode,
+    orderId: input.salesOrderId,
+    shopOrderCode: input.salesOrderCode,
+    sourceLabel: notificationSource.label,
+    sourceTone: notificationSource.tone,
+    tag: `28print-shop-incoming-${input.salesOrderId}`,
+    title: notificationSource.tone === "rick" ? "Nuovo ordine Rick" : "Nuovo ordine shop online",
+    totalLabel: formatCurrency(input.totalCents),
+    type: "SHOP_ONLINE_ORDER_RECEIVED"
+  };
+
+  return sendStaffPushNotificationPayload(payload);
 }

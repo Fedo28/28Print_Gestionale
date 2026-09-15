@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
+import { readSession } from "@/lib/auth-core";
 import {
   CUSTOMER_SESSION_COOKIE,
   readCustomerAccountSession
@@ -70,6 +71,7 @@ export async function POST(request: NextRequest) {
   const session = readCustomerAccountSession(
     request.cookies.get(CUSTOMER_SESSION_COOKIE)?.value
   );
+  const staffSession = readSession(request.cookies.get("fede_session")?.value);
 
   if (!session) {
     return NextResponse.json(
@@ -104,7 +106,8 @@ export async function POST(request: NextRequest) {
       billingDetails,
       customerNote: String(body.customerNote || ""),
       sourcePath: String(body.sourcePath || ""),
-      allowPreviewFallback: process.env.NODE_ENV !== "production"
+      allowPreviewFallback: process.env.NODE_ENV !== "production",
+      staffActorUserId: staffSession?.userId
     });
 
     revalidatePath("/shop");
