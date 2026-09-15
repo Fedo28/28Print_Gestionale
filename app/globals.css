@@ -43812,3 +43812,163 @@ button.theme-toggle.toolbar-theme-toggle {
     justify-content: center;
   }
 }
+
+@media (min-width: 1181px) and (max-width: 1366px), (min-width: 1181px) and (max-height: 800px) {
+  html {
+    font-size: 93.75%;
+  }
+
+  .shell {
+    grid-template-columns: 188px minmax(0, 1fr);
+    gap: 14px;
+    padding: 14px;
+  }
+
+  .sidebar {
+    top: 14px;
+    height: calc(100vh - 28px);
+  }
+
+  .sidebar-frame {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .shell .brand {
+    min-height: 132px !important;
+    padding: 10px 8px !important;
+  }
+
+  .shell .brand-logo {
+    width: 104px !important;
+    max-width: 104px !important;
+  }
+
+  .nav-list {
+    gap: 6px;
+    padding-right: 2px;
+  }
+
+  .nav-link {
+    min-height: 38px;
+    gap: 8px;
+    padding: 6px 8px;
+    font-size: 0.86rem;
+  }
+
+  .nav-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 0;
+  }
+
+  .nav-icon .glyph {
+    width: 17px;
+    height: 17px;
+  }
+
+  .shell-stage {
+    gap: 14px;
+    padding: 20px;
+  }
+
+  .shell-stage::before {
+    inset: 10px;
+  }
+
+  .shell .shell-toolbar {
+    gap: 10px;
+    margin: 0 -12px 12px;
+    padding: 12px 12px 10px;
+  }
+
+  .shell .shell-toolbar-search .global-search-grid {
+    gap: 12px;
+  }
+
+  .shell .shell-toolbar-search .global-search-column,
+  .shell .shell-toolbar-search .global-search-form {
+    gap: 5px;
+  }
+
+  .shell .shell-toolbar-search .global-search-label {
+    font-size: 0.66rem;
+  }
+
+  .shell .shell-toolbar-search .global-search-field-shell {
+    min-height: 46px;
+    padding-inline: 10px;
+  }
+
+  .shell .shell-toolbar-search .global-search-field-shell input {
+    min-height: 44px;
+    font-size: 0.92rem;
+  }
+
+  .shell .shell-toolbar-actions {
+    gap: 8px;
+  }
+
+  .shop-notification-trigger.is-detailed,
+  .shell-toolbar-icon-link,
+  .shell-toolbar-link {
+    min-height: 46px;
+  }
+
+  .shop-notification-trigger.is-detailed,
+  .shell-toolbar-icon-link {
+    width: 46px;
+    min-width: 46px;
+  }
+
+  .button,
+  button {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 0.92rem;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 0.92rem;
+  }
+
+  .page-head {
+    gap: 14px;
+    margin-bottom: 8px;
+  }
+
+  .page-head-copy {
+    gap: 6px;
+  }
+
+  .page-head h2 {
+    font-size: clamp(1.9rem, 3vw, 2.45rem);
+  }
+
+  .page-head p {
+    font-size: 0.9rem;
+  }
+
+  .grid,
+  .stack {
+    gap: 14px;
+  }
+
+  .card-pad {
+    padding: clamp(14px, 1.7vw, 18px);
+  }
+
+  .card h3,
+  .card h4 {
+    font-size: 1.14rem;
+  }
+
+  .order-detail-command-title,
+  .dashboard-clean-hero-title,
+  .dashboard-clean-section-title,
+  .production-board-title {
+    font-size: clamp(2.2rem, 4.4vw, 4rem);
+  }
+}
