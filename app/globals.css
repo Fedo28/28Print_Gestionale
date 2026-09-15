@@ -43164,19 +43164,16 @@ button.theme-toggle.toolbar-theme-toggle {
 
 .shop-notification-trigger .shop-notification-badge {
   position: absolute;
-  top: -8px;
-  right: -8px;
+  top: -5px;
+  right: -5px;
   display: inline-grid;
-  min-width: 24px;
-  height: 24px;
+  width: 13px;
+  min-width: 13px;
+  height: 13px;
   place-items: center;
-  padding: 0 7px;
   border: 2px solid #f2f6fb;
   background: #ff5b4d;
   color: #ffffff;
-  font-size: 0.76rem;
-  font-weight: 950;
-  line-height: 1;
 }
 
 .shop-notification-panel {

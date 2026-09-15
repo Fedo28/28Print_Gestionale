@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 type ShopOrderNotificationEntry = {
   id: string;
+  notificationId: string;
   href: string;
   orderCode: string;
   title: string;
@@ -323,32 +324,47 @@ export function ShopOrderNotificationCenter({ compact = false }: { compact?: boo
     }
   }
 
+  function markNotificationRead(notificationId: string) {
+    setOrders((current) => current.filter((order) => order.notificationId !== notificationId));
+    setCount((current) => Math.max(0, current - 1));
+
+    void fetch("/api/orders/shop-online/pending", {
+      body: JSON.stringify({ notificationId }),
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      keepalive: true,
+      method: "POST"
+    });
+  }
+
   const canActivatePush = pushStatus !== "active" && pushStatus !== "unsupported" && pushStatus !== "blocked";
   const pushStatusText = getPushStatusText(pushStatus, permission, pushMessage);
   const hasRickOrders = orders.some((order) => order.sourceTone === "rick");
+  const hasUnreadNotifications = count > 0;
 
   return (
     <div className={`shop-notification-center${compact ? " is-compact" : ""}`}>
       <button
         aria-controls="shop-notification-panel"
         aria-expanded={isOpen}
-        aria-label={count > 0 ? `Notifiche ordini, ${count} ordini da evadere` : "Notifiche ordini"}
-        className={`shop-notification-trigger${compact ? "" : " is-detailed"}${count > 0 ? " has-orders" : ""}${hasRickOrders ? " has-rick-orders" : ""}${pushStatus === "active" ? " is-push-active" : ""}`}
+        aria-label={hasUnreadNotifications ? "Notifiche ordini nuove" : "Notifiche ordini"}
+        className={`shop-notification-trigger${compact ? "" : " is-detailed"}${hasUnreadNotifications ? " has-orders" : ""}${hasRickOrders ? " has-rick-orders" : ""}${pushStatus === "active" ? " is-push-active" : ""}`}
         onClick={() => setIsOpen((current) => !current)}
         type="button"
       >
         <BellIcon />
-        {count > 0 ? <span className="shop-notification-badge">{count}</span> : null}
+        {hasUnreadNotifications ? <span aria-hidden="true" className="shop-notification-badge" /> : null}
       </button>
 
       {isOpen ? (
         <div className="shop-notification-panel" id="shop-notification-panel">
           <div className="shop-notification-head">
             <div>
-              <strong>Notifiche ordini</strong>
-              <span>{count === 1 ? "1 ordine da evadere" : `${count} ordini da evadere`}</span>
+              <strong>Notifiche</strong>
+              <span>Nuovi ordini shop</span>
             </div>
-            <Link href="/orders?shop=online&preset=TO_DO">Vedi tutti</Link>
           </div>
 
           <div className={`shop-notification-push-status is-${pushStatus}`}>
@@ -368,7 +384,15 @@ export function ShopOrderNotificationCenter({ compact = false }: { compact?: boo
           <div className="shop-notification-list">
             {orders.length ? (
               orders.map((order) => (
-                <Link className={`shop-notification-item is-${order.sourceTone}`} href={order.href} key={order.id} onClick={() => setIsOpen(false)}>
+                <Link
+                  className={`shop-notification-item is-${order.sourceTone}`}
+                  href={order.href}
+                  key={order.id}
+                  onClick={() => {
+                    markNotificationRead(order.notificationId);
+                    setIsOpen(false);
+                  }}
+                >
                   <span>{order.shopOrderCode}</span>
                   <strong>{order.customerName}</strong>
                   <small>{order.totalLabel} - {order.createdLabel}</small>

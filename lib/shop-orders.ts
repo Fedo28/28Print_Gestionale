@@ -16,7 +16,7 @@ import {
   sendShopOnlineOrderPushNotification
 } from "@/lib/push-notifications";
 import { getShopServiceByIdForOrderCreation } from "@/lib/shop-catalog";
-import { resolveShopNotificationSource } from "@/lib/shop-notification-source";
+import { createShopSalesOrderNotification } from "@/lib/shop-notification-inbox";
 import { customerShopSalesOrderItemFileSelect } from "@/lib/shop-order-files";
 import {
   buildShopDocumentBundleDetailedSummary,
@@ -819,18 +819,17 @@ async function recordIncomingShopSalesOrderPushNotification(
   order: CustomerShopOrderDetail,
   staffActor: ShopStaffActorNotificationSource
 ) {
-  const notificationSource = resolveShopNotificationSource({
+  const notification = await createShopSalesOrderNotification({
     customerAccountEmail: order.customerAccount?.email,
     customerAccountEmailNormalized: order.customerAccount?.emailNormalized,
     customerName: order.customer.name,
+    salesOrderCode: order.orderCode,
+    salesOrderId: order.id,
     staffEmail: staffActor?.email,
     staffName: staffActor?.name,
-    staffNickname: staffActor?.nickname
+    staffNickname: staffActor?.nickname,
+    totalCents: order.totalCents
   });
-
-  if (notificationSource.tone !== "rick") {
-    return;
-  }
 
   const dedupeKey = `shop.sales_order.staff_push:${order.id}`;
   const existingEvent = await prisma.domainEvent.findUnique({
@@ -866,8 +865,9 @@ async function recordIncomingShopSalesOrderPushNotification(
       update: {
         payloadJson: {
           ...pushResult,
+          notificationEventId: notification.eventId,
           salesOrderId: order.id,
-          sourceTone: notificationSource.tone,
+          sourceTone: notification.source.tone,
           staffActorId: staffActor?.id || null,
           stage: "created"
         },
@@ -881,8 +881,9 @@ async function recordIncomingShopSalesOrderPushNotification(
         dedupeKey,
         payloadJson: {
           ...pushResult,
+          notificationEventId: notification.eventId,
           salesOrderId: order.id,
-          sourceTone: notificationSource.tone,
+          sourceTone: notification.source.tone,
           staffActorId: staffActor?.id || null,
           stage: "created"
         },
@@ -898,8 +899,9 @@ async function recordIncomingShopSalesOrderPushNotification(
       update: {
         payloadJson: {
           error: error instanceof Error ? error.message : "Invio push non riuscito.",
+          notificationEventId: notification.eventId,
           salesOrderId: order.id,
-          sourceTone: notificationSource.tone,
+          sourceTone: notification.source.tone,
           staffActorId: staffActor?.id || null,
           stage: "created"
         },
@@ -913,8 +915,9 @@ async function recordIncomingShopSalesOrderPushNotification(
         dedupeKey,
         payloadJson: {
           error: error instanceof Error ? error.message : "Invio push non riuscito.",
+          notificationEventId: notification.eventId,
           salesOrderId: order.id,
-          sourceTone: notificationSource.tone,
+          sourceTone: notification.source.tone,
           staffActorId: staffActor?.id || null,
           stage: "created"
         },
