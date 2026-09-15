@@ -1707,9 +1707,44 @@ async function ensureCustomer(tx: Prisma.TransactionClient, input: CreateOrderIn
   });
 }
 
+function buildOrderTitleCandidate(baseTitle: string, index: number) {
+  return index <= 1 ? baseTitle : `${baseTitle} (${index})`;
+}
+
+async function resolveUniqueOrderTitleForDay(
+  tx: Prisma.TransactionClient,
+  createdOn: string,
+  baseTitle: string
+) {
+  for (let index = 1; index <= 99; index += 1) {
+    const title = buildOrderTitleCandidate(baseTitle, index);
+    const titleNormalized = normalizeForUniqueness(title);
+    const existing = await tx.order.findUnique({
+      where: {
+        createdOn_titleNormalized: {
+          createdOn,
+          titleNormalized
+        }
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!existing) {
+      return {
+        title,
+        titleNormalized
+      };
+    }
+  }
+
+  throw new Error("Non sono riuscito a creare un titolo ordine disponibile per oggi.");
+}
+
 export async function createOrder(input: CreateOrderInput) {
-  const title = normalizeOrderTitle(input.title);
-  if (!title) {
+  const baseTitle = normalizeOrderTitle(input.title);
+  if (!baseTitle) {
     throw new Error("Il titolo ordine e obbligatorio.");
   }
 
@@ -1720,8 +1755,6 @@ export async function createOrder(input: CreateOrderInput) {
 
   const createdAt = new Date();
   const createdOn = formatDateKey(createdAt);
-  const titleNormalized = normalizeForUniqueness(title);
-  const orderCode = buildOrderCode(createdAt, title);
   const isQuote = Boolean(input.isQuote);
   const financialAdjustments = normalizeOrderFinancialAdjustments({
     globalDiscountMode: input.globalDiscountMode,
@@ -1734,19 +1767,8 @@ export async function createOrder(input: CreateOrderInput) {
   const cleanNotes = input.notes?.trim() || "";
 
   return prisma.$transaction(async (tx) => {
-    const duplicate = await tx.order.findUnique({
-      where: {
-        createdOn_titleNormalized: {
-          createdOn,
-          titleNormalized
-        }
-      }
-    });
-
-    if (duplicate) {
-      throw new Error("Esiste gia un ordine con questo titolo nella data odierna.");
-    }
-
+    const { title, titleNormalized } = await resolveUniqueOrderTitleForDay(tx, createdOn, baseTitle);
+    const orderCode = buildOrderCode(createdAt, title);
     const customer = await ensureCustomer(tx, input);
     const paidCents = Math.min(initialDepositCents, totalCents);
     const balanceDueCents = computeBalanceDue(totalCents, paidCents);
