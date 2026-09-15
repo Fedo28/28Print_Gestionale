@@ -43462,6 +43462,14 @@ button.theme-toggle.toolbar-theme-toggle {
   box-shadow: none !important;
 }
 
+.order-detail-shop-accept-form {
+  display: flex;
+}
+
+.order-detail-shop-accept-form .button {
+  width: 100%;
+}
+
 .order-detail-shop-online-head {
   display: flex;
   flex-wrap: wrap;

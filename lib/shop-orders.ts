@@ -16,7 +16,10 @@ import {
   sendShopOnlineOrderPushNotification
 } from "@/lib/push-notifications";
 import { getShopServiceByIdForOrderCreation } from "@/lib/shop-catalog";
-import { createShopSalesOrderNotification } from "@/lib/shop-notification-inbox";
+import {
+  createShopSalesOrderNotification,
+  SHOP_SALES_ORDER_NOTIFICATION_TOPIC
+} from "@/lib/shop-notification-inbox";
 import { customerShopSalesOrderItemFileSelect } from "@/lib/shop-order-files";
 import {
   buildShopDocumentBundleDetailedSummary,
@@ -582,6 +585,134 @@ async function ensureShopOperationalOrderForSalesOrder(
     created: !existingOrder,
     order
   };
+}
+
+export async function acceptIncomingShopSalesOrder(input: { salesOrderId: string }) {
+  const salesOrderId = String(input.salesOrderId || "").trim();
+  if (!salesOrderId) {
+    throw new Error("Ordine shop non disponibile.");
+  }
+
+  const acceptedAt = new Date();
+  const result = await prisma.$transaction(async (tx) => {
+    const salesOrder = await tx.salesOrder.findFirst({
+      where: {
+        id: salesOrderId,
+        origin: "SHOP_ONLINE"
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            whatsapp: true
+          }
+        },
+        items: {
+          orderBy: [{ createdAt: "asc" }],
+          include: {
+            serviceCatalog: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          }
+        },
+        jobLinks: {
+          orderBy: [{ createdAt: "asc" }],
+          include: {
+            order: {
+              select: {
+                id: true,
+                orderCode: true,
+                title: true
+              }
+            }
+          }
+        },
+        payments: {
+          orderBy: [{ createdAt: "desc" }],
+          select: {
+            id: true,
+            providerCheckoutSessionId: true,
+            providerPaymentIntentId: true,
+            status: true
+          }
+        }
+      }
+    });
+
+    if (!salesOrder || salesOrder.origin !== "SHOP_ONLINE") {
+      throw new Error("Ordine shop non disponibile.");
+    }
+
+    if (!salesOrder.items.length) {
+      throw new Error("Ordine shop senza righe.");
+    }
+
+    if (salesOrder.status !== "PAID") {
+      throw new Error("Ordine shop non ancora pagato.");
+    }
+
+    const linkedOrder = await ensureShopOperationalOrderForSalesOrder(tx, salesOrder, acceptedAt);
+
+    await tx.domainEvent.upsert({
+      where: {
+        dedupeKey: `shop.sales_order.staff_accepted:${salesOrder.id}`
+      },
+      update: {
+        payloadJson: {
+          internalOrderCreated: linkedOrder.created,
+          internalOrderId: linkedOrder.order.id,
+          orderCode: salesOrder.orderCode,
+          salesOrderId: salesOrder.id
+        },
+        processedAt: acceptedAt,
+        status: "PROCESSED"
+      },
+      create: {
+        topic: "shop.sales_order.staff_accepted",
+        entityType: "SalesOrder",
+        entityId: salesOrder.id,
+        dedupeKey: `shop.sales_order.staff_accepted:${salesOrder.id}`,
+        payloadJson: {
+          internalOrderCreated: linkedOrder.created,
+          internalOrderId: linkedOrder.order.id,
+          orderCode: salesOrder.orderCode,
+          salesOrderId: salesOrder.id
+        },
+        processedAt: acceptedAt,
+        status: "PROCESSED"
+      }
+    });
+
+    await tx.domainEvent.updateMany({
+      where: {
+        entityId: salesOrder.id,
+        entityType: "SalesOrder",
+        status: "PENDING",
+        topic: SHOP_SALES_ORDER_NOTIFICATION_TOPIC
+      },
+      data: {
+        processedAt: acceptedAt,
+        status: "PROCESSED"
+      }
+    });
+
+    return {
+      internalOrderCreated: linkedOrder.created,
+      internalOrderHref: `/orders/${linkedOrder.order.id}`,
+      internalOrderId: linkedOrder.order.id,
+      internalOrderLabel: linkedOrder.order.orderCode,
+      salesOrderCode: salesOrder.orderCode,
+      salesOrderId: salesOrder.id
+    };
+  });
+
+  return result;
 }
 
 export async function createShopSalesOrder(input: CreateShopSalesOrderInput) {

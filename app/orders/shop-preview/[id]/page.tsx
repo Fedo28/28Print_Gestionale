@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { acceptShopSalesOrderAction } from "@/app/actions";
 import { HistoryBackButton } from "@/components/history-back-button";
 import { PageHeader } from "@/components/page-header";
 import { formatAttachmentSize } from "@/lib/attachment-utils";
@@ -76,6 +77,7 @@ export default async function ShopOrderPreviewPage({ params }: { params: { id: s
   }
 
   const linkedOrder = salesOrder.jobLinks[0]?.order || null;
+  const canAcceptOrder = !linkedOrder && salesOrder.status === "PAID";
   const documentBundles = salesOrder.items
     .map((item) => extractShopDocumentBundleFromConfiguration(item.configuration, Number(item.quantity)))
     .filter((bundle): bundle is NonNullable<typeof bundle> => Boolean(bundle));
@@ -94,6 +96,14 @@ export default async function ShopOrderPreviewPage({ params }: { params: { id: s
         title="Ordine shop"
         action={
           <div className="order-detail-header-actions order-detail-header-actions-simple">
+            {canAcceptOrder ? (
+              <form action={acceptShopSalesOrderAction} className="order-detail-shop-accept-form">
+                <input name="salesOrderId" type="hidden" value={salesOrder.id} />
+                <button className="button primary" type="submit">
+                  Accetta ordine
+                </button>
+              </form>
+            ) : null}
             {linkedOrder ? (
               <Link className="button primary" href={`/orders/${linkedOrder.id}`}>
                 Apri commessa

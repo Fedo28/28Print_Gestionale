@@ -63,6 +63,7 @@ import { getRequestBaseUrl } from "@/lib/request-url";
 import { saveSetting } from "@/lib/settings";
 import { createRickManualOrderNotification } from "@/lib/shop-notification-inbox";
 import { resolveShopNotificationSource } from "@/lib/shop-notification-source";
+import { acceptIncomingShopSalesOrder } from "@/lib/shop-orders";
 import { cleanupOrderAttachments } from "@/lib/storage";
 import { buildOrderMaterialNoteContent, getOrderMaterialCategoryEntriesFromFormData } from "@/lib/order-material-note";
 import {
@@ -914,6 +915,33 @@ export async function createOrderAction(formData: FormData) {
   }
 
   redirect(`/orders/${order.id}`);
+}
+
+export async function acceptShopSalesOrderAction(formData: FormData) {
+  const session = await requireAuth();
+  const salesOrderId = String(formData.get("salesOrderId") || "").trim();
+  const acceptedOrder = await acceptIncomingShopSalesOrder({ salesOrderId });
+
+  await writeAuditLog({
+    actionType: acceptedOrder.internalOrderCreated ? "CREATED" : "UPDATED",
+    actorUserId: session.userId,
+    entityId: acceptedOrder.internalOrderId,
+    entityLabel: acceptedOrder.internalOrderLabel,
+    entityType: "ORDER",
+    title: "Ordine shop accettato",
+    details: acceptedOrder.salesOrderCode,
+    snapshotAfter: {
+      internalOrderCreated: acceptedOrder.internalOrderCreated,
+      internalOrderHref: acceptedOrder.internalOrderHref,
+      internalOrderId: acceptedOrder.internalOrderId,
+      salesOrderCode: acceptedOrder.salesOrderCode,
+      salesOrderId: acceptedOrder.salesOrderId
+    }
+  });
+
+  revalidateOperationalSurfaces(acceptedOrder.internalOrderId);
+  revalidatePath(`/orders/shop-preview/${acceptedOrder.salesOrderId}`);
+  redirect(acceptedOrder.internalOrderHref);
 }
 
 export async function createQuoteAction(formData: FormData) {
