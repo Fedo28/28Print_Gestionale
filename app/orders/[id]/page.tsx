@@ -304,6 +304,9 @@ export default async function OrderDetailPage({
         <div className="order-detail-command-footer">
           {orderTitlePrimaryAction ? <div className="order-detail-command-primary">{orderTitlePrimaryAction}</div> : null}
           <div className="order-detail-command-tools">
+            <Link className="button ghost order-detail-copy-link" href={`/orders/new?copyFrom=${order.id}`} prefetch={false}>
+              Copia righe
+            </Link>
             <OrderEditToggleButton targetId="order-edit-panel" />
             <OrderHistoryUndoShortcut
               className="button ghost order-history-undo-button"

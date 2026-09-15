@@ -38,6 +38,7 @@ import {
   parseOrderDraftSnapshot,
   type OrderDraftFieldValues,
   type OrderDraftMode,
+  type OrderDraftSeed,
   type OrderDraftSnapshot
 } from "@/lib/order-drafts";
 import {
@@ -210,6 +211,21 @@ function createItemStateFromDraft(item?: Partial<OrderDraftSnapshot["items"][num
     serviceCatalogId: typeof item?.serviceCatalogId === "string" ? item.serviceCatalogId : "",
     priceOverridden: Boolean(item?.priceOverridden)
   };
+}
+
+function createOrderFormFieldsFromSeed(seed?: OrderDraftSeed): OrderDraftFieldValues {
+  return {
+    ...createEmptyOrderDraftFields(),
+    ...(seed?.fields || {})
+  };
+}
+
+function createOrderFormItemsFromSeed(seed?: OrderDraftSeed): ItemState[] {
+  if (!seed?.items.length) {
+    return [emptyItem()];
+  }
+
+  return normalizeEditorItems(seed.items.map((item) => createItemStateFromDraft(item)));
 }
 
 function formatLabelCalculatorDraftValue(value: string) {
@@ -398,12 +414,14 @@ export function OrderForm({
   services,
   action,
   kind = "order",
+  initialDraft,
   initialCustomerId
 }: {
   customers: CustomerWithOrders[];
   services: ServiceCatalog[];
   action: (formData: FormData) => void | Promise<void>;
   kind?: OrderFormMode;
+  initialDraft?: OrderDraftSeed;
   initialCustomerId?: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -412,11 +430,14 @@ export function OrderForm({
   const formMutationFrameRef = useRef<number | null>(null);
   const undoSeededRef = useRef(false);
   const undoRestoringRef = useRef(false);
+  const initialDraftAppliedRef = useRef("");
+  const initialSeedFields = createOrderFormFieldsFromSeed(initialDraft);
+  const initialSeedItems = createOrderFormItemsFromSeed(initialDraft);
   const seededCustomer = initialCustomerId ? customers.find((customer) => customer.id === initialCustomerId) || null : null;
   const [catalogServices, setCatalogServices] = useState<ServiceCatalog[]>(services);
-  const [selectedCustomerId, setSelectedCustomerId] = useState(seededCustomer?.id || "");
-  const [customerQuery, setCustomerQuery] = useState(seededCustomer?.name || "");
-  const [items, setItems] = useState<ItemState[]>([emptyItem()]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState(initialDraft?.selectedCustomerId || seededCustomer?.id || "");
+  const [customerQuery, setCustomerQuery] = useState(initialDraft?.customerQuery || seededCustomer?.name || "");
+  const [items, setItems] = useState<ItemState[]>(initialSeedItems);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [mobileStep, setMobileStep] = useState<MobileOrderStep>("customer");
   const [mobileMeta, setMobileMeta] = useState<MobileOrderMeta>(createEmptyMobileOrderMeta());
@@ -437,9 +458,9 @@ export function OrderForm({
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<string | null>(null);
   const [hasSavedDraft, setHasSavedDraft] = useState(false);
   const [formMutationTick, setFormMutationTick] = useState(0);
-  const [appointmentNoteValue, setAppointmentNoteValue] = useState("");
-  const [globalDiscountValue, setGlobalDiscountValue] = useState("");
-  const [globalExtraValue, setGlobalExtraValue] = useState("");
+  const [appointmentNoteValue, setAppointmentNoteValue] = useState(initialSeedFields.appointmentNote);
+  const [globalDiscountValue, setGlobalDiscountValue] = useState(initialSeedFields.globalDiscount);
+  const [globalExtraValue, setGlobalExtraValue] = useState(initialSeedFields.globalExtra);
   const orderUndo = useUndoHistory<OrderFormUndoSnapshot>({
     limit: 40,
     debounceMs: 220
@@ -460,12 +481,15 @@ export function OrderForm({
   const defaultCustomerType: CustomerType = "PUBBLICO";
   const newOrderInvoiceChoices = ["DA_FATTURARE", "NON_RICHIESTO"] as const;
   const isQuoteMode = kind === "quote";
+  const requiresExistingCustomer = Boolean(initialDraft?.requireExistingCustomer);
   const availableAppointmentNoteOptions = getAppointmentNoteOptions(appointmentNoteValue);
   const draftStorageKey = buildOrderDraftStorageKey(kind as OrderDraftMode);
   const submittedDraftKey = buildOrderDraftSubmittedKey(kind as OrderDraftMode);
   const mobileStepIndex = MOBILE_ORDER_STEPS.findIndex((step) => step.id === mobileStep);
   const isMobileItemSheetOpen = openMobileItemIndex !== null;
   const hasChosenInvoiceStatus = Boolean(mobileMeta.invoiceStatus.trim());
+  const hasRequiredCustomer = !requiresExistingCustomer || Boolean(selectedCustomerId);
+  const canSubmitOrderForm = hasChosenInvoiceStatus && hasRequiredCustomer;
   const isGuidedExperience = ORDER_FORM_EXPERIENCE === "guided";
 
   function addEmptyItemLine(options?: { bodyMode?: boolean }) {
@@ -894,6 +918,50 @@ export function OrderForm({
       return;
     }
 
+    if (initialDraft) {
+      if (initialDraftAppliedRef.current === initialDraft.sourceId) {
+        return;
+      }
+
+      const seedFields = createOrderFormFieldsFromSeed(initialDraft);
+      const nextSeededCustomer =
+        initialDraft.selectedCustomerId && customers.some((customer) => customer.id === initialDraft.selectedCustomerId)
+          ? initialDraft.selectedCustomerId
+          : "";
+
+      initialDraftAppliedRef.current = initialDraft.sourceId;
+      undoSeededRef.current = false;
+      window.localStorage.removeItem(draftStorageKey);
+      window.sessionStorage.removeItem(submittedDraftKey);
+      window.dispatchEvent(new Event(ORDER_DRAFT_STORAGE_EVENT));
+      setSelectedCustomerId(nextSeededCustomer);
+      setCustomerQuery(initialDraft.customerQuery || "");
+      setAppointmentNoteValue(seedFields.appointmentNote);
+      setGlobalDiscountValue(seedFields.globalDiscount);
+      setGlobalExtraValue(seedFields.globalExtra);
+      setItems(createOrderFormItemsFromSeed(initialDraft));
+      setMobileStep("customer");
+      setOpenMobileItemIndex(null);
+      setOpenDesktopItemIndex(0);
+      setActiveServiceField(null);
+      setOpenTierIndex(null);
+      setCatalogDraftRowIndex(null);
+      setCatalogDraft(createEmptyInlineCatalogDraft());
+      setCatalogDraftMessage(null);
+      setLabelCalculatorRowIndex(null);
+      setLabelCalculatorDraft(createEmptyLabelCalculatorDraft());
+      setHasSavedDraft(false);
+      setLastDraftSavedAt(null);
+      setDraftRestoredAt(null);
+
+      window.setTimeout(() => {
+        applyDraftFields(seedFields);
+        setDraftHydrated(true);
+        syncMobileMetaFromForm();
+      }, 0);
+      return;
+    }
+
     if (window.sessionStorage.getItem(submittedDraftKey) === "1") {
       window.localStorage.removeItem(draftStorageKey);
       window.sessionStorage.removeItem(submittedDraftKey);
@@ -939,7 +1007,7 @@ export function OrderForm({
       setDraftHydrated(true);
       syncMobileMetaFromForm();
     }, 0);
-  }, [customers, draftStorageKey, kind, submittedDraftKey]);
+  }, [customers, draftStorageKey, initialDraft, kind, submittedDraftKey]);
 
   useEffect(() => {
     return () => {
@@ -2382,7 +2450,8 @@ export function OrderForm({
                   setSelectedCustomerId(customer.id);
                   setCustomerQuery(customer.name);
                 }}
-                placeholder=""
+                emptyMessage={requiresExistingCustomer ? "Nessun cliente salvato trovato." : "Nessun cliente trovato."}
+                placeholder={requiresExistingCustomer ? "Cerca cliente salvato" : ""}
                 query={customerQuery}
                 required
                 selectedCustomerId={selectedCustomerId}
@@ -2403,7 +2472,7 @@ export function OrderForm({
                       }}
                       type="button"
                     >
-                      Crea nuovo
+                      {requiresExistingCustomer ? "Cambia" : "Crea nuovo"}
                     </button>
                   </div>
                   <div className="subtle">{getPreferredCustomerPrimaryContact(selectedCustomer)}</div>
@@ -2411,7 +2480,13 @@ export function OrderForm({
                 </div>
               ) : null}
 
-              {selectedCustomerId ? null : (
+              {!selectedCustomerId && requiresExistingCustomer ? (
+                <div className="mini-item customer-selection-card field full order-copy-customer-hint">
+                  <strong>Seleziona un cliente salvato</strong>
+                </div>
+              ) : null}
+
+              {selectedCustomerId || requiresExistingCustomer ? null : (
                 <>
                   <input name="customerName" type="hidden" value={trimmedCustomerQuery} />
                   <div className="field">
@@ -2986,7 +3061,7 @@ export function OrderForm({
         <div className="button-row order-submit-action-cluster">
           <button
             className="secondary"
-            disabled={!hasChosenInvoiceStatus}
+            disabled={!canSubmitOrderForm}
             name="postSubmitAction"
             type="submit"
             value="new"
@@ -2995,7 +3070,7 @@ export function OrderForm({
           </button>
           <button
             className="primary"
-            disabled={!hasChosenInvoiceStatus}
+            disabled={!canSubmitOrderForm}
             name="postSubmitAction"
             type="submit"
             value="detail"
@@ -3058,7 +3133,7 @@ export function OrderForm({
             <>
               <button
                 className="secondary"
-                disabled={!hasChosenInvoiceStatus}
+                disabled={!canSubmitOrderForm}
                 name="postSubmitAction"
                 type="submit"
                 value="new"
@@ -3067,7 +3142,7 @@ export function OrderForm({
               </button>
               <button
                 className="primary"
-                disabled={!hasChosenInvoiceStatus}
+                disabled={!canSubmitOrderForm}
                 name="postSubmitAction"
                 type="submit"
                 value="detail"
@@ -3078,6 +3153,7 @@ export function OrderForm({
           ) : (
             <button
               className="primary"
+              disabled={mobileStep === "customer" && !hasRequiredCustomer}
               onClick={() => {
                 if (mobileStepIndex >= MOBILE_ORDER_STEPS.length - 1) {
                   return;

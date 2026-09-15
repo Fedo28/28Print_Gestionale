@@ -24,6 +24,7 @@ import {
 import { getDisplayOrderLabel } from "@/lib/order-display";
 import { getOrderToQuoteDisabledReason } from "@/lib/order-quote";
 import { canTransitionPhase } from "@/lib/order-phase-transitions";
+import { createEmptyOrderDraftFields, type OrderDraftItemSnapshot, type OrderDraftSeed } from "@/lib/order-drafts";
 import { formatCompactDate, formatCurrency, formatDateKey, formatQuantity, formatWeekdayLabel } from "@/lib/format";
 import { comparePriorityDesc, computeAutomaticPriority } from "@/lib/priorities";
 import { type ServiceUnitValue, parseServiceUnit } from "@/lib/service-units";
@@ -4615,6 +4616,109 @@ export async function getOrderById(id: string) {
   }
 
   return withEffectiveOrderPriority(order);
+}
+
+function formatOrderCopyCurrencyInput(cents: number | null | undefined) {
+  const safeCents = Number.isFinite(cents) ? Math.max(0, Math.round(Number(cents))) : 0;
+  return safeCents > 0 ? (safeCents / 100).toFixed(2).replace(".", ",") : "";
+}
+
+function formatOrderCopyAdjustmentInput(mode: DiscountMode, value: number) {
+  return formatOrderFinancialAdjustmentInput(mode, value);
+}
+
+function isPhotographyCatalogService(service: { code: string | null; name: string } | null | undefined) {
+  return String(service?.code || "").startsWith("FOTOGRAFIE_");
+}
+
+function getPhotographyFormatFromService(service: { name: string } | null | undefined, fallbackFormat: string | null | undefined) {
+  const fromFormat = String(fallbackFormat || "").trim();
+  if (fromFormat) {
+    return fromFormat;
+  }
+
+  return String(service?.name || "")
+    .replace(/^Fotografie\s*-\s*/i, "")
+    .trim();
+}
+
+export async function getOrderCopyDraftSource(id: string): Promise<(OrderDraftSeed & { lineCount: number }) | null> {
+  const order = await prisma.order.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      orderCode: true,
+      title: true,
+      items: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          label: true,
+          quantity: true,
+          catalogBasePriceCents: true,
+          discountMode: true,
+          discountValue: true,
+          extraMode: true,
+          extraValue: true,
+          unitPriceCents: true,
+          format: true,
+          material: true,
+          finishing: true,
+          notes: true,
+          serviceCatalogId: true,
+          serviceCatalog: {
+            select: {
+              id: true,
+              code: true,
+              name: true
+            }
+          }
+        }
+      }
+    }
+  });
+
+  if (!order) {
+    return null;
+  }
+
+  const items: OrderDraftItemSnapshot[] = order.items.map((item) => {
+    const isPhotographyRow = isPhotographyCatalogService(item.serviceCatalog);
+    const hasCatalogService = Boolean(item.serviceCatalogId && item.serviceCatalog);
+    const copiedLabel = item.serviceCatalog?.name || item.label;
+    const serviceQuery = isPhotographyRow ? "Fotografie" : copiedLabel;
+
+    return {
+      bodyMode: !hasCatalogService,
+      serviceQuery,
+      photoMode: isPhotographyRow,
+      photoFormat: isPhotographyRow ? getPhotographyFormatFromService(item.serviceCatalog, item.format) : "",
+      label: isPhotographyRow ? "Fotografie" : copiedLabel,
+      quantity: formatQuantity(Number(item.quantity) || 1),
+      unitPrice: formatOrderCopyCurrencyInput(item.catalogBasePriceCents ?? item.unitPriceCents),
+      discountMode: item.discountMode,
+      discountValue: formatOrderCopyAdjustmentInput(item.discountMode, item.discountValue),
+      extraMode: item.extraMode,
+      extraValue: formatOrderCopyAdjustmentInput(item.extraMode, item.extraValue),
+      format: item.format || "",
+      material: item.material || "",
+      finishing: item.finishing || "",
+      notes: item.notes || "",
+      serviceCatalogId: hasCatalogService ? item.serviceCatalogId || "" : "",
+      priceOverridden: true
+    };
+  });
+
+  return {
+    sourceId: `order-copy:${order.id}`,
+    sourceLabel: getDisplayOrderLabel(order.orderCode, order.title),
+    selectedCustomerId: "",
+    customerQuery: "",
+    fields: createEmptyOrderDraftFields(),
+    items,
+    lineCount: items.length,
+    requireExistingCustomer: true
+  };
 }
 
 export async function getCalendarOrders() {

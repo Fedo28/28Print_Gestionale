@@ -6330,6 +6330,25 @@ button.danger {
   padding: 0 12px;
 }
 
+.order-copy-source-banner {
+  border-radius: 0;
+}
+
+.order-copy-source-banner strong {
+  color: #152235;
+}
+
+.order-copy-customer-hint {
+  border-left: 5px solid var(--order-entry-blue) !important;
+  background: #eef4ff !important;
+}
+
+.order-detail-copy-link {
+  border-color: #d9ff3f !important;
+  background: #f6ffd5 !important;
+  color: #1c2a00 !important;
+}
+
 .order-sheet-grid {
   align-items: start;
 }

@@ -50,6 +50,16 @@ export type OrderDraftSnapshot = {
   items: OrderDraftItemSnapshot[];
 };
 
+export type OrderDraftSeed = {
+  sourceId: string;
+  sourceLabel: string;
+  selectedCustomerId?: string;
+  customerQuery?: string;
+  fields: OrderDraftFieldValues;
+  items: OrderDraftItemSnapshot[];
+  requireExistingCustomer?: boolean;
+};
+
 export const ORDER_DRAFT_STORAGE_EVENT = "gestionale:order-draft-changed";
 
 export const ORDER_DRAFT_FIELD_NAMES = [
