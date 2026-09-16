@@ -1,4 +1,5 @@
 export type ShopCategoryProduct = {
+  href?: string;
   label: string;
   note?: string;
   ready?: boolean;
@@ -17,7 +18,7 @@ export const shopHomeCategories: ShopHomeCategory[] = [
     accent: "cyan",
     imageSrc: "/shop/category-business-mockup.svg",
     products: [
-      { label: "Biglietti da visita", note: "Formato, carta, quantità" },
+      { href: "/shop/servizi/biglietti-da-visita", label: "Biglietti da visita", note: "Formato, carta, quantità", ready: true },
       { label: "Volantini e locandine", note: "A6, A5, A4, A3" },
       { label: "Roll-up", note: "Completo o solo stampa" },
       { label: "Banner e striscioni", note: "Misure e finiture" },

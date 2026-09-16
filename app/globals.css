@@ -43101,21 +43101,13 @@ button.theme-toggle.toolbar-theme-toggle {
   }
 }
 
-/* Shop integration */
-:root {
+/* Shop-to-management integration only. Public shop styles live in app/shop/shop.css. */
+.shell[data-ui-scope="management"] {
   --shop-lime-flat: #d9ff3f;
   --shop-lime-card: #efff96;
   --shop-lime-soft: #f7ffd8;
   --shop-lime-ink: #122000;
   --shop-lime-muted: #385800;
-}
-
-.shop-route-layout {
-  min-height: 100vh;
-  background:
-    linear-gradient(116deg, rgba(255, 255, 255, 0.98) 0 64%, rgba(217, 255, 63, 0.18) 64% 100%),
-    repeating-linear-gradient(90deg, rgba(21, 34, 53, 0.04) 0 1px, transparent 1px 20px),
-    #f2f6fb;
 }
 
 .shell-toolbar-actions .shop-notification-center {

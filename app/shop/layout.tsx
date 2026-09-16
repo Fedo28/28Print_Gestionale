@@ -5,7 +5,9 @@ import { lockShopBetaAccessAction, logoutCustomerAccountAction } from "@/app/sho
 import { ShopBetaAccessForm } from "@/components/shop-beta-access-form";
 import { getCustomerAccountSession } from "@/lib/customer-account-auth";
 import { getShopBetaGateState } from "@/lib/shop-beta-gate";
-import brandLogo from "@/logo.png";
+import "./shop.css";
+
+const shopAppLogo = "/shop/shop-app-logo.png";
 
 function MenuGlyph() {
   return (
@@ -55,11 +57,15 @@ export default function ShopLayout({ children }: { children: ReactNode }) {
       <header className="shop-shell-header">
         <div className="shop-shell-bar">
           <Link aria-label="Vai alla home shop" className="shop-shell-home" href="/shop">
-            <Image alt="28 Print" className="shop-shell-home-logo" priority sizes="56px" src={brandLogo} />
-            <div className="shop-shell-home-copy">
-              <strong>Shop</strong>
-              <p>Immagina, crea, personalizza</p>
-            </div>
+            <Image
+              alt="28 Print"
+              className="shop-shell-home-logo shop-shell-app-logo"
+              height={183}
+              priority
+              sizes="(max-width: 640px) 210px, 250px"
+              src={shopAppLogo}
+              width={800}
+            />
           </Link>
 
           <details className="shop-shell-menu">
@@ -78,7 +84,7 @@ export default function ShopLayout({ children }: { children: ReactNode }) {
               <a className="shop-shell-link" href="https://www.28print.it/" rel="noreferrer" target="_blank">
                 Vai al sito
               </a>
-              {betaGate.enabled && betaGate.allowed ? (
+              {betaGate.enabled && betaGate.allowed && !betaGate.staffPreview ? (
                 <form action={lockShopBetaAccessAction}>
                   <button className="button ghost shop-shell-menu-button" type="submit">
                     Blocca beta
@@ -117,7 +123,14 @@ export default function ShopLayout({ children }: { children: ReactNode }) {
 
       <footer className="shop-shell-footer shop-shell-footer-minimal">
         <Link aria-label="Vai alla home shop" className="shop-shell-footer-brand" href="/shop">
-          <Image alt="28 Print" className="shop-shell-footer-logo" sizes="48px" src={brandLogo} />
+          <Image
+            alt="28 Print"
+            className="shop-shell-footer-logo shop-shell-footer-app-logo"
+            height={183}
+            sizes="160px"
+            src={shopAppLogo}
+            width={800}
+          />
           <div>
             <strong>Shop</strong>
             <p>shop.28print.it</p>

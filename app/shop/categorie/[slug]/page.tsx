@@ -35,13 +35,18 @@ export default function ShopCategoryPage({ params }: { params: { slug: string } 
 
       <section className="shop-category-product-grid" aria-label={`Prodotti ${category.title}`}>
         {category.products.map((product) => (
-          <article className="shop-category-product-card" key={product.label}>
+          <Link
+            aria-disabled={!product.href}
+            className={`shop-category-product-card${product.href ? " is-ready" : " is-muted"}`}
+            href={product.href || `/shop/categorie/${category.slug}`}
+            key={product.label}
+          >
             <div>
               <strong>{product.label}</strong>
               {product.note ? <span>{product.note}</span> : null}
             </div>
-            <em>{product.ready ? "Apri" : "In preparazione"}</em>
-          </article>
+            <em>{product.href || product.ready ? "Apri" : "In preparazione"}</em>
+          </Link>
         ))}
       </section>
     </div>

@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 const SHOP_BETA_ACCESS_COOKIE = "fede_shop_beta_access";
 const SHOP_BETA_ACCESS_PATH = "/shop/accesso-beta";
 const SHOP_BETA_SCOPE = "shop-beta";
+const STAFF_SESSION_COOKIE = "fede_session";
+const STAFF_PREVIEW_ROLES = new Set(["ADMIN", "OPERATOR"]);
 const SHOP_PUBLIC_ASSET_EXTENSION_PATTERN =
   /\.(?:avif|gif|ico|jpg|jpeg|png|svg|webp|css|js|map|txt|xml|webmanifest|woff|woff2)$/i;
 
@@ -53,7 +55,7 @@ async function signPayload(encodedPayload: string) {
   return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function readVerifiedBetaPayload(cookieValue?: string | null) {
+async function readVerifiedPayload(cookieValue?: string | null) {
   if (!cookieValue) {
     return null;
   }
@@ -69,11 +71,7 @@ async function readVerifiedBetaPayload(cookieValue?: string | null) {
   }
 
   try {
-    const payload = JSON.parse(decodeBase64Url(encodedPayload)) as {
-      codeHash?: unknown;
-      exp?: unknown;
-      scope?: unknown;
-    };
+    const payload = JSON.parse(decodeBase64Url(encodedPayload)) as Record<string, unknown>;
 
     if (typeof payload.exp !== "number" || payload.exp < Date.now()) {
       return null;
@@ -85,8 +83,21 @@ async function readVerifiedBetaPayload(cookieValue?: string | null) {
   }
 }
 
+async function hasStaffPreviewSession(request: NextRequest) {
+  const payload = await readVerifiedPayload(request.cookies.get(STAFF_SESSION_COOKIE)?.value);
+  return Boolean(
+    typeof payload?.userId === "string" &&
+      typeof payload.role === "string" &&
+      STAFF_PREVIEW_ROLES.has(payload.role)
+  );
+}
+
 async function hasShopBetaAccess(request: NextRequest) {
   if (!isTruthyEnv(process.env.SHOP_BETA_LOCKED)) {
+    return true;
+  }
+
+  if (await hasStaffPreviewSession(request)) {
     return true;
   }
 
@@ -95,7 +106,7 @@ async function hasShopBetaAccess(request: NextRequest) {
     return false;
   }
 
-  const payload = await readVerifiedBetaPayload(request.cookies.get(SHOP_BETA_ACCESS_COOKIE)?.value);
+  const payload = await readVerifiedPayload(request.cookies.get(SHOP_BETA_ACCESS_COOKIE)?.value);
   return payload?.scope === SHOP_BETA_SCOPE && payload.codeHash === (await sha256Hex(betaCode));
 }
 

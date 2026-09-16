@@ -201,15 +201,27 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [isMobileSearchOpen]);
 
   if (isLoginRoute) {
-    return <main className="auth-layout">{children}</main>;
+    return (
+      <main className="auth-layout" data-ui-scope="auth">
+        {children}
+      </main>
+    );
   }
 
   if (isPrintRoute) {
-    return <main className="print-route-layout">{children}</main>;
+    return (
+      <main className="print-route-layout" data-ui-scope="print">
+        {children}
+      </main>
+    );
   }
 
   if (isShopRoute) {
-    return <main className="shop-route-layout">{children}</main>;
+    return (
+      <main className="shop-route-layout" data-ui-scope="shop">
+        {children}
+      </main>
+    );
   }
 
   function handleCloseMobileNav() {
@@ -299,7 +311,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className={`shell page-tone-${activeNavItem.tone}`}>
+    <div className={`shell page-tone-${activeNavItem.tone}`} data-ui-scope="management">
       <aside className="sidebar">
         <div className="sidebar-frame">
           <div className="sidebar-brand-panel">

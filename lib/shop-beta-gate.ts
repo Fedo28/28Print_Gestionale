@@ -2,13 +2,16 @@ import { createHash, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import {
   readExpiringSignedPayload,
+  readSession,
   serializeExpiringSignedPayload
 } from "@/lib/auth-core";
 
 export const SHOP_BETA_ACCESS_COOKIE = "fede_shop_beta_access";
+const STAFF_SESSION_COOKIE = "fede_session";
 
 const SHOP_BETA_ACCESS_DURATION_SECONDS = 60 * 60 * 24 * 30;
 const SHOP_BETA_SCOPE = "shop-beta";
+const STAFF_PREVIEW_ROLES = new Set(["ADMIN", "OPERATOR"]);
 
 type ShopBetaAccessPayload = {
   codeHash: string;
@@ -20,6 +23,7 @@ export type ShopBetaGateState = {
   allowed: boolean;
   configured: boolean;
   enabled: boolean;
+  staffPreview: boolean;
 };
 
 function isTruthyEnv(value?: string | null) {
@@ -53,6 +57,19 @@ function getCookieValue(cookieValue?: string | null) {
   return cookies().get(SHOP_BETA_ACCESS_COOKIE)?.value;
 }
 
+function getStaffSessionCookieValue(cookieValue?: string | null) {
+  if (typeof cookieValue !== "undefined") {
+    return cookieValue;
+  }
+
+  return cookies().get(STAFF_SESSION_COOKIE)?.value;
+}
+
+function hasStaffPreviewAccess(cookieValue?: string | null) {
+  const session = readSession(getStaffSessionCookieValue(cookieValue));
+  return Boolean(session?.userId && STAFF_PREVIEW_ROLES.has(session.role));
+}
+
 export function isShopBetaGateEnabled() {
   return isTruthyEnv(process.env.SHOP_BETA_LOCKED);
 }
@@ -61,12 +78,23 @@ export function getShopBetaGateState(cookieValue?: string | null): ShopBetaGateS
   const enabled = isShopBetaGateEnabled();
   const betaCode = readShopBetaCode();
   const configured = Boolean(betaCode);
+  const staffPreview = hasStaffPreviewAccess();
 
   if (!enabled) {
     return {
       allowed: true,
       configured,
-      enabled
+      enabled,
+      staffPreview
+    };
+  }
+
+  if (staffPreview) {
+    return {
+      allowed: true,
+      configured,
+      enabled,
+      staffPreview
     };
   }
 
@@ -74,7 +102,8 @@ export function getShopBetaGateState(cookieValue?: string | null): ShopBetaGateS
     return {
       allowed: false,
       configured,
-      enabled
+      enabled,
+      staffPreview
     };
   }
 
@@ -84,7 +113,8 @@ export function getShopBetaGateState(cookieValue?: string | null): ShopBetaGateS
   return {
     allowed,
     configured,
-    enabled
+    enabled,
+    staffPreview
   };
 }
 
