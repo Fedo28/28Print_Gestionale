@@ -1118,6 +1118,8 @@
   padding-bottom: 8px;
   scroll-padding-left: 2px;
   scroll-snap-type: x proximity;
+  overscroll-behavior-inline: contain;
+  touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -1418,6 +1420,9 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+  max-height: min(62vh, 620px);
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .shop-route-layout[data-ui-scope="shop"] .shop-business-card-option,
@@ -1460,6 +1465,16 @@
 .shop-route-layout[data-ui-scope="shop"] .shop-business-card-option:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.shop-route-layout[data-ui-scope="shop"] .shop-business-card-empty {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-left: 6px solid var(--shop-red);
+  background: rgba(255, 91, 77, 0.12);
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 950;
+  padding: 16px;
 }
 
 .shop-route-layout[data-ui-scope="shop"] .shop-business-card-quantity-grid {

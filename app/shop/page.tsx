@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { ShopWheelCarousel } from "@/components/shop-wheel-carousel";
 import { listShopHomeCategories } from "@/lib/shop-categories";
 
 export const dynamic = "force-dynamic";
@@ -94,7 +95,7 @@ export default async function ShopHomePage() {
               <h2>{category.title}</h2>
             </div>
 
-            <div className="shop-home-carousel" aria-label={`Servizi ${category.title}`}>
+            <ShopWheelCarousel className="shop-home-carousel" ariaLabel={`Servizi ${category.title}`}>
               {category.products.map((product) => (
                 <Link
                   className="shop-home-service-pill"
@@ -104,7 +105,7 @@ export default async function ShopHomePage() {
                   <span>{product.label}</span>
                 </Link>
               ))}
-            </div>
+            </ShopWheelCarousel>
           </section>
         ))}
       </section>
