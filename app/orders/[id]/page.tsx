@@ -25,7 +25,7 @@ import { DeleteOrderForm } from "@/components/delete-order-form";
 import { HistoryBackButton } from "@/components/history-back-button";
 import { MaterialCategorySelectorField } from "@/components/material-category-selector-field";
 import { OrderHistoryUndoShortcut } from "@/components/order-history-undo-shortcut";
-import { OrderPrintBrandMenu } from "@/components/order-print-brand-menu";
+import { OrderPrintButton } from "@/components/order-print-button";
 import { OrderCustomerSwitchForm } from "@/components/order-customer-switch-form";
 import { OrderItemEditorForm } from "@/components/order-item-editor-form";
 import { OrderEditToggleButton } from "@/components/order-edit-toggle-button";
@@ -250,7 +250,7 @@ export default async function OrderDetailPage({
         title={pageTitle}
         action={
           <div className="order-detail-header-actions order-detail-header-actions-simple">
-            <OrderPrintBrandMenu orderId={order.id} />
+            <OrderPrintButton orderId={order.id} />
             <HistoryBackButton
               className="button ghost"
               fallbackHref={order.isQuote ? "/quotes" : order.mainPhase === "CONSEGNATO" ? "/orders?view=DELIVERED" : "/orders"}

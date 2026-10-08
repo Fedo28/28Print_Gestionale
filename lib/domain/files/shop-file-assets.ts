@@ -1,7 +1,7 @@
 import { ATTACHMENT_MAX_SIZE_BYTES, sanitizeAttachmentFileName } from "@/lib/attachment-utils";
 
-export const SHOP_FILE_ALLOWED_EXTENSIONS = [".pdf", ".jpg", ".jpeg"] as const;
-export const SHOP_FILE_ALLOWED_MIME_TYPES = ["application/pdf", "image/jpeg"] as const;
+export const SHOP_FILE_ALLOWED_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png"] as const;
+export const SHOP_FILE_ALLOWED_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png"] as const;
 export const SHOP_FILE_DEFAULT_RETENTION_DAYS = 60;
 export const SHOP_FILE_MAX_SIZE_BYTES = ATTACHMENT_MAX_SIZE_BYTES;
 
@@ -58,7 +58,7 @@ export function validateShopFileCandidate(input: ShopFileCandidate): ShopFileCan
   }
 
   if (!isShopFileExtensionAllowed(normalizedFileName)) {
-    errors.push("Formato file non supportato. Usa PDF o JPG.");
+    errors.push("Formato file non supportato. Usa PDF, JPG o PNG.");
   }
 
   if (!isShopFileMimeTypeAllowed(normalizedMimeType)) {

@@ -104,7 +104,7 @@ export function ShopOrderFileUploadForm({
   async function uploadQueuedFiles() {
     const queue = queuedFiles.filter((entry) => entry.status === "queued" || entry.status === "error");
     if (!queue.length) {
-      setError("Seleziona almeno un PDF o JPG prima di caricare i file.");
+      setError("Seleziona almeno un PDF, JPG o PNG prima di caricare i file.");
       return;
     }
 
@@ -211,7 +211,7 @@ export function ShopOrderFileUploadForm({
             type="file"
           />
           <strong>Carica file di stampa</strong>
-          <div className="hint">PDF o JPG, max {formatAttachmentMaxSize(SHOP_FILE_MAX_SIZE_BYTES)}</div>
+          <div className="hint">PDF, JPG o PNG, max {formatAttachmentMaxSize(SHOP_FILE_MAX_SIZE_BYTES)}</div>
         </label>
 
         {queuedFiles.length ? (

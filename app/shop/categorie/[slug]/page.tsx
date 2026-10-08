@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { getShopHomeCategory } from "@/lib/shop-categories";
 
@@ -37,10 +38,20 @@ export default function ShopCategoryPage({ params }: { params: { slug: string } 
         {category.products.map((product) => (
           <Link
             aria-disabled={!product.href}
-            className={`shop-category-product-card${product.href ? " is-ready" : " is-muted"}`}
+            className={`shop-category-product-card${product.href ? " is-ready" : " is-muted"}${product.imageSrc ? " is-visual" : ""}${product.secondaryImageSrc ? " has-secondary-image" : ""}`}
             href={product.href || `/shop/categorie/${category.slug}`}
             key={product.label}
           >
+            {product.imageSrc ? (
+              <span className="shop-category-product-card-media is-primary" aria-hidden="true">
+                <Image alt="" fill sizes="(max-width: 760px) 100vw, 360px" src={product.imageSrc} />
+              </span>
+            ) : null}
+            {product.secondaryImageSrc ? (
+              <span className="shop-category-product-card-media is-secondary" aria-hidden="true">
+                <Image alt="" fill sizes="(max-width: 760px) 50vw, 180px" src={product.secondaryImageSrc} />
+              </span>
+            ) : null}
             <div>
               <strong>{product.label}</strong>
               {product.note ? <span>{product.note}</span> : null}

@@ -18,4 +18,5 @@
 - Attività: archivio operativo con segnali rapidi, filtri area/tipo, timeline raggruppata per giorno e cestino coerente; rosso solo per eliminazioni, lime per ripristini.
 - Login e cronologia ordini: accesso ripulito senza note interne; cronologia ordini trasformata in timeline unica con segnali, filtri per tipo modifica e azioni di ripristino nel punto giusto.
 - Prossima sessione: rivedere catalogo prezzi e quantita; il lavoro e importante e va affrontato con calma prima di riaprire lo shop.
+- Idea futura: agenda personale per ogni utente del gestionale, con appuntamenti lavorativi interni e possibile integrazione Google Calendar; valutare sincronizzazione bidirezionale e uso AI/Gemini solo come assistente di lettura/riordino, non come fonte primaria dei dati.
 - Scheda ordine: aggiunto flusso `Copia righe`; precompila solo le lavorazioni in nuovo ordine e richiede la selezione di un cliente gia salvato.

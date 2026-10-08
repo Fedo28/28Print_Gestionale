@@ -97,17 +97,15 @@ export function ShopBusinessCardConfigurator({ options }: ShopBusinessCardConfig
           </div>
         </div>
 
-        <aside className="shop-business-card-summary" aria-label="Riepilogo biglietti da visita">
-          <div>
+        <aside className="shop-business-card-summary shop-catalog-order-summary" aria-label="Riepilogo biglietti da visita">
+          <div className="shop-catalog-summary-total">
             <span>Totale</span>
             <strong>{selectedQuantityOption ? formatPrice(selectedQuantityOption.priceCents) : "Da verificare"}</strong>
           </div>
-          <div>
+          <div className="shop-catalog-summary-detail shop-catalog-summary-choice">
             <span>Scelta</span>
-            <strong>
-              {selectedOption?.label || "Biglietti da visita"}
-              {selectedQuantityOption ? ` · ${selectedQuantityOption.quantity} pz` : ""}
-            </strong>
+            <strong>{selectedOption?.label || "Biglietti da visita"}</strong>
+            {selectedQuantityOption ? <em>{selectedQuantityOption.quantity} pz</em> : null}
           </div>
         </aside>
       </div>

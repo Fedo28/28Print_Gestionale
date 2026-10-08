@@ -9,13 +9,15 @@ import { buildCatalogServicePricingSnapshot, quoteCatalogService } from "@/lib/d
 import { formatDateKey } from "@/lib/format";
 import { buildOrderCode, normalizeForUniqueness } from "@/lib/orders";
 import { computeAutomaticPriority } from "@/lib/priorities";
-import { normalizeQuantityValue } from "@/lib/pricing";
+import { computeEffectiveUnitPriceCents, normalizeQuantityValue } from "@/lib/pricing";
 import { prisma } from "@/lib/prisma";
-import {
-  sendShopIncomingSalesOrderPushNotification,
-  sendShopOnlineOrderPushNotification
-} from "@/lib/push-notifications";
+import { sendShopOnlineOrderPushNotification } from "@/lib/push-notifications";
 import { getShopServiceByIdForOrderCreation } from "@/lib/shop-catalog";
+import {
+  applyShopCatalogPriceMultiplier,
+  resolveShopCatalogCustomization,
+  type ShopCatalogSelectionInput
+} from "@/lib/shop-catalog-customizations";
 import {
   createShopSalesOrderNotification,
   SHOP_SALES_ORDER_NOTIFICATION_TOPIC
@@ -238,7 +240,9 @@ export type CreateShopSalesOrderInput = {
   invoiceRequested?: boolean;
   billingDetails?: CreateShopSalesOrderBillingInput | null;
   customerNote?: string | null;
+  catalogSelection?: ShopCatalogSelectionInput | null;
   sourcePath?: string | null;
+  orderKind?: "catalog" | "documents" | null;
   allowPreviewFallback?: boolean;
   staffActorUserId?: string | null;
 };
@@ -262,12 +266,47 @@ export type CreateShopSalesOrderBillingInput = {
   vatNumber?: string | null;
 };
 
-type ShopStaffActorNotificationSource = {
-  email: string;
-  id: string;
-  name: string;
-  nickname: string;
-} | null;
+function mergeCatalogCustomizationSummary(baseSummary: string, trustedLines: string[]) {
+  if (!trustedLines.length) {
+    return baseSummary;
+  }
+
+  const baseLines = baseSummary
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^Carta:/i.test(line) && !/^Supplemento carta:/i.test(line))
+    .filter(
+      (line) =>
+        !/^Materiale:/i.test(line) &&
+        !/^Misure:/i.test(line) &&
+        !/^Formato etichetta:/i.test(line) &&
+        !/^Etichette:/i.test(line) &&
+        !/^Area:/i.test(line) &&
+        !/^Area calcolo:/i.test(line) &&
+        !/^Area (?:fatturata|conteggiata):/i.test(line) &&
+        !/^Impianto:/i.test(line) &&
+        !/^Occhielli:/i.test(line) &&
+        !/^Rinforzo:/i.test(line)
+    )
+    .filter(
+      (line) =>
+        !/^Modello:/i.test(line) &&
+        !/^Misura:/i.test(line) &&
+        !/^Testo timbro:/i.test(line) &&
+        !/^Gommina:/i.test(line) &&
+        !/^Riga \d+:/i.test(line)
+    )
+    .filter(
+      (line) =>
+        !/^Soggetti:/i.test(line) &&
+        !/^Copie per soggetto:/i.test(line) &&
+        !/^Copie per file:/i.test(line) &&
+        !/^Totale copie:/i.test(line)
+    );
+
+  return [...baseLines, ...trustedLines].join("\n");
+}
 
 export function buildShopSalesOrderCode(now = new Date(), suffix = randomBytes(3).toString("hex").toUpperCase()) {
   return `SHOP-${formatDateKey(now).replaceAll("-", "")}-${suffix}`;
@@ -281,6 +320,7 @@ export function describeShopSalesOrderFailure(error: unknown) {
       "Quantita non valida.",
       "Account cliente non disponibile.",
       "Servizio shop non disponibile.",
+      "Configurazione shop non valida.",
       "Impossibile generare un codice ordine shop univoco.",
       "Checkout demo non disponibile in produzione.",
       "Ordine shop non disponibile.",
@@ -726,16 +766,26 @@ export async function createShopSalesOrder(input: CreateShopSalesOrderInput) {
   const invoiceRequested = Boolean(input.invoiceRequested);
   const serviceLabel = String(input.serviceLabel || "").trim();
   const documentBundle = input.documentBundle ? normalizeShopDocumentBundle(input.documentBundle) : null;
+  const hasExplicitPrintConfiguration = Boolean(input.configuration);
   const configuration = documentBundle?.documents[0] || normalizeShopPrintConfiguration(input.configuration);
   const quantity = normalizeQuantityValue(documentBundle?.totalPrintUnits ?? Number(input.quantity ?? 1), 1);
   if (!Number.isFinite(quantity) || quantity <= 0) {
     throw new Error("Quantita non valida.");
   }
-  const configurationOverview = documentBundle
-    ? buildShopDocumentBundleOverview(documentBundle)
-    : buildShopPrintConfigurationSummary(configuration);
+  const catalogCustomization = resolveShopCatalogCustomization({
+    selection: input.catalogSelection,
+    sourcePath: input.sourcePath
+  });
+  const providedConfigurationSummary = mergeCatalogCustomizationSummary(
+    normalizeShopOrderNote(input.configurationSummary),
+    catalogCustomization.summaryLines
+  );
+  const configurationSource = input.orderKind === "catalog" ? "shop_catalog" : "shop_preview";
+  const configurationOverview =
+    providedConfigurationSummary ||
+    (documentBundle ? buildShopDocumentBundleOverview(documentBundle) : buildShopPrintConfigurationSummary(configuration));
   const configurationSummary =
-    normalizeShopOrderNote(input.configurationSummary) ||
+    providedConfigurationSummary ||
     (documentBundle ? buildShopDocumentBundleDetailedSummary(documentBundle) : buildShopPrintConfigurationSummary(configuration));
   const billingDetails = normalizeShopSalesOrderBillingInput(input.billingDetails);
   const billingValidationError = invoiceRequested
@@ -789,14 +839,57 @@ export async function createShopSalesOrder(input: CreateShopSalesOrderInput) {
     }
 
     const pricedService = resolveShopDocumentPreviewPricing(service, input.sourcePath);
+    const subjectCustomization = catalogCustomization.subject;
+    const subjectPricingQuantities =
+      subjectCustomization?.pricingMode === "per-subject"
+        ? subjectCustomization.subjectQuantities
+        : null;
+    const pricingQuantity =
+      subjectPricingQuantities?.[0] || quantity;
     const quote = quoteCatalogService({
       service: pricedService,
-      quantity
+      quantity: pricingQuantity
     });
-    const pricingSnapshot = buildCatalogServicePricingSnapshot({
+    const basePricingSnapshot = buildCatalogServicePricingSnapshot({
       service: pricedService,
-      quantity
+      quantity: pricingQuantity
     });
+    const itemQuantity = catalogCustomization.quantity || subjectCustomization?.totalQuantity || quote.quantity;
+    const catalogBaseLineTotalCents = subjectPricingQuantities
+      ? subjectPricingQuantities.reduce(
+          (total, subjectQuantity) =>
+            total +
+            quoteCatalogService({
+              service: pricedService,
+              quantity: subjectQuantity
+            }).lineTotalCents,
+          0
+        )
+      : quote.lineTotalCents;
+    const baseLineTotalCents =
+      catalogCustomization.lineTotalCents ??
+      catalogBaseLineTotalCents + catalogCustomization.extraLineTotalCents;
+    const adjustedLineTotalCents = applyShopCatalogPriceMultiplier(
+      baseLineTotalCents,
+      catalogCustomization.priceMultiplier
+    );
+    const catalogAdjustmentCents = Math.max(0, adjustedLineTotalCents - baseLineTotalCents);
+    const adjustedUnitPriceCents = computeEffectiveUnitPriceCents(adjustedLineTotalCents, itemQuantity);
+    const pricingSnapshot = {
+      ...basePricingSnapshot,
+      quantity: itemQuantity,
+      shopCatalogPricingQuantity: quote.quantity,
+      unitPriceCents: adjustedUnitPriceCents,
+      lineTotalCents: adjustedLineTotalCents,
+      shopCatalogCustomization: catalogCustomization.configuration
+        ? {
+            ...catalogCustomization.configuration,
+            baseLineTotalCents,
+            adjustmentCents: catalogAdjustmentCents,
+            adjustedLineTotalCents
+          }
+        : null
+    };
     const createJobAutomaticallyResolved = shouldCreateSalesOrderItemJob({
       createJobAutomatically: service.createJobAutomatically,
       invoiceRequested
@@ -819,10 +912,10 @@ export async function createShopSalesOrder(input: CreateShopSalesOrderInput) {
             origin: "SHOP_ONLINE",
             currency: "EUR",
             invoiceRequested,
-            subtotalCents: quote.lineTotalCents,
+            subtotalCents: adjustedLineTotalCents,
             discountCents: 0,
             extraCents: 0,
-            totalCents: quote.lineTotalCents,
+            totalCents: adjustedLineTotalCents,
             notes: notes || undefined,
             placedAt: createdAt,
             items: {
@@ -831,13 +924,14 @@ export async function createShopSalesOrder(input: CreateShopSalesOrderInput) {
                   serviceCatalogId: service.id,
                   label: serviceLabel || service.name,
                   description: configurationOverview || service.description || undefined,
-                  quantity: quote.quantity,
+                  quantity: itemQuantity,
                   configuration: {
-                    source: "shop_preview",
+                    source: configurationSource,
                     sourcePath: input.sourcePath?.trim() || null,
                     serviceSlug: service.onlineSlug || null,
                     serviceOnlineActive: service.onlineActive,
-                    printConfiguration: configuration,
+                    printConfiguration: documentBundle || hasExplicitPrintConfiguration ? configuration : null,
+                    catalogCustomization: catalogCustomization.configuration,
                     documentBundle,
                     documentBundleOverview: configurationOverview,
                     documentBundleSummary: configurationSummary,
@@ -848,8 +942,8 @@ export async function createShopSalesOrder(input: CreateShopSalesOrderInput) {
                     })
                   },
                   pricingSnapshot,
-                  unitPriceCents: quote.unitPriceCents,
-                  lineTotalCents: quote.lineTotalCents,
+                  unitPriceCents: adjustedUnitPriceCents,
+                  lineTotalCents: adjustedLineTotalCents,
                   createJobAutomaticallyResolved
                 }
               ]
@@ -885,7 +979,7 @@ export async function createShopSalesOrder(input: CreateShopSalesOrderInput) {
               : undefined,
             payments: {
               create: {
-                amountCents: quote.lineTotalCents,
+                amountCents: adjustedLineTotalCents,
                 currency: "EUR",
                 status: "CREATED"
               }
@@ -916,10 +1010,7 @@ export async function createShopSalesOrder(input: CreateShopSalesOrderInput) {
           }
         });
 
-        return {
-          order,
-          staffActor
-        };
+        return order;
       } catch (error) {
         if (
           error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -938,125 +1029,7 @@ export async function createShopSalesOrder(input: CreateShopSalesOrderInput) {
     throw new Error("Impossibile generare un codice ordine shop univoco.");
   });
 
-  await recordIncomingShopSalesOrderPushNotification(
-    createdOrderResult.order,
-    createdOrderResult.staffActor
-  );
-
-  return createdOrderResult.order;
-}
-
-async function recordIncomingShopSalesOrderPushNotification(
-  order: CustomerShopOrderDetail,
-  staffActor: ShopStaffActorNotificationSource
-) {
-  const notification = await createShopSalesOrderNotification({
-    customerAccountEmail: order.customerAccount?.email,
-    customerAccountEmailNormalized: order.customerAccount?.emailNormalized,
-    customerName: order.customer.name,
-    salesOrderCode: order.orderCode,
-    salesOrderId: order.id,
-    staffEmail: staffActor?.email,
-    staffName: staffActor?.name,
-    staffNickname: staffActor?.nickname,
-    totalCents: order.totalCents
-  });
-
-  const dedupeKey = `shop.sales_order.staff_push:${order.id}`;
-  const existingEvent = await prisma.domainEvent.findUnique({
-    where: {
-      dedupeKey
-    },
-    select: {
-      status: true
-    }
-  });
-
-  if (existingEvent?.status === "PROCESSED") {
-    return;
-  }
-
-  try {
-    const pushResult = await sendShopIncomingSalesOrderPushNotification({
-      customerAccountEmail: order.customerAccount?.email,
-      customerAccountEmailNormalized: order.customerAccount?.emailNormalized,
-      customerName: order.customer.name,
-      salesOrderCode: order.orderCode,
-      salesOrderId: order.id,
-      staffEmail: staffActor?.email,
-      staffName: staffActor?.name,
-      staffNickname: staffActor?.nickname,
-      totalCents: order.totalCents
-    });
-
-    await prisma.domainEvent.upsert({
-      where: {
-        dedupeKey
-      },
-      update: {
-        payloadJson: {
-          ...pushResult,
-          notificationEventId: notification.eventId,
-          salesOrderId: order.id,
-          sourceTone: notification.source.tone,
-          staffActorId: staffActor?.id || null,
-          stage: "created"
-        },
-        status: pushResult.sent > 0 ? "PROCESSED" : "FAILED",
-        processedAt: new Date()
-      },
-      create: {
-        topic: "shop.sales_order.staff_push",
-        entityType: "SalesOrder",
-        entityId: order.id,
-        dedupeKey,
-        payloadJson: {
-          ...pushResult,
-          notificationEventId: notification.eventId,
-          salesOrderId: order.id,
-          sourceTone: notification.source.tone,
-          staffActorId: staffActor?.id || null,
-          stage: "created"
-        },
-        status: pushResult.sent > 0 ? "PROCESSED" : "FAILED",
-        processedAt: new Date()
-      }
-    });
-  } catch (error) {
-    await prisma.domainEvent.upsert({
-      where: {
-        dedupeKey
-      },
-      update: {
-        payloadJson: {
-          error: error instanceof Error ? error.message : "Invio push non riuscito.",
-          notificationEventId: notification.eventId,
-          salesOrderId: order.id,
-          sourceTone: notification.source.tone,
-          staffActorId: staffActor?.id || null,
-          stage: "created"
-        },
-        status: "FAILED",
-        processedAt: new Date()
-      },
-      create: {
-        topic: "shop.sales_order.staff_push",
-        entityType: "SalesOrder",
-        entityId: order.id,
-        dedupeKey,
-        payloadJson: {
-          error: error instanceof Error ? error.message : "Invio push non riuscito.",
-          notificationEventId: notification.eventId,
-          salesOrderId: order.id,
-          sourceTone: notification.source.tone,
-          staffActorId: staffActor?.id || null,
-          stage: "created"
-        },
-        status: "FAILED",
-        processedAt: new Date()
-      }
-    });
-  }
+  return createdOrderResult;
 }
 
 type PaidShopCheckoutResult = {
@@ -1078,7 +1051,13 @@ async function recordShopStaffPushNotification(checkoutResult: PaidShopCheckoutR
     return;
   }
 
-  const dedupeKey = `shop.sales_order.staff_push:${checkoutResult.salesOrderId}`;
+  const notification = await createShopSalesOrderNotification({
+    customerName: checkoutResult.customerName,
+    salesOrderCode: checkoutResult.salesOrderCode,
+    salesOrderId: checkoutResult.salesOrderId,
+    totalCents: checkoutResult.totalCents
+  });
+  const dedupeKey = `shop.sales_order.paid_staff_push:${checkoutResult.salesOrderId}`;
   const existingEvent = await prisma.domainEvent.findUnique({
     where: {
       dedupeKey
@@ -1109,6 +1088,7 @@ async function recordShopStaffPushNotification(checkoutResult: PaidShopCheckoutR
         payloadJson: {
           ...pushResult,
           internalOrderId: checkoutResult.internalOrderId,
+          notificationEventId: notification.eventId,
           salesOrderId: checkoutResult.salesOrderId
         },
         status: pushResult.sent > 0 ? "PROCESSED" : "FAILED",
@@ -1122,6 +1102,7 @@ async function recordShopStaffPushNotification(checkoutResult: PaidShopCheckoutR
         payloadJson: {
           ...pushResult,
           internalOrderId: checkoutResult.internalOrderId,
+          notificationEventId: notification.eventId,
           salesOrderId: checkoutResult.salesOrderId
         },
         status: pushResult.sent > 0 ? "PROCESSED" : "FAILED",
@@ -1137,6 +1118,7 @@ async function recordShopStaffPushNotification(checkoutResult: PaidShopCheckoutR
         payloadJson: {
           error: error instanceof Error ? error.message : "Invio push non riuscito.",
           internalOrderId: checkoutResult.internalOrderId,
+          notificationEventId: notification.eventId,
           salesOrderId: checkoutResult.salesOrderId
         },
         status: "FAILED",
@@ -1150,6 +1132,7 @@ async function recordShopStaffPushNotification(checkoutResult: PaidShopCheckoutR
         payloadJson: {
           error: error instanceof Error ? error.message : "Invio push non riuscito.",
           internalOrderId: checkoutResult.internalOrderId,
+          notificationEventId: notification.eventId,
           salesOrderId: checkoutResult.salesOrderId
         },
         status: "FAILED",

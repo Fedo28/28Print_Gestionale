@@ -98,11 +98,31 @@ export default async function ShopHomePage() {
             <ShopWheelCarousel className="shop-home-carousel" ariaLabel={`Servizi ${category.title}`}>
               {category.products.map((product) => (
                 <Link
-                  className="shop-home-service-pill"
+                  className={`shop-home-service-pill${product.imageSrc ? " is-visual" : ""}${product.secondaryImageSrc ? " has-secondary-image" : ""}`}
                   href={product.href || `/shop/categorie/${category.slug}`}
                   key={product.label}
                 >
-                  <span>{product.label}</span>
+                  {product.imageSrc ? (
+                    <span className="shop-home-service-pill-media is-primary" aria-hidden="true">
+                      <Image
+                        alt=""
+                        fill
+                        sizes="(max-width: 640px) 72vw, 220px"
+                        src={product.imageSrc}
+                      />
+                    </span>
+                  ) : null}
+                  {product.secondaryImageSrc ? (
+                    <span className="shop-home-service-pill-media is-secondary" aria-hidden="true">
+                      <Image
+                        alt=""
+                        fill
+                        sizes="(max-width: 640px) 36vw, 110px"
+                        src={product.secondaryImageSrc}
+                      />
+                    </span>
+                  ) : null}
+                  <span className="shop-home-service-pill-label">{product.label}</span>
                 </Link>
               ))}
             </ShopWheelCarousel>

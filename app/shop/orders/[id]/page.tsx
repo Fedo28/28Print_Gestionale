@@ -101,7 +101,7 @@ export default async function ShopOrderDetailPage({
         : null;
 
   return (
-    <div className="shop-page-shell">
+    <div className="shop-page-shell shop-order-page">
       <ShopDemoCheckout
         amountLabel={formatCurrency(order.totalCents)}
         initialNotice={initialCheckoutNotice}
@@ -137,6 +137,12 @@ export default async function ShopOrderDetailPage({
                 <p>{order.invoiceRequested ? "Fattura richiesta" : "Nessuna fattura"}</p>
               </article>
             </div>
+          </section>
+
+          <section className="shop-card shop-order-pickup-card">
+            <span>Ritiro in negozio</span>
+            <strong>Gli ordini online si ritirano in negozio.</strong>
+            <p>Al momento non effettuiamo spedizioni.</p>
           </section>
 
           <div className="shop-grid">

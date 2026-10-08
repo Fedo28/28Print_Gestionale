@@ -3,8 +3,8 @@ import { describeShopOrderFileFailure } from "../lib/shop-order-files";
 
 describe("shop order files helpers", () => {
   it("maps supported upload validation failures to readable messages", () => {
-    expect(describeShopOrderFileFailure(new Error("Formato file non supportato. Usa PDF o JPG."))).toBe(
-      "Formato file non supportato. Usa PDF o JPG."
+    expect(describeShopOrderFileFailure(new Error("Formato file non supportato. Usa PDF, JPG o PNG."))).toBe(
+      "Formato file non supportato. Usa PDF, JPG o PNG."
     );
   });
 

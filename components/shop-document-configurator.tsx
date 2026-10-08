@@ -535,7 +535,7 @@ export function ShopDocumentConfigurator({
         />
 
         <div className="shop-document-upload-hint">
-          PDF o JPG, max {formatAttachmentMaxSize(SHOP_FILE_MAX_SIZE_BYTES)} per file.
+          PDF, JPG o PNG, max {formatAttachmentMaxSize(SHOP_FILE_MAX_SIZE_BYTES)} per file.
         </div>
 
         {documents.length ? (

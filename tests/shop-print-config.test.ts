@@ -171,6 +171,16 @@ describe("shop print configuration", () => {
     });
   });
 
+  it("does not invent document rows for catalog orders", () => {
+    expect(
+      extractShopDocumentBundleFromConfiguration({
+        documentBundle: null,
+        printConfiguration: null,
+        source: "shop_catalog"
+      })
+    ).toBeNull();
+  });
+
   it("applies preview pricing only to the local document flow", () => {
     expect(
       resolveShopDocumentPreviewPricing(

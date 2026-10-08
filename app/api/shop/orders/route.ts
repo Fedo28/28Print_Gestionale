@@ -11,6 +11,7 @@ import {
   getShopBetaGateState,
   SHOP_BETA_ACCESS_COOKIE
 } from "@/lib/shop-beta-gate";
+import { normalizeShopCatalogSelection } from "@/lib/shop-catalog-customizations";
 import {
   createShopSalesOrder,
   describeShopSalesOrderFailure,
@@ -82,30 +83,36 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = (await request.json()) as Record<string, unknown>;
-    if (!hasDocumentSelection(body.documentBundle)) {
+    const isCatalogOrder = String(body.orderKind || "") === "catalog";
+    const documentBundle = hasDocumentSelection(body.documentBundle)
+      ? normalizeShopDocumentBundle(body.documentBundle)
+      : null;
+
+    if (!documentBundle && !isCatalogOrder) {
       return NextResponse.json(
         { error: "Inserisci almeno un documento prima di continuare." },
         { status: 400 }
       );
     }
 
-    const documentBundle = normalizeShopDocumentBundle(body.documentBundle);
     const billingDetails = readBillingDetailsInput(body.billingDetails);
     const order = await createShopSalesOrder({
       customerAccountId: session.customerAccountId,
       serviceId: String(body.serviceId || ""),
       serviceLabel: String(body.serviceLabel || ""),
       quantity:
-        documentBundle.totalPrintUnits ||
+        documentBundle?.totalPrintUnits ||
         parseQuantityValue(String(body.quantity || ""), 1),
       documentBundle,
       configurationSummary:
         String(body.configurationSummary || "") ||
-        buildShopDocumentBundleDetailedSummary(documentBundle),
+        (documentBundle ? buildShopDocumentBundleDetailedSummary(documentBundle) : ""),
       invoiceRequested: Boolean(body.invoiceRequested),
       billingDetails,
       customerNote: String(body.customerNote || ""),
+      catalogSelection: normalizeShopCatalogSelection(body.catalogSelection),
       sourcePath: String(body.sourcePath || ""),
+      orderKind: isCatalogOrder ? "catalog" : "documents",
       allowPreviewFallback: process.env.NODE_ENV !== "production",
       staffActorUserId: staffSession?.userId
     });
@@ -114,11 +121,13 @@ export async function POST(request: NextRequest) {
     revalidatePath("/shop/account");
     revalidatePath(`/shop/orders/${order.id}`);
 
+    const orderItems = (order as { items?: Array<{ id: string }> }).items || [];
+
     return NextResponse.json({
       success: true,
       orderId: order.id,
       redirectPath: `/shop/orders/${order.id}`,
-      salesOrderItemId: order.items[0]?.id || null
+      salesOrderItemId: orderItems[0]?.id || null
     });
   } catch (error) {
     return NextResponse.json(

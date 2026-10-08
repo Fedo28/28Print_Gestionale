@@ -1,8 +1,10 @@
 import { ShopServicePreview } from "@/components/shop-service-preview";
 import { ShopCatalogProductConfigurator } from "@/components/shop-catalog-product-configurator";
+import { ShopTShirtCustomizer } from "@/components/shop-t-shirt-customizer";
 import { getShopServicePreviewCandidate } from "@/lib/shop-catalog";
 import { getShopCatalogProductPage } from "@/lib/shop-product-pages";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,10 @@ export default async function ShopServicePage({
 }: {
   params: { slug: string };
 }) {
+  if (params.slug === "volantini-e-locandine") {
+    redirect("/shop/servizi/volantini");
+  }
+
   const catalogProductPage = await getShopCatalogProductPage(params.slug);
   if (catalogProductPage) {
     return (
@@ -29,10 +35,15 @@ export default async function ShopServicePage({
           </Link>
           <div>
             <h1>{catalogProductPage.title}</h1>
+            {catalogProductPage.subtitle ? <p>{catalogProductPage.subtitle}</p> : null}
           </div>
         </section>
 
-        <ShopCatalogProductConfigurator page={catalogProductPage} />
+        {params.slug === "t-shirt-personalizzate" ? (
+          <ShopTShirtCustomizer page={catalogProductPage} />
+        ) : (
+          <ShopCatalogProductConfigurator page={catalogProductPage} />
+        )}
       </div>
     );
   }

@@ -1,7 +1,6 @@
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import logoImage from "@/logo.png";
-import prAdvLogoImage from "@/pr-adv-logo.png";
 import { PrintOrderActions } from "@/components/print-order-actions";
 import { requireAuth } from "@/lib/auth";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -17,11 +16,9 @@ function getCustomerPrimaryContact(order: Awaited<ReturnType<typeof getOrderById
 }
 
 export default async function OrderPrintPage({
-  params,
-  searchParams
+  params
 }: {
   params: { id: string };
-  searchParams?: { brand?: string };
 }) {
   await requireAuth();
   const order = await getOrderById(params.id);
@@ -31,28 +28,17 @@ export default async function OrderPrintPage({
   }
 
   const customerPrimaryContact = getCustomerPrimaryContact(order);
-  const selectedBrand = searchParams?.brand === "pr-adv" ? "pr-adv" : "28-print";
-  const headerBrand =
-    selectedBrand === "pr-adv"
-      ? {
-          alt: "PR adv",
-          image: prAdvLogoImage
-        }
-      : {
-          alt: "28 Print",
-          image: logoImage
-        };
 
   return (
     <div className="print-order-page-shell">
-      <PrintOrderActions backHref={`/orders/${order.id}`} brandLabel={headerBrand.alt} />
+      <PrintOrderActions backHref={`/orders/${order.id}`} />
       <article className="print-sheet print-sheet-minimal">
         <header className="print-sheet-minimal-header">
           <div className="print-sheet-logo">
             <Image
               className="print-sheet-logo-image"
-              src={headerBrand.image}
-              alt={headerBrand.alt}
+              src={logoImage}
+              alt="28 Print"
               priority
             />
           </div>

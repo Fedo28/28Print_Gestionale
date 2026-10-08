@@ -135,6 +135,15 @@ export function ShopDemoCheckout({
           <strong>{amountLabel}</strong>
         </div>
 
+        <div className="shop-pickup-reminder">
+          <span>Ritiro in negozio</span>
+          <p>
+            {isCompleted
+              ? "Ordine da ritirare in negozio."
+              : "Non effettuiamo spedizioni: dopo il pagamento ritirerai l'ordine in negozio."}
+          </p>
+        </div>
+
         <div className="button-row">
           {isCompleted ? (
             <Link className="button primary" href="/shop/stampa-documenti">

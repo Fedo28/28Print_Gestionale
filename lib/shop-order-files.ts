@@ -63,7 +63,7 @@ function isKnownShopOrderFileMessage(message: string) {
       "File shop scaduto."
     ].includes(message) ||
     /^Il nome file e obbligatorio\.$/.test(message) ||
-    /^Formato file non supportato\. Usa PDF o JPG\.$/.test(message) ||
+    /^Formato file non supportato\. Usa PDF, JPG o PNG\.$/.test(message) ||
     /^Mime type non supportato per il file di stampa\.$/.test(message) ||
     /^Dimensione file non valida\.$/.test(message) ||
     /^File troppo grande\. Limite iniziale \d+ MB\.$/.test(message)

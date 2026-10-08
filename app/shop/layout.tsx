@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { lockShopBetaAccessAction, logoutCustomerAccountAction } from "@/app/shop/actions";
 import { ShopBetaAccessForm } from "@/components/shop-beta-access-form";
+import { ShopPickupNotice } from "@/components/shop-pickup-notice";
 import { getCustomerAccountSession } from "@/lib/customer-account-auth";
 import { getShopBetaGateState } from "@/lib/shop-beta-gate";
 import "./shop.css";
@@ -118,26 +119,48 @@ export default function ShopLayout({ children }: { children: ReactNode }) {
       </header>
 
       <div className="shop-shell-content">
-        {isBetaBlocked ? <ShopBetaGate configured={betaGate.configured} /> : children}
+        {isBetaBlocked ? (
+          <ShopBetaGate configured={betaGate.configured} />
+        ) : (
+          <>
+            <ShopPickupNotice />
+            {children}
+          </>
+        )}
       </div>
 
       <footer className="shop-shell-footer shop-shell-footer-minimal">
-        <Link aria-label="Vai alla home shop" className="shop-shell-footer-brand" href="/shop">
-          <Image
-            alt="28 Print"
-            className="shop-shell-footer-logo shop-shell-footer-app-logo"
-            height={183}
-            sizes="160px"
-            src={shopAppLogo}
-            width={800}
-          />
-          <div>
-            <strong>Shop</strong>
-            <p>shop.28print.it</p>
-          </div>
-        </Link>
+        <div className="shop-shell-footer-main">
+          <Link aria-label="Vai alla home shop" className="shop-shell-footer-brand" href="/shop">
+            <Image
+              alt="28 Print"
+              className="shop-shell-footer-logo shop-shell-footer-app-logo"
+              height={183}
+              sizes="160px"
+              src={shopAppLogo}
+              width={800}
+            />
+            <div>
+              <strong>Shop</strong>
+              <p>shop.28print.it</p>
+            </div>
+          </Link>
 
-        <p>Ordini rapidi, chiari e guidati.</p>
+          <p>Ordini rapidi, chiari e guidati.</p>
+        </div>
+
+        <div className="shop-shell-footer-legal" aria-label="Informazioni legali 28 Print">
+          <span>P. IVA 15829801008</span>
+          <a href="mailto:stampa@28print.it">stampa@28print.it</a>
+          <a href="tel:+393933122529">393 31 22 529</a>
+          <a href="tel:+390686296919">06 8629 6919</a>
+          <a href="https://www.28print.it/cookie-policy-ue/" rel="noreferrer" target="_blank">
+            Cookie Policy
+          </a>
+          <a href="https://www.28print.it/termini-e-condizioni/" rel="noreferrer" target="_blank">
+            Termini e condizioni
+          </a>
+        </div>
       </footer>
     </div>
   );

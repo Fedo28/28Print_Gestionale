@@ -1,6 +1,8 @@
 import Link from "next/link";
-import { ShopBusinessCardConfigurator } from "@/components/shop-business-card-configurator";
-import { getBusinessCardShopOptions } from "@/lib/shop-business-cards";
+import { ShopCatalogProductConfigurator } from "@/components/shop-catalog-product-configurator";
+import { getBusinessCardShopOptions, type BusinessCardShopOption } from "@/lib/shop-business-cards";
+import { BUSINESS_CARD_PAPER_CHOICES } from "@/lib/shop-catalog-customizations";
+import type { ShopCatalogProductPage } from "@/lib/shop-product-pages";
 
 export const dynamic = "force-dynamic";
 
@@ -12,8 +14,31 @@ function BackArrowIcon() {
   );
 }
 
+function isAvailableBusinessCardCatalogOption(
+  option: BusinessCardShopOption
+): option is BusinessCardShopOption & { id: string } {
+  return Boolean(option.available && option.id && option.quantities.length);
+}
+
 export default async function ShopBusinessCardsPage() {
   const options = await getBusinessCardShopOptions();
+  const page: ShopCatalogProductPage = {
+    accent: "cyan",
+    imageAlt: "Biglietti da visita stampati",
+    imageSrc: "/shop/product-biglietti-visita.jpg",
+    options: options
+      .filter(isAvailableBusinessCardCatalogOption)
+      .map((option) => ({
+        code: option.code,
+        id: option.id,
+        label: option.label,
+        quantities: option.quantities
+      })),
+    paperChoices: BUSINESS_CARD_PAPER_CHOICES,
+    slug: "biglietti-da-visita",
+    templateLabel: "Template file",
+    title: "Biglietti da visita"
+  };
 
   return (
     <div className="shop-page-shell shop-business-card-page">
@@ -26,7 +51,7 @@ export default async function ShopBusinessCardsPage() {
         </div>
       </section>
 
-      <ShopBusinessCardConfigurator options={options} />
+      <ShopCatalogProductConfigurator page={page} />
     </div>
   );
 }

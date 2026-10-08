@@ -196,7 +196,14 @@ export function usesLineTotalQuantityTiers(service?: { name?: string | null; cod
   const normalizedName = normalizePricingServiceIdentifier(service?.name);
   const normalizedCode = normalizePricingServiceIdentifier(service?.code);
 
-  return normalizedName.includes("biglietti da visita") || normalizedCode.includes("biglietti visita");
+  return (
+    normalizedName.includes("biglietti da visita") ||
+    normalizedCode.includes("biglietti visita") ||
+    normalizedName.includes("volantino") ||
+    normalizedName.includes("volantini") ||
+    normalizedCode.includes("volantino") ||
+    normalizedCode.includes("volantini")
+  );
 }
 
 function parseTierPriceToCents(value: string) {
@@ -268,6 +275,29 @@ export function parseQuantityTiers(raw: string | null | undefined): QuantityTier
   return sorted;
 }
 
+export function findMatchingQuantityTier(tiers: QuantityTier[], quantity: number) {
+  const safeQuantity = normalizeQuantityValue(quantity);
+  const directMatch = tiers.find(
+    (tier) => safeQuantity >= tier.minQuantity && (tier.maxQuantity === null || safeQuantity <= tier.maxQuantity)
+  );
+
+  if (directMatch) {
+    return directMatch;
+  }
+
+  const thresholdTiers = tiers.filter((tier) => tier.maxQuantity === tier.minQuantity);
+  if (!thresholdTiers.length) {
+    return null;
+  }
+
+  return (
+    thresholdTiers.find((tier, index) => {
+      const nextTier = thresholdTiers[index + 1] || null;
+      return safeQuantity >= tier.minQuantity && (!nextTier || safeQuantity < nextTier.minQuantity);
+    }) || null
+  );
+}
+
 export function normalizeQuantityTiers(raw: string | null | undefined) {
   const tiers = parseQuantityTiers(raw);
   if (!tiers.length) {
@@ -287,8 +317,7 @@ export function getTieredUnitPrice(basePriceCents: number, quantity: number, qua
     return Math.max(0, Math.round(basePriceCents || 0));
   }
 
-  const safeQuantity = normalizeQuantityValue(quantity);
-  const matchedTier = tiers.find((tier) => safeQuantity >= tier.minQuantity && (tier.maxQuantity === null || safeQuantity <= tier.maxQuantity));
+  const matchedTier = findMatchingQuantityTier(tiers, quantity);
 
   return matchedTier ? matchedTier.unitPriceCents : Math.max(0, Math.round(basePriceCents || 0));
 }

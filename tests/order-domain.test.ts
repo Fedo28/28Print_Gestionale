@@ -393,11 +393,24 @@ describe("order domain", () => {
     expect(getTieredUnitPrice(100, 5, raw)).toBe(50);
     expect(getTieredUnitPrice(100, 20, raw)).toBe(30);
     expect(getTieredUnitPrice(100, 120, raw)).toBe(20);
+
+    const thresholdRaw = "100:140,00 | 250:150,00 | 500:160,00";
+    expect(getTieredUnitPrice(10000, 100, thresholdRaw)).toBe(14000);
+    expect(getTieredUnitPrice(10000, 200, thresholdRaw)).toBe(14000);
+    expect(getTieredUnitPrice(10000, 250, thresholdRaw)).toBe(15000);
+    expect(getTieredUnitPrice(10000, 499, thresholdRaw)).toBe(15000);
   });
 
-  it("uses line-total tiers only for business cards", () => {
+  it("uses line-total tiers for business cards and body-priced flyers", () => {
     expect(usesLineTotalQuantityTiers({ code: "BIGLIETTI_VISITA", name: "Biglietti da visita" })).toBe(true);
+    expect(
+      usesLineTotalQuantityTiers({
+        code: "VOLANTINO_10X21_FRONTE_RETRO_CON_PIEGA",
+        name: "Volantino - 10x21 fronte/retro con piega"
+      })
+    ).toBe(true);
     expect(usesLineTotalQuantityTiers({ code: "COPIE_COLORI", name: "Copie a colori" })).toBe(false);
+    expect(usesLineTotalQuantityTiers({ code: "LOCANDINA_FOGLIO_MACCHINA", name: "Foglio macchina" })).toBe(false);
     expect(computeLineTotalWithAdjustmentsCents(30, 20, "NONE", 0, "NONE", 0, "UNIT")).toBe(600);
   });
 

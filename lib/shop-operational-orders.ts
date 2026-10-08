@@ -18,7 +18,7 @@ const pendingShopOnlineOperationalOrderWhere = {
 
 const pendingIncomingShopSalesOrderWhere = {
   origin: "SHOP_ONLINE",
-  status: { in: ["PENDING_PAYMENT", "PAID"] as SalesOrderStatus[] },
+  status: { in: ["PAID"] as SalesOrderStatus[] },
   jobLinks: {
     none: {}
   }

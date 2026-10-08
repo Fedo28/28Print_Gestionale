@@ -6,6 +6,7 @@ import {
   computeLineTotalWithAdjustmentsCents,
   formatDiscountSummary,
   formatExtraSummary,
+  findMatchingQuantityTier,
   normalizeQuantityValue,
   parseQuantityTiers
 } from "@/lib/pricing";
@@ -75,9 +76,7 @@ function resolveMatchedQuantityTier(quantity: number, quantityTiers: string | nu
   }
 
   const tiers = parseQuantityTiers(quantityTiers);
-  return (
-    tiers.find((tier) => quantity >= tier.minQuantity && (tier.maxQuantity === null || quantity <= tier.maxQuantity)) || null
-  );
+  return findMatchingQuantityTier(tiers, quantity);
 }
 
 function normalizeCatalogBasePriceCents(value: number) {

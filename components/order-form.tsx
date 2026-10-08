@@ -44,6 +44,7 @@ import {
 import {
   computeLineTotalWithAdjustmentsCents,
   computeEffectiveUnitPriceCents,
+  findMatchingQuantityTier,
   formatDiscountSummary,
   formatExtraSummary,
   parseFlexibleAdjustmentInput,
@@ -262,8 +263,8 @@ function getServiceTiers(service: ServiceCatalog | undefined): QuantityTier[] {
   }
 }
 
-function isTierSelected(tier: QuantityTier, quantity: number) {
-  return quantity >= tier.minQuantity && (tier.maxQuantity === null || quantity <= tier.maxQuantity);
+function isTierSelected(tier: QuantityTier, quantity: number, tiers: QuantityTier[]) {
+  return findMatchingQuantityTier(tiers, quantity) === tier;
 }
 
 function formatTierLabel(tier: QuantityTier) {
@@ -1887,7 +1888,7 @@ export function OrderForm({
             <div className="order-line-tier-panel">
               {parsedTiers.map((tier) => (
                 <button
-                  className={`order-line-tier-chip${isTierSelected(tier, lineQuantity) && !item.priceOverridden ? " is-selected" : ""}`}
+                  className={`order-line-tier-chip${isTierSelected(tier, lineQuantity, parsedTiers) && !item.priceOverridden ? " is-selected" : ""}`}
                   key={`${index}-${tier.minQuantity}-${tier.maxQuantity ?? "plus"}`}
                   onClick={(event) => {
                     event.preventDefault();
