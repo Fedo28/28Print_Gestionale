@@ -28,7 +28,7 @@ Per il deploy Vercel, `BLOB_READ_WRITE_TOKEN` e obbligatorio se vuoi caricare al
 
 Prerequisiti:
 
-- Node.js 20+
+- Node.js 24 (come configurato in `.nvmrc` e `package.json`)
 - npm
 - un database PostgreSQL gia disponibile
 
