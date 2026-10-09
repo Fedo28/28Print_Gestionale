@@ -62,6 +62,18 @@ Credenziali demo locali:
 
 ## Comandi utili
 
+### Anteprima locale dell'area personale
+
+Su macOS Apple Silicon, `npm run dev:preview` avvia il gestionale su `http://localhost:3001` con PostgreSQL locale. Alla prima esecuzione copia i dati del database configurato in una transazione di sola lettura e applica le migrazioni alla copia. Le prove successive restano nella copia locale, conservata in `.local-preview` e esclusa da Git. Il database online non viene aggiornato da questo comando.
+
+L'anteprima conserva i profili e le credenziali già presenti. I binari PostgreSQL vengono preparati da npm in una cartella temporanea; il database ascolta solo su `127.0.0.1`, con password locale. La copia non si sincronizza automaticamente con il database di origine. Nell'anteprima email, push, Stripe e scritture su Vercel Blob sono disattivati; gli eventuali upload usano lo storage locale.
+
+`npm run test:workspace` verifica privacy dei post-it, collaborazione e modifiche simultanee sul database locale dell'anteprima. Il normale `npm test` esegue i test unitari e salta questi test di integrazione quando manca la configurazione locale.
+
+L'area personale include incarichi facoltativi, commissioni libere, una vista della squadra e post-it privati per profilo. Le date degli incarichi sono indipendenti dalle consegne degli ordini; gli orari si riferiscono a Europe/Rome. Il collegamento Google Calendar è previsto come sviluppo successivo.
+
+La lista “Lavori e commissioni” è sempre visibile sotto l'agenda personale, con ricerca, filtri e scorrimento interno. Il + prende in carico un ordine aperto senza assegnare una data, oppure aggiunge il profilo ai collaboratori di un incarico già seguito. Le collaborazioni mantengono l'eventuale programmazione condivisa. “Organizza” e “Nuova commissione” conservano le opzioni complete di giorno, orario e collaboratori.
+
 - `npm run dev`: sviluppo locale
 - `npm run build`: build locale
 - `npm run start`: start build locale

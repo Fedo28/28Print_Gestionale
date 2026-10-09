@@ -12,6 +12,19 @@ enum UserRole {
   OPERATOR
 }
 
+enum WorkTaskStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+}
+
+enum PersonalNoteColor {
+  YELLOW
+  BLUE
+  GREEN
+  PINK
+}
+
 enum CustomerType {
   PUBBLICO
   AZIENDA
@@ -197,6 +210,65 @@ model User {
   updatedAt    DateTime @updatedAt
   auditLogs    AuditLog[]
   pushSubscriptions StaffPushSubscription[]
+  ownedWorkTasks WorkTask[] @relation("WorkTaskOwner")
+  createdWorkTasks WorkTask[] @relation("WorkTaskCreator")
+  workCollaborations WorkTaskCollaborator[]
+  personalNotes PersonalNote[]
+}
+
+model WorkTask {
+  id             String @id @default(uuid())
+  title          String
+  description    String @default("")
+  orderId        String?
+  claimKey       String? @unique
+  ownerId        String?
+  createdById    String?
+  status         WorkTaskStatus @default(OPEN)
+  scheduledDate  String?
+  startTime      String?
+  endTime        String?
+  completedAt    DateTime?
+  archivedAt     DateTime?
+  version        Int @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  order          Order? @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  owner          User? @relation("WorkTaskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy      User? @relation("WorkTaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  collaborators  WorkTaskCollaborator[]
+
+  @@index([ownerId, archivedAt, scheduledDate])
+  @@index([orderId, status])
+  @@index([archivedAt, scheduledDate])
+}
+
+model WorkTaskCollaborator {
+  taskId    String
+  userId    String
+  role      String @default("")
+  createdAt DateTime @default(now())
+  task      WorkTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+  @@index([userId])
+}
+
+model PersonalNote {
+  id         String @id @default(uuid())
+  userId     String
+  title      String @default("")
+  content    String @default("")
+  color      PersonalNoteColor @default(YELLOW)
+  position   Int @default(0)
+  archivedAt DateTime?
+  version    Int @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, archivedAt, position])
 }
 
 model Customer {
@@ -337,6 +409,7 @@ model Order {
   history             OrderHistory[]
   purchaseNotes       PurchaseNote[]
   salesOrderLinks     SalesOrderJobLink[]
+  workTasks           WorkTask[]
 
   @@unique([createdOn, titleNormalized])
   @@index([deliveryAt])

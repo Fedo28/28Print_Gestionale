@@ -9,6 +9,7 @@
     "dev": "./scripts/dev-clean.sh",
     "dev:clean": "./scripts/dev-clean.sh",
     "dev:raw": "next dev",
+    "dev:preview": "node scripts/dev-personal-preview.mjs",
     "build": "next build",
     "start": "next start",
     "postinstall": "prisma generate",
@@ -27,7 +28,8 @@
     "stripe:listen": "node --env-file=.env scripts/stripe-listen.js listen",
     "stripe:webhook-secret": "node --env-file=.env scripts/stripe-listen.js print-secret",
     "vercel-build": "npm run deploy:check-env && prisma migrate deploy && tsx --tsconfig tsconfig.json scripts/bootstrap-production.ts && next build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:workspace": "node scripts/test-personal-workspace.mjs"
   },
   "dependencies": {
     "@prisma/client": "6.19.1",

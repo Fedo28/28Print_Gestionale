@@ -2,6 +2,7 @@ import { CustomerType, InvoiceStatus, MainPhase, OperationalStatus, PaymentStatu
 import Link from "next/link";
 import { OrderSearchInput } from "@/components/order-search-input";
 import { OrdersTable } from "@/components/orders-table";
+import { WorkspaceLiveRefresh } from "@/components/workspace-live-refresh";
 import { PageHeader } from "@/components/page-header";
 import { requireAuth } from "@/lib/auth";
 import {
@@ -26,6 +27,7 @@ import {
   parseDashboardPreset,
   parseInvoiceFilter,
   parseOrderListView,
+  parseOrderCreatorFilter,
   parseOrderSortDirection,
   parseOrderSortField,
   parsePaymentFilter,
@@ -36,6 +38,7 @@ import {
   parseCustomerTypeFilter
 } from "@/lib/order-filters";
 import { getOrdersList, getOrdersTabCounts } from "@/lib/orders";
+import { getOrderCreatorProfiles } from "@/lib/order-creators";
 import { automaticPriorityValues } from "@/lib/priorities";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +52,7 @@ type Props = {
     invoice?: InvoiceStatus | "ALL" | string;
     priority?: Priority | "ALL" | string;
     customerType?: CustomerType | "ALL" | string;
+    createdBy?: string;
     view?: string;
     preset?: string;
     sort?: string;
@@ -58,7 +62,10 @@ type Props = {
 };
 
 export default async function OrdersPage({ searchParams }: Props) {
-  await requireAuth();
+  const session = await requireAuth();
+  const creatorProfiles = await getOrderCreatorProfiles();
+  const requestedCreator = parseOrderCreatorFilter(searchParams?.createdBy || null);
+  const selectedCreator = creatorProfiles.find((profile) => profile.id === requestedCreator);
   const requestedPhase = parsePhaseFilter(searchParams?.phase || null);
   const requestedPreset = parseDashboardPreset(searchParams?.preset || null);
   const view: OrderListView =
@@ -82,6 +89,7 @@ export default async function OrdersPage({ searchParams }: Props) {
     invoice: parseInvoiceFilter(searchParams?.invoice || null),
     priority: parsePriorityFilter(searchParams?.priority || null),
     customerType: parseCustomerTypeFilter(searchParams?.customerType || null),
+    createdBy: selectedCreator?.id,
     shop: parseShopOrderFilter(searchParams?.shop || null),
     preset,
     sort,
@@ -98,6 +106,7 @@ export default async function OrdersPage({ searchParams }: Props) {
       invoice: filters.invoice,
       priority: filters.priority,
       customerType: filters.customerType,
+      createdBy: filters.createdBy,
       shop: filters.shop,
       quote: "ORDER",
       preset: filters.preset,
@@ -111,6 +120,7 @@ export default async function OrdersPage({ searchParams }: Props) {
       invoice: filters.invoice,
       priority: filters.priority,
       customerType: filters.customerType,
+      createdBy: filters.createdBy,
       shop: filters.shop,
       quote: "ORDER"
     })
@@ -173,6 +183,13 @@ export default async function OrdersPage({ searchParams }: Props) {
           href: buildOrdersFilterHref({ ...filters, customerType: "ALL" })
         }
       : null,
+    selectedCreator
+      ? {
+          key: "createdBy",
+          label: `Creato da: ${selectedCreator.name} (@${selectedCreator.nickname})`,
+          href: buildOrdersFilterHref({ ...filters, createdBy: undefined })
+        }
+      : null,
     filters.shop === "ONLINE"
       ? {
           key: "shop",
@@ -189,6 +206,7 @@ export default async function OrdersPage({ searchParams }: Props) {
     filters.invoice !== "ALL" ||
     filters.priority !== "ALL" ||
     filters.customerType !== "ALL" ||
+    Boolean(filters.createdBy) ||
     filters.shop !== "ALL";
   const tabLinks = [
     { key: "TO_DO", label: "Da fare", count: tabCounts.TO_DO, href: buildOrdersTabHref("TO_DO", filters) },
@@ -217,12 +235,14 @@ export default async function OrdersPage({ searchParams }: Props) {
     invoice: "ALL",
     priority: "ALL",
     customerType: "ALL",
+    createdBy: undefined,
     shop: "ALL"
   });
   const resultsTitle = filters.shop === "ONLINE" ? "Ordini shop online" : getOrdersResultsTitle(filters.view, filters.preset);
 
   return (
     <div className="stack orders-page-shell">
+      <WorkspaceLiveRefresh />
       <PageHeader
         title="Ordini"
         action={
@@ -307,6 +327,7 @@ export default async function OrdersPage({ searchParams }: Props) {
                       invoice: filters.invoice !== "ALL" ? filters.invoice : undefined,
                       priority: filters.priority !== "ALL" ? filters.priority : undefined,
                       customerType: filters.customerType !== "ALL" ? filters.customerType : undefined,
+                      createdBy: filters.createdBy,
                       shop: filters.shop === "ONLINE" ? "ONLINE" : undefined,
                       preset: filters.preset !== "ALL" ? filters.preset : undefined
                     }}
@@ -380,6 +401,16 @@ export default async function OrdersPage({ searchParams }: Props) {
                 </select>
               </div>
               <div className="filters-field">
+                <select aria-label="Creato da" defaultValue={filters.createdBy || "ALL"} name="createdBy">
+                  <option value="ALL">Creato da: tutti i profili</option>
+                  {creatorProfiles.map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.name} (@{profile.nickname}){profile.active ? "" : " · Disattivato"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="filters-field">
                 <select aria-label="Origine ordine" defaultValue={filters.shop} name="shop">
                   <option value="ALL">Tutte le origini</option>
                   <option value="ONLINE">Shop online</option>
@@ -423,6 +454,7 @@ export default async function OrdersPage({ searchParams }: Props) {
           </div>
         </div>
         <OrdersTable
+          currentUserId={session.userId}
           filters={filters}
           sortDirection={filters.dir}
           sortField={filters.sort}
@@ -474,7 +506,7 @@ function getOrdersWorkState(preset: DashboardPreset): OrdersWorkStateKey {
 
 function buildOrdersTabHref(
   tab: OrdersTabKey,
-  filters: Pick<OrderListFilters, "q" | "status" | "payment" | "invoice" | "priority" | "customerType" | "shop" | "sort" | "dir">
+  filters: Pick<OrderListFilters, "q" | "status" | "payment" | "invoice" | "priority" | "customerType" | "createdBy" | "shop" | "sort" | "dir">
 ) {
   const base = {
     q: filters.q,
@@ -484,6 +516,7 @@ function buildOrdersTabHref(
     invoice: filters.invoice,
     priority: filters.priority,
     customerType: filters.customerType as CustomerTypeFilter | undefined,
+    createdBy: filters.createdBy,
     shop: filters.shop as ShopOrderFilter | undefined,
     sort: filters.sort,
     dir: filters.dir

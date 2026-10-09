@@ -12,6 +12,7 @@ import brandLogo from "../logo.png";
 type NavTone = "neutral" | "sky" | "coral" | "lilac" | "rose" | "amber" | "mint" | "teal";
 type NavIcon =
   | "dashboard"
+  | "personal"
   | "customers"
   | "orders"
   | "quotes"
@@ -26,6 +27,7 @@ type NavIcon =
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: "dashboard", tone: "sky" },
+  { href: "/my-day", label: "Agenda", icon: "personal", tone: "amber" },
   { href: "/production", label: "Produzione", icon: "production", tone: "mint" },
   { href: "/orders", label: "Ordini", icon: "orders", tone: "lilac" },
   { href: "/quotes", label: "Preventivi", icon: "quotes", tone: "coral" },
@@ -53,7 +55,7 @@ const utilityItems = [
 
 const COMPACT_NAV_MEDIA_QUERY = "(max-width: 1180px)";
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, localPreview = false }: { children: ReactNode; localPreview?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const isLoginRoute = pathname === "/login";
@@ -484,6 +486,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </div>
             </div>
           ) : null}
+          {localPreview ? <div className="local-preview-banner">Anteprima locale · Le modifiche vengono salvate nella copia locale dei dati</div> : null}
           <main>{children}</main>
         </div>
       </div>
@@ -493,6 +496,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 function ShellGlyph({ kind }: { kind: NavIcon }) {
   const paths = {
+    personal: (
+      <>
+        <path d="M12 11a3.2 3.2 0 1 0 0-6.4A3.2 3.2 0 0 0 12 11Z" />
+        <path d="M5 19.5v-1a7 7 0 0 1 14 0v1M17 4h4M19 2v4" />
+      </>
+    ),
     dashboard: (
       <>
         <rect x="4" y="4" width="7" height="7" rx="2" />

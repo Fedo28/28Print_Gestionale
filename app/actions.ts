@@ -896,7 +896,7 @@ export async function createOrderAction(formData: FormData) {
   const session = await requireAuth();
   const postSubmitAction = parsePostSubmitAction(formData);
   const input = parseOrderFormInput(formData);
-  const order = await createOrder(input);
+  const order = await createOrder({ ...input, createdByUserId: session.userId });
   await notifyRickManualOrderCreation(order, session.userId);
 
   revalidateOperationalSurfaces(order.id);
@@ -945,10 +945,10 @@ export async function acceptShopSalesOrderAction(formData: FormData) {
 }
 
 export async function createQuoteAction(formData: FormData) {
-  await requireAuth();
+  const session = await requireAuth();
   const postSubmitAction = parsePostSubmitAction(formData);
   const input = parseOrderFormInput(formData, { forceQuote: true });
-  const order = await createOrder(input);
+  const order = await createOrder({ ...input, createdByUserId: session.userId });
 
   revalidateOperationalSurfaces(order.id);
 

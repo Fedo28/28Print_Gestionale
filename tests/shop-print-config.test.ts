@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ShopDocumentConfiguration } from "../lib/shop-print-config";
 import {
   SHOP_DOCUMENT_PREVIEW_BASE_PRICE_CENTS,
   SHOP_DOCUMENT_PREVIEW_QUANTITY_TIERS,
@@ -101,7 +102,7 @@ describe("shop print configuration", () => {
           binding: "NONE"
         }
       ]
-    } as const;
+    } satisfies { documents: ShopDocumentConfiguration[] };
 
     expect(buildShopDocumentCardSummary(bundle.documents[0], { includeCopies: false })).toBe(
       "120 pagine • A4 • Bianco e nero • Solo fronte • Carta usomano • 80 grammi • Rilegatura a spirale"

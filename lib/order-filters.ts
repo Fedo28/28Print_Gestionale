@@ -60,6 +60,7 @@ export type OrderListFilters = {
   invoice?: InvoiceFilter;
   priority?: PriorityFilter;
   customerType?: CustomerTypeFilter;
+  createdBy?: string;
   shop?: ShopOrderFilter;
   quote?: QuoteFilter;
   preset?: DashboardPreset;
@@ -110,6 +111,11 @@ export function parseCustomerTypeFilter(raw: string | null): CustomerTypeFilter 
 
 export function parseShopOrderFilter(raw: string | null): ShopOrderFilter {
   return raw === "online" || raw === "ONLINE" ? "ONLINE" : "ALL";
+}
+
+export function parseOrderCreatorFilter(raw: string | null): string | undefined {
+  const value = raw?.trim();
+  return value && value !== "ALL" ? value : undefined;
 }
 
 export function parseOrderSortField(raw: string | null): OrderSortField | undefined {
@@ -190,6 +196,11 @@ export function buildOrdersFilterHref(filters: OrderListFilters) {
 
   if (filters.customerType && filters.customerType !== "ALL") {
     params.set("customerType", filters.customerType);
+  }
+
+  const createdBy = parseOrderCreatorFilter(filters.createdBy || null);
+  if (createdBy) {
+    params.set("createdBy", createdBy);
   }
 
   if (filters.shop === "ONLINE") {

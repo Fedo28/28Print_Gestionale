@@ -6,6 +6,7 @@ import { requireAuth } from "@/lib/auth";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { formatOrderItemQuantity } from "@/lib/order-item-units";
 import { getOrderById } from "@/lib/orders";
+import { getOrderPrintPayments } from "@/lib/order-print-payments";
 
 function getCustomerPrimaryContact(order: Awaited<ReturnType<typeof getOrderById>>) {
   if (!order) {
@@ -28,6 +29,7 @@ export default async function OrderPrintPage({
   }
 
   const customerPrimaryContact = getCustomerPrimaryContact(order);
+  const payments = getOrderPrintPayments(order);
 
   return (
     <div className="print-order-page-shell">
@@ -87,6 +89,23 @@ export default async function OrderPrintPage({
           <span>Totale</span>
           <strong>{formatCurrency(order.totalCents)}</strong>
         </section>
+
+        {payments.depositCents > 0 || payments.isPaid ? (
+          <section className="print-sheet-payment-block" aria-label="Riepilogo pagamenti">
+            {payments.depositCents > 0 ? (
+              <dl className="print-sheet-payment-summary">
+                <div><dt>Acconto versato</dt><dd>{formatCurrency(payments.depositCents)}</dd></div>
+                {payments.additionalPaymentsCents > 0 ? (
+                  <div><dt>Altri versamenti</dt><dd>{formatCurrency(payments.additionalPaymentsCents)}</dd></div>
+                ) : null}
+                {payments.balanceDueCents > 0 ? (
+                  <div className="print-sheet-payment-balance"><dt>Saldo da versare</dt><dd>{formatCurrency(payments.balanceDueCents)}</dd></div>
+                ) : null}
+              </dl>
+            ) : null}
+            {payments.isPaid ? <div className="print-sheet-paid-stamp" aria-label="Ordine pagato">PAGATO</div> : null}
+          </section>
+        ) : null}
 
         <section className="print-sheet-section print-sheet-delivery-block">
           <span>Consegna prevista</span>

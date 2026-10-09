@@ -13,3 +13,4 @@ prisma/dev.db
 prisma/dev.db-journal
 public/uploads
 .shop-private
+.local-preview

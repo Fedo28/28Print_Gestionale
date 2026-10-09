@@ -249,7 +249,10 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
               <span className="compact-kicker">Operativo</span>
               <h3>Ordini</h3>
             </div>
-            <span className="pill">{customerOrders.length}</span>
+            <div className="customer-orders-heading-actions">
+              <span className="pill">{customerOrders.length}</span>
+              {customerOrders.length > 0 ? <Link className="button ghost customer-orders-print-button" href={`/customers/${customer.id}/print`} prefetch={false}>Stampa riepilogo</Link> : null}
+            </div>
           </div>
           <div className="mini-list">
             {customerOrders.length === 0 ? (

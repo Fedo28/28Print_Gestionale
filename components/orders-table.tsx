@@ -8,6 +8,8 @@ import { OrdersBulkToolbar } from "@/components/orders-bulk-toolbar";
 import { QuickOrderControlForms, QuickOrderTriggerButton } from "@/components/quick-order-controls";
 import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
 import { StatusPills } from "@/components/status-pills";
+import { OrderWorkAssignment } from "@/components/order-work-assignment";
+import type { OrderWorkAssignmentData } from "@/components/order-work-assignment";
 import { getOrderBalanceDisplay, isOrderPricingPending } from "@/lib/order-finance";
 import { getDisplayOrderLabel } from "@/lib/order-display";
 import { priorityLabels } from "@/lib/constants";
@@ -16,6 +18,7 @@ import { buildOrdersFilterHref, type OrderListFilters, type OrderListView, type 
 import { getPriorityToneClass } from "@/lib/priorities";
 
 type OrderRow = {
+  workTasks?: (OrderWorkAssignmentData & { claimKey: string | null; title: string })[];
   id: string;
   orderCode: string;
   title: string;
@@ -105,13 +108,15 @@ export function OrdersTable({
   view = "ACTIVE",
   filters,
   sortField,
-  sortDirection
+  sortDirection,
+  currentUserId
 }: {
   orders: OrderRow[];
   view?: OrderListView;
   filters: OrderListFilters;
   sortField: OrderSortField;
   sortDirection: OrderSortDirection;
+  currentUserId?: string;
 }) {
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
@@ -219,6 +224,7 @@ export function OrdersTable({
               const deliveredLabel = order.deliveredAt ? formatDateTime(order.deliveredAt) : formatDateTime(order.deliveryAt);
               const whatsappNotified = order.mainPhase === "SVILUPPO_COMPLETATO" && Boolean(order.readyWhatsappSentAt);
               const partialDelivery = getPartialDeliveryMeta(order.items);
+              const workAssignment = order.workTasks?.find((task) => task.claimKey === `order:${order.id}`);
               const balanceDisplay = getOrderBalanceDisplay(order);
               const pricingPending = isOrderPricingPending(order);
               const isShopOnlineOrder = Boolean(order.salesOrderLinks?.some((link) => link.salesOrder.origin === "SHOP_ONLINE"));
@@ -283,6 +289,7 @@ export function OrdersTable({
                             {isShopOnlineOrder ? <span className="pill shop-online-pill">Shop online</span> : null}
                             {entryMeta ? <span>{entryMeta}</span> : null}
                           </div>
+                          {currentUserId && !order.isQuote ? <OrderWorkAssignment compact orderId={order.id} userId={currentUserId} assignment={workAssignment} taskCount={order.workTasks?.length} activities={order.workTasks} /> : null}
                         </div>
 
                         <div className="order-mobile-card-meta">
@@ -357,6 +364,7 @@ export function OrdersTable({
                             onClick={() => setOpenOrderId((current) => (current === order.id ? null : order.id))}
                           />
                         </div>
+                        {currentUserId && !order.isQuote ? <OrderWorkAssignment compact orderId={order.id} userId={currentUserId} assignment={workAssignment} taskCount={order.workTasks?.length} activities={order.workTasks} /> : null}
                       </div>
                     </td>
                     <td

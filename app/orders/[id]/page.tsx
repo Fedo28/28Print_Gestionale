@@ -58,6 +58,8 @@ import {
   hasOrderFinancialAdjustments
 } from "@/lib/orders";
 import { usesLineTotalQuantityTiers } from "@/lib/pricing";
+import { OrderWorkAssignment } from "@/components/order-work-assignment";
+import { WorkspaceLiveRefresh } from "@/components/workspace-live-refresh";
 import {
   buildShopDocumentBundleOverview,
   buildShopDocumentCardSummary,
@@ -82,7 +84,7 @@ export default async function OrderDetailPage({
   params: { id: string };
   searchParams?: { needsScheduling?: string; edit?: string; item?: string };
 }) {
-  await requireAuth();
+  const session = await requireAuth();
   const [order, services] = await Promise.all([getOrderById(params.id), getServiceCatalogAdmin()]);
 
   if (!order) {
@@ -260,6 +262,7 @@ export default async function OrderDetailPage({
         }
       />
 
+      {!order.isQuote ? <section className="order-work-detail-strip"><WorkspaceLiveRefresh /><span className="workspace-eyebrow">Chi se ne occupa</span><OrderWorkAssignment orderId={order.id} userId={session.userId} assignment={order.workTasks.find((task) => task.claimKey === `order:${order.id}`)} taskCount={order.workTasks.length} activities={order.workTasks} /></section> : null}
       <section className={`order-detail-command-card tone-${orderDetailTone}`}>
         <div className="order-detail-command-main">
           <span className="order-detail-command-kicker">{order.isQuote ? "Preventivo" : "Ordine"}</span>

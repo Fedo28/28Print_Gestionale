@@ -6,6 +6,7 @@ import { InPageAnchorScroll } from "@/components/in-page-anchor-scroll";
 import { InteractionFeedback } from "@/components/interaction-feedback";
 import brandLogo from "../logo.png";
 import "./globals.css";
+import "./personal-workspace.css";
 
 const devAssetRecoveryScript = `
 (() => {
@@ -137,7 +138,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className={`${manrope.variable} ${spaceGrotesk.variable} ${sora.variable}`}>
         <InteractionFeedback />
         <InPageAnchorScroll />
-        <AppShell>{children}</AppShell>
+        <AppShell localPreview={process.env.NODE_ENV !== "production" && process.env.GESTIONALE_LOCAL_PREVIEW === "true"}>{children}</AppShell>
       </body>
     </html>
   );

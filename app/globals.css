@@ -10163,6 +10163,54 @@ button.action-icon-button {
   font-size: 1.18rem;
 }
 
+.print-sheet-payment-block {
+  display: grid;
+  justify-items: end;
+  gap: 16px;
+  padding: 0 0 22px;
+  break-inside: avoid;
+}
+
+.print-sheet-payment-summary {
+  display: grid;
+  gap: 7px;
+  min-width: 220px;
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.print-sheet-payment-summary > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.print-sheet-payment-summary dt { color: #5d6470; }
+.print-sheet-payment-summary dd { margin: 0; font-weight: 750; color: #1f2430; }
+.print-sheet-payment-balance { padding-top: 7px; border-top: 1px solid #d8dde4; }
+
+.print-sheet-paid-stamp {
+  display: inline-block;
+  padding: 8px 16px;
+  border: 4px double currentColor;
+  border-radius: 5px;
+  color: #236647;
+  font-size: 1.45rem;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  line-height: 1.15;
+  transform: rotate(-7deg);
+  margin: 4px 3px 6px;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+@media print {
+  .print-sheet-payment-block { padding-bottom: 16px; gap: 12px; }
+  .print-sheet-payment-summary { font-size: 11px; }
+  .print-sheet-paid-stamp { font-size: 21px; }
+}
+
 .print-sheet-delivery-block {
   gap: 2px;
   margin-top: auto;
@@ -40835,6 +40883,25 @@ button.theme-toggle.toolbar-theme-toggle {
   margin-bottom: 10px;
 }
 
+.customer-orders-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.customer-detail-shell .customer-orders-print-button {
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid #c9d8ed;
+  background: #eef4ff;
+  color: #255cff;
+  font-size: .72rem;
+  font-weight: 850;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .customer-detail-section-head h3,
 .customer-detail-danger-card h3 {
   margin: 0;
@@ -43631,7 +43698,7 @@ button.theme-toggle.toolbar-theme-toggle {
 
 .shell .shell-toolbar-search .global-search-field-shell {
   min-height: 54px;
-  padding-inline: 14px;
+  padding-inline: 46px 14px;
   border: 0 !important;
   border-bottom: 2px solid #c9d8e8 !important;
   border-radius: 0 !important;
@@ -43812,7 +43879,7 @@ button.theme-toggle.toolbar-theme-toggle {
 
   .shell .shell-toolbar-search .global-search-field-shell {
     min-height: 46px;
-    padding-inline: 10px;
+    padding-inline: 46px 10px;
   }
 
   .shell .shell-toolbar-search .global-search-field-shell input {

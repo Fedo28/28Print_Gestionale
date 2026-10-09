@@ -63,6 +63,8 @@ import type {
   StatusFilter
 } from "@/lib/order-filters";
 import { rankSearchableOrders } from "@/lib/order-search";
+import { getOrderIdsCreatedBy } from "@/lib/order-creators";
+import { orderWorkTasksRelationArgs } from "@/lib/personal-workspace";
 import { upsertOrderMaterialPurchaseNote } from "@/lib/purchase-notes";
 import { prisma } from "@/lib/prisma";
 import { getWhatsappTemplate } from "@/lib/settings";
@@ -86,6 +88,7 @@ export type OrderItemInput = {
 };
 
 export type CreateOrderInput = {
+  createdByUserId?: string;
   customerId?: string;
   customer: {
     type?: CustomerType;
@@ -513,7 +516,8 @@ const shopOnlineSalesOrderLinksRelationArgs = {
 
 const orderWithCustomerAndShopLinksInclude = {
   customer: true,
-  salesOrderLinks: shopOnlineSalesOrderLinksRelationArgs
+  salesOrderLinks: shopOnlineSalesOrderLinksRelationArgs,
+  workTasks: orderWorkTasksRelationArgs
 };
 
 export function isOperationalOrder(order: { isQuote: boolean }) {
@@ -1836,6 +1840,19 @@ export async function createOrder(input: CreateOrderInput) {
         customer: true
       }
     });
+
+    if (input.createdByUserId) {
+      await tx.auditLog.create({
+        data: {
+          entityType: "ORDER",
+          entityId: order.id,
+          entityLabel: getDisplayOrderLabel(order.orderCode, order.title),
+          actionType: "CREATED",
+          title: isQuote ? "Preventivo creato" : "Ordine creato",
+          actorUserId: input.createdByUserId
+        }
+      });
+    }
 
     if (input.materialNote) {
       await upsertOrderMaterialPurchaseNote(
@@ -4200,6 +4217,7 @@ type OrdersListQueryFilters = {
   invoice?: InvoiceFilter;
   priority?: PriorityFilter;
   customerType?: CustomerTypeFilter;
+  createdBy?: string;
   shop?: ShopOrderFilter;
   quote?: QuoteFilter;
   preset?: DashboardPreset;
@@ -4208,6 +4226,11 @@ type OrdersListQueryFilters = {
 };
 
 async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
+  const creatorOrderIds = filters.createdBy ? await getOrderIdsCreatedBy(filters.createdBy) : undefined;
+  if (creatorOrderIds && creatorOrderIds.length === 0) {
+    return [];
+  }
+
   const now = new Date();
   const todayStart = startOfDay(now);
   const tomorrowStart = addDays(todayStart, 1);
@@ -4355,6 +4378,7 @@ async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
     where: {
       ...viewWhere,
       ...presetWhere,
+      ...(creatorOrderIds ? { id: { in: creatorOrderIds } } : {}),
       ...(filters.phase && filters.phase !== "ALL"
         ? {
             mainPhase:
@@ -4384,6 +4408,7 @@ async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
     },
     include: {
       customer: true,
+      workTasks: orderWorkTasksRelationArgs,
       items: {
         select: {
           id: true,
@@ -4526,6 +4551,7 @@ export async function getOrdersTabCounts(filters: {
   invoice?: InvoiceFilter;
   priority?: PriorityFilter;
   customerType?: CustomerTypeFilter;
+  createdBy?: string;
   shop?: ShopOrderFilter;
   quote?: QuoteFilter;
 }) {
@@ -4549,6 +4575,7 @@ export async function getOrdersTabCounts(filters: {
         invoice: filters.invoice,
         priority: filters.priority,
         customerType: filters.customerType,
+        createdBy: filters.createdBy,
         shop: filters.shop,
         quote: filters.quote,
         preset: tab.preset,
@@ -4568,6 +4595,7 @@ export async function getOrderById(id: string) {
     where: { id },
     include: {
       customer: true,
+      workTasks: orderWorkTasksRelationArgs,
       items: {
         include: {
           serviceCatalog: true
@@ -4811,7 +4839,10 @@ export async function getCustomerById(id: string) {
           mainPhase: true,
           operationalStatus: true,
           paymentStatus: true,
+          invoiceStatus: true,
           totalCents: true,
+          depositCents: true,
+          paidCents: true,
           balanceDueCents: true
         },
         orderBy: [{ createdAt: "desc" }]

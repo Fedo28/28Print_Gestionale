@@ -1,0 +1,51 @@
+.customer-orders-print-sheet { display: flex; flex-direction: column; gap: 0; min-height: 277mm; padding: 9mm 8mm 7mm; color: #1d2938; }
+.customer-orders-print-brand { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 18px; border-bottom: 3px solid #255cff; }
+.customer-orders-print-brand img { width: 29mm; height: auto; }
+.customer-orders-print-brand > div { display: grid; gap: 5px; text-align: right; }
+.customer-orders-print-brand strong { font-size: 1.1rem; letter-spacing: -.025em; }
+.customer-orders-print-brand span { color: #667489; font-size: .7rem; }
+.customer-orders-print-customer { padding: 23px 0 19px; }
+.customer-orders-print-customer > span:first-child { color: #667489; font-size: .65rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
+.customer-orders-print-customer h1 { margin: 5px 0 8px; font-size: 1.65rem; letter-spacing: -.045em; line-height: 1.2; }
+.customer-orders-print-customer p { margin: 0 0 5px; font-size: .77rem; }
+.customer-orders-print-customer > span:last-child { color: #667489; font-size: .67rem; }
+.customer-orders-print-totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid #d8e1ee; margin-bottom: 23px; }
+.customer-orders-print-totals > div { display: grid; gap: 5px; padding: 13px 14px; border-right: 1px solid #d8e1ee; background: #f6f8fc; }
+.customer-orders-print-totals > div:last-child { border-right: 0; }
+.customer-orders-print-totals span { color: #637188; text-transform: uppercase; letter-spacing: .065em; font-size: .62rem; font-weight: 800; }
+.customer-orders-print-totals strong { font-size: 1.2rem; line-height: 1.2; }
+.customer-orders-print-totals .customer-orders-print-due { background: #edf3ff; color: #1e4ec0; }
+.customer-orders-print-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: .69rem; }
+.customer-orders-col-date { width: 13%; }
+.customer-orders-col-title { width: 33%; }
+.customer-orders-col-money { width: 12%; }
+.customer-orders-col-status { width: 18%; }
+.customer-orders-print-table th, .customer-orders-print-table td { padding: 9px 5px; border-bottom: 1px solid #dce3eb; line-height: 1.4; vertical-align: middle; }
+.customer-orders-print-table thead th { color: #6b778a; text-transform: uppercase; letter-spacing: .035em; font-size: .57rem; font-weight: 800; background: #f7f9fc; }
+.customer-orders-print-table th:nth-child(n+3), .customer-orders-print-table td:nth-child(n+3) { text-align: right; white-space: nowrap; }
+.customer-orders-print-table th:last-child, .customer-orders-print-table td:last-child { text-align: center; }
+.customer-orders-print-table td:nth-child(2) { font-weight: 650; overflow-wrap: anywhere; }
+.customer-orders-print-table td.has-balance { font-weight: 800; }
+.customer-orders-payment-label { display: inline-block; padding: 3px 6px; border: 1px solid #df9b95; color: #a34339; font-size: .57rem; font-weight: 800; line-height: 1.3; }
+.customer-orders-payment-label.is-paid { border-color: #93bba5; color: #236647; }
+.customer-orders-payment-label.is-partial { border-color: #d8bb7b; color: #936515; }
+.customer-orders-payment-label.is-pending, .customer-orders-payment-label.is-zero, .customer-orders-payment-label.is-check { border-color: #c3cbd7; color: #64748b; }
+.customer-orders-print-table tfoot th, .customer-orders-print-table tfoot td { border-bottom: 0; border-top: 2px solid #9cacc2; font-weight: 850; padding-top: 12px; }
+.customer-orders-print-table tfoot td { text-align: right; }
+.customer-orders-print-table tfoot td:nth-last-child(2) { color: #1e4ec0; }
+.customer-orders-print-pending { font-size: .68rem; color: #64748b; margin: 16px 0 0; }
+.customer-orders-print-footer { display: grid; gap: 3px; margin-top: auto; padding-top: 20px; text-align: center; font-size: .61rem; line-height: 1.4; color: #667489; }
+.customer-orders-print-footer strong { color: #344357; font-size: .66rem; }
+@media print {
+  .print-sheet.customer-orders-print-sheet { min-height: 277mm !important; padding: 8mm 7mm 6mm !important; break-inside: auto; page-break-inside: auto; }
+  .customer-orders-print-brand { padding-bottom: 12px; }
+  .customer-orders-print-brand img { width: 26mm; }
+  .customer-orders-print-customer { padding: 16px 0; }
+  .customer-orders-print-totals { margin-bottom: 18px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .customer-orders-print-table thead { display: table-header-group; }
+  .customer-orders-print-table tfoot { display: table-row-group; }
+  .customer-orders-print-table tr { break-inside: avoid; page-break-inside: avoid; }
+  .customer-orders-print-table th, .customer-orders-print-table td { font-size: 10px; padding: 7px 4px; }
+  .customer-orders-print-table thead th { font-size: 8px; }
+  .customer-orders-payment-label { font-size: 8px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+}

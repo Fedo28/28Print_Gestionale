@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { moveOrderInProductionAction } from "@/app/actions";
 import { ReadyWhatsAppButton } from "@/components/ready-whatsapp-button";
+import { OrderWorkAssignment } from "@/components/order-work-assignment";
 import { normalizeMainPhaseForWorkflow, operationalStatusLabels, paymentStatusLabels } from "@/lib/constants";
 import { formatCompactDate } from "@/lib/format";
 import { getDisplayOrderLabel } from "@/lib/order-display";
@@ -156,7 +157,8 @@ function ProductionCard({
   onDragEnd,
   onDragStart,
   onMove,
-  onSuspend
+  onSuspend,
+  currentUserId
 }: {
   order: ProductionOrder;
   queue: QueueKey;
@@ -165,6 +167,7 @@ function ProductionCard({
   onDragStart: (event: DragEvent<HTMLElement>, orderId: string) => void;
   onMove: (order: ProductionOrder, target: ProductionTarget) => void;
   onSuspend: (order: ProductionOrder) => void;
+  currentUserId?: string;
 }) {
   const workdayHighlight = getWorkdayHighlight(order.deliveryAt);
   const whatsappNotified = queue === "ready" && Boolean(order.readyWhatsappSentAt);
@@ -205,6 +208,7 @@ function ProductionCard({
         {queue === "blocked" ? <div className="hint production-blocked-note">{order.operationalNote || operationalStatusLabels[order.operationalStatus]}</div> : null}
       </div>
 
+      {currentUserId ? <OrderWorkAssignment compact orderId={order.id} userId={currentUserId} assignment={order.workTasks.find((task) => task.claimKey === `order:${order.id}`)} taskCount={order.workTasks.length} activities={order.workTasks} /> : null}
       <div className="production-card-actions">
         {queue === "ready" ? (
           <>
@@ -257,7 +261,8 @@ function ProductionLane({
   onMove,
   onSuspend,
   orders,
-  queue
+  queue,
+  currentUserId
 }: {
   canDrop: boolean;
   draggedOrderId: string | null;
@@ -271,6 +276,7 @@ function ProductionLane({
   onSuspend: (order: ProductionOrder) => void;
   orders: ProductionOrder[];
   queue: QueueKey;
+  currentUserId?: string;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const visibleOrders = isExpanded ? orders : orders.slice(0, VISIBLE_ORDERS_PER_QUEUE);
@@ -301,6 +307,7 @@ function ProductionLane({
           <div className="compact-order-grid compact-order-grid-dense queue-grid-dense">
             {visibleOrders.map((order) => (
               <ProductionCard
+                currentUserId={currentUserId}
                 isMoving={isMoving}
                 key={order.id}
                 onDragEnd={onDragEnd}
@@ -381,7 +388,7 @@ function SuspensionDialog({
   );
 }
 
-export function ProductionBoard({ queues }: { queues: Awaited<ReturnType<typeof getProductionQueues>> }) {
+export function ProductionBoard({ queues, currentUserId }: { queues: Awaited<ReturnType<typeof getProductionQueues>>; currentUserId?: string }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [draggedOrderId, setDraggedOrderId] = useState<string | null>(null);
@@ -520,6 +527,7 @@ export function ProductionBoard({ queues }: { queues: Awaited<ReturnType<typeof 
   function renderLane(queue: QueueKey) {
     return (
       <ProductionLane
+        currentUserId={currentUserId}
         canDrop={Boolean(draggedOrder && getAllowedDropQueues(draggedOrder).includes(queue))}
         draggedOrderId={draggedOrderId}
         isDropActive={dropQueue === queue}
