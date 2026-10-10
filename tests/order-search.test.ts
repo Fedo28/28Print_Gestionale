@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rankSearchableOrders } from "../lib/order-search";
+import { rankOrderSearchSuggestions, rankSearchableOrders } from "../lib/order-search";
 
 const orders = [
   {
@@ -48,5 +48,26 @@ describe("order search", () => {
   it("keeps near matches when terms are not in exact order", () => {
     expect(rankSearchableOrders(orders, "rossi mario").map((order) => order.id)).toEqual(["order-1"]);
     expect(rankSearchableOrders(orders, "visita biglietti").map((order) => order.id)).toEqual(["order-2"]);
+  });
+
+  it("suggests the newest matching customer orders before older ones regardless of delivery date", () => {
+    const sameCustomerOrders = [
+      { ...orders[0], id: "older", createdAt: new Date("2026-01-01"), deliveryAt: new Date("2026-12-01") },
+      { ...orders[0], id: "newer", orderCode: "ORD-2026-002", createdAt: new Date("2026-10-01"), deliveryAt: new Date("2026-10-02") }
+    ];
+    expect(rankOrderSearchSuggestions(sameCustomerOrders, "Mario Rossi").map(order => order.id)).toEqual(["newer", "older"]);
+  });
+
+  it("keeps an exact order code ahead of newer partial matches", () => {
+    const codeMatches = [
+      { ...orders[0], id: "exact", createdAt: "2026-01-01" },
+      { ...orders[0], id: "partial", orderCode: "ORD-2026-001-R", createdAt: "2026-10-01" }
+    ];
+    expect(rankOrderSearchSuggestions(codeMatches, "ORD-2026-001").map(order => order.id)).toEqual(["exact", "partial"]);
+  });
+
+  it("applies the quick suggestion limit after ranking by recency", () => {
+    const history = Array.from({ length: 9 }, (_, index) => ({ ...orders[0], id: `order-${index + 1}`, orderCode: `ORD-2026-${index + 1}`, createdAt: `2026-10-${String(index + 1).padStart(2, "0")}` }));
+    expect(rankOrderSearchSuggestions(history, "mariorossi").slice(0, 6).map(order => order.id)).toEqual(["order-9", "order-8", "order-7", "order-6", "order-5", "order-4"]);
   });
 });

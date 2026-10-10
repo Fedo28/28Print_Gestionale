@@ -2,6 +2,8 @@
 
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { OrderSearchStatus } from "@/lib/order-search-status";
+import { OrderSearchStatusBadge } from "@/components/order-search-status-badge";
 
 type SearchRequestParams = Record<string, string | undefined>;
 
@@ -10,6 +12,7 @@ type OrderSearchSuggestion = {
   label: string;
   meta: string;
   href: string;
+  status?: OrderSearchStatus;
 };
 
 type SearchResponse = {
@@ -155,13 +158,13 @@ export function OrderSearchInput({
               </div>
               {suggestions.map((item) => (
                 <button
-                  className="filters-search-suggestion"
+                  className={`filters-search-suggestion${item.status ? ` search-order-result status-${item.status.tone}` : ""}`}
                   key={item.id}
                   onClick={() => handleNavigate(item.href)}
                   onMouseDown={(event) => event.preventDefault()}
                   type="button"
                 >
-                  <strong>{item.label}</strong>
+                  {item.status ? <div className="search-result-heading"><strong>{item.label}</strong><OrderSearchStatusBadge status={item.status} /></div> : <strong>{item.label}</strong>}
                   <span>{item.meta}</span>
                 </button>
               ))}

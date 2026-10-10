@@ -25,6 +25,25 @@ enum PersonalNoteColor {
   PINK
 }
 
+enum SiteServiceKind {
+  HOSTING
+  DOMAIN
+}
+
+enum SiteDomainRenewalMode {
+  UNKNOWN
+  TOGETHER
+  SEPARATE
+}
+
+enum SiteEmailReminderStatus {
+  SENDING
+  SENT
+  FAILED
+  UNKNOWN
+  CANCELLED
+}
+
 enum CustomerType {
   PUBBLICO
   AZIENDA
@@ -214,6 +233,7 @@ model User {
   createdWorkTasks WorkTask[] @relation("WorkTaskCreator")
   workCollaborations WorkTaskCollaborator[]
   personalNotes PersonalNote[]
+  siteRenewals SiteRenewal[]
 }
 
 model WorkTask {
@@ -293,12 +313,92 @@ model Customer {
   fileAssets FileAsset[]
   billboardBookings BillboardBooking[]
   purchaseNotes PurchaseNote[]
+  managedSites ManagedSite[]
 
   @@index([name])
   @@index([phone])
   @@index([pec])
   @@index([type])
   @@index([uniqueCode])
+}
+
+model ManagedSite {
+  id                String @id @default(uuid())
+  hostname          String @unique
+  name              String @default("")
+  customerId        String?
+  domainRenewalMode SiteDomainRenewalMode @default(UNKNOWN)
+  notes             String @default("")
+  emailRemindersEnabled Boolean @default(false)
+  renewalEmail      String?
+  archivedAt        DateTime?
+  version           Int @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  customer          Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  services          SiteService[]
+
+  @@index([customerId, archivedAt])
+}
+
+model SiteService {
+  id           String @id @default(uuid())
+  siteId       String
+  kind         SiteServiceKind
+  provider     String @default("")
+  renewalDay   Int?
+  renewalMonth Int?
+  renewalYear  Int?
+  costCents    Int?
+  autoRenew    Boolean?
+  version      Int @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  site         ManagedSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  renewals     SiteRenewal[]
+  emailReminders SiteEmailReminder[]
+
+  @@unique([siteId, kind])
+  @@index([renewalYear, renewalMonth, renewalDay])
+}
+
+model SiteEmailReminder {
+  id          String @id @default(uuid())
+  serviceId   String
+  dueDate     String
+  status      SiteEmailReminderStatus @default(SENDING)
+  recipient   String
+  sender      String
+  subject     String
+  text        String
+  providerId  String?
+  error       String @default("")
+  attempts    Int @default(1)
+  startedAt   DateTime @default(now())
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  service     SiteService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceId, dueDate])
+  @@index([status, createdAt])
+}
+
+model SiteRenewal {
+  id               String @id @default(uuid())
+  serviceId        String
+  previousDueLabel String
+  includesDomain   Boolean @default(false)
+  nextDueDate      String
+  renewedOn        String
+  costCents        Int?
+  note             String @default("")
+  recordedById     String?
+  createdAt        DateTime @default(now())
+  service          SiteService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  recordedBy       User? @relation(fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@index([serviceId, createdAt])
 }
 
 model CustomerAccount {

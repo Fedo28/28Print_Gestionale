@@ -58,7 +58,7 @@ export function getOrderSearchScore(order: SearchableOrder, query: string) {
   );
 }
 
-export function rankSearchableOrders<T extends SearchableOrder>(orders: T[], query: string) {
+export function rankSearchableOrders<T extends SearchableOrder>(orders: T[], query: string, compareMatchingOrders?: (left: T, right: T) => number) {
   const matcher = createSearchMatcher(query);
 
   if (!matcher.normalizedQuery) {
@@ -74,8 +74,13 @@ export function rankSearchableOrders<T extends SearchableOrder>(orders: T[], que
     .sort(
       (left, right) =>
         left.score - right.score ||
+        (compareMatchingOrders?.(left.order, right.order) || 0) ||
         left.order.orderCode.localeCompare(right.order.orderCode, "it") ||
         left.order.customer.name.localeCompare(right.order.customer.name, "it")
     )
     .map((entry) => entry.order);
+}
+
+export function rankOrderSearchSuggestions<T extends SearchableOrder & { createdAt: Date | string }>(orders: T[], query: string) {
+  return rankSearchableOrders(orders, query, (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
 }

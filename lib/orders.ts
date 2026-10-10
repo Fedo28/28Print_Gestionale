@@ -62,7 +62,8 @@ import type {
   ShopOrderFilter,
   StatusFilter
 } from "@/lib/order-filters";
-import { rankSearchableOrders } from "@/lib/order-search";
+import { rankOrderSearchSuggestions, rankSearchableOrders } from "@/lib/order-search";
+import { getOrderSearchStatus } from "@/lib/order-search-status";
 import { getOrderIdsCreatedBy } from "@/lib/order-creators";
 import { orderWorkTasksRelationArgs } from "@/lib/personal-workspace";
 import { upsertOrderMaterialPurchaseNote } from "@/lib/purchase-notes";
@@ -4464,7 +4465,7 @@ export async function getOrderSearchSuggestions(filters: OrdersListQueryFilters 
     return [];
   }
 
-  const matchedOrders = rankSearchableOrders(await getFilteredOrdersCollection(filters), query).slice(0, filters.limit || 6);
+  const matchedOrders = rankOrderSearchSuggestions(await getFilteredOrdersCollection(filters), query).slice(0, filters.limit || 6);
 
   return matchedOrders.map((order) => ({
     id: order.id,
@@ -4472,7 +4473,8 @@ export async function getOrderSearchSuggestions(filters: OrdersListQueryFilters 
     meta: [order.customer.name, order.customer.phone?.trim() || order.customer.whatsapp?.trim() || null]
       .filter((value): value is string => Boolean(value))
       .join(" • "),
-    href: `/orders/${order.id}`
+    href: `/orders/${order.id}`,
+    status: order.isQuote ? undefined : getOrderSearchStatus(order.mainPhase)
   }));
 }
 

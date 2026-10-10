@@ -43954,3 +43954,18 @@ button.theme-toggle.toolbar-theme-toggle {
     font-size: clamp(2.2rem, 4.4vw, 4rem);
   }
 }
+
+/* Quick order search results: status is shown with both color and text. */
+.search-order-result.status-pending { --search-state-bg: #fff9ed; --search-state-hover: #fff2d7; --search-state-color: #956515; --search-state-line: #dca53d; --search-state-badge: #fff0cf; }
+.search-order-result.status-working { --search-state-bg: #edf6ff; --search-state-hover: #e1eeff; --search-state-color: #245dac; --search-state-line: #4383df; --search-state-badge: #dbeaff; }
+.search-order-result.status-ready { --search-state-bg: #f2f9e9; --search-state-hover: #e9f3d8; --search-state-color: #4b7228; --search-state-line: #80a943; --search-state-badge: #e2efcb; }
+.search-order-result.status-delivered { --search-state-bg: #f5f6f8; --search-state-hover: #edf0f4; --search-state-color: #637184; --search-state-line: #a3afbd; --search-state-badge: #e8ecf1; }
+.shell .global-search-result.search-order-result,
+.shell .filters-search-suggestion.search-order-result { border-left: 4px solid var(--search-state-line); background: var(--search-state-bg); }
+.shell .global-search-result.search-order-result:hover,
+.shell .global-search-result.search-order-result:focus-visible,
+.shell .filters-search-suggestion.search-order-result:hover,
+.shell .filters-search-suggestion.search-order-result:focus-visible { background: var(--search-state-hover); border-color: var(--search-state-line); }
+.search-result-heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 5px 12px; min-width: 0; width: 100%; }
+.search-result-heading > strong { min-width: 0; font-weight: 800; overflow-wrap: anywhere; }
+.search-result-heading .search-order-status { display: inline-block; flex: 0 0 auto; max-width: 100%; padding: 4px 7px; border-radius: 0; background: var(--search-state-badge); color: var(--search-state-color); font-size: .65rem; font-weight: 800; line-height: 1.3; }

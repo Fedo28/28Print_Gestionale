@@ -1,6 +1,7 @@
-import { mainPhaseLabels } from "@/lib/constants";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
+import { getOrderSearchStatus } from "@/lib/order-search-status";
+import type { OrderSearchStatus } from "@/lib/order-search-status";
 
 export type GlobalSearchItem = {
   id: string;
@@ -8,6 +9,7 @@ export type GlobalSearchItem = {
   label: string;
   meta: string;
   href: string;
+  status?: OrderSearchStatus;
 };
 
 export type GlobalSearchSection = {
@@ -64,7 +66,7 @@ export async function searchGlobal(query: string): Promise<GlobalSearchSection[]
           }
         }
       },
-      orderBy: [{ deliveryAt: "asc" }],
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 5
     }),
     prisma.order.findMany({
@@ -179,7 +181,8 @@ export async function searchGlobal(query: string): Promise<GlobalSearchSection[]
         id: order.id,
         kind: "order",
         label: order.customer.name,
-        meta: `${order.orderCode} • ${order.title} • ${formatDateTime(order.deliveryAt)} • ${mainPhaseLabels[order.mainPhase]}`,
+        meta: `${order.orderCode} • ${order.title} • Consegna ${formatDateTime(order.deliveryAt)}`,
+        status: getOrderSearchStatus(order.mainPhase),
         href: `/orders/${order.id}`
       }))
     });

@@ -29,7 +29,9 @@
     "stripe:webhook-secret": "node --env-file=.env scripts/stripe-listen.js print-secret",
     "vercel-build": "npm run deploy:check-env && prisma migrate deploy && tsx --tsconfig tsconfig.json scripts/bootstrap-production.ts && next build",
     "test": "vitest run",
-    "test:workspace": "node scripts/test-personal-workspace.mjs"
+    "test:workspace": "node scripts/test-personal-workspace.mjs",
+    "test:sites": "node scripts/test-managed-sites.mjs",
+    "test:site-email": "node scripts/test-site-email.mjs"
   },
   "dependencies": {
     "@prisma/client": "6.19.1",

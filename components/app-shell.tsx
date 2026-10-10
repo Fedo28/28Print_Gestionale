@@ -13,6 +13,7 @@ type NavTone = "neutral" | "sky" | "coral" | "lilac" | "rose" | "amber" | "mint"
 type NavIcon =
   | "dashboard"
   | "personal"
+  | "sites"
   | "customers"
   | "orders"
   | "quotes"
@@ -32,6 +33,7 @@ const navItems = [
   { href: "/orders", label: "Ordini", icon: "orders", tone: "lilac" },
   { href: "/quotes", label: "Preventivi", icon: "quotes", tone: "coral" },
   { href: "/customers", label: "Clienti", icon: "customers", tone: "rose" },
+  { href: "/sites", label: "Siti", icon: "sites", tone: "teal" },
   { href: "/calendar", label: "Calendario", icon: "calendar", tone: "amber" },
   { href: "/billboards", label: "Cartelloni", icon: "billboards", tone: "teal" },
   { href: "/purchase-notes", label: "Da ordinare", icon: "purchases", tone: "amber" },
@@ -496,6 +498,12 @@ export function AppShell({ children, localPreview = false }: { children: ReactNo
 
 function ShellGlyph({ kind }: { kind: NavIcon }) {
   const paths = {
+    sites: (
+      <>
+        <circle cx="12" cy="12" r="8" />
+        <path d="M4 12h16M12 4c4 4 4 12 0 16M12 4c-4 4-4 12 0 16" />
+      </>
+    ),
     personal: (
       <>
         <path d="M12 11a3.2 3.2 0 1 0 0-6.4A3.2 3.2 0 0 0 12 11Z" />

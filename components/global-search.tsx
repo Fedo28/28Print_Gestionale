@@ -3,6 +3,7 @@
 import { startTransition, useEffect, useId, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { GlobalSearchSection } from "@/lib/global-search";
+import { OrderSearchStatusBadge } from "@/components/order-search-status-badge";
 
 type SearchResponse = {
   sections: GlobalSearchSection[];
@@ -234,7 +235,7 @@ export function GlobalSearch({
                     <div className="global-search-results">
                       {section.items.map((item) => (
                         <button
-                          className="global-search-result"
+                          className={`global-search-result${item.status ? ` search-order-result status-${item.status.tone}` : ""}`}
                           key={`${section.key}-${item.id}`}
                           onClick={() => navigateTo(item.href)}
                           onFocus={() => router.prefetch(item.href)}
@@ -242,7 +243,7 @@ export function GlobalSearch({
                           onMouseEnter={() => router.prefetch(item.href)}
                           type="button"
                         >
-                          <strong>{item.label}</strong>
+                          {item.status ? <div className="search-result-heading"><strong>{item.label}</strong><OrderSearchStatusBadge status={item.status} /></div> : <strong>{item.label}</strong>}
                           <span>{item.meta}</span>
                         </button>
                       ))}
