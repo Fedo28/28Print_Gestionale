@@ -1,0 +1,48 @@
+28PRINT Bridge 0.2 - aggiornamento dell'installazione gia collaudata
+
+NON cancellare o rinominare C:\28PRINT-Bridge.
+NON toccare config.json, data, node_modules, credenziali e Hot Folders.
+Il pacchetto non contiene questi dati e non cambia il profilo di stampa.
+Non servono npm ci, nuove chiavi o un nuovo ordine di prova.
+
+AGGIORNAMENTO UNA TANTUM (stesso account Windows gia usato)
+
+1. Verifica che non ci siano lavori In preparazione/In invio.
+   Ferma la vecchia attivita dalla PowerShell:
+     Stop-ScheduledTask -TaskName '28PRINT Bridge'
+   Se hai invece avviato il Bridge a mano, usa Ctrl+C e attendi il prompt.
+   Non cancellare il lavoro di prova presente in Fiery.
+
+2. Estrai il contenuto di questo ZIP direttamente in C:\28PRINT-Bridge,
+   sostituendo solo i file di programma omonimi. Non creare una seconda
+   cartella di installazione. Non cancellare le cartelle gia presenti.
+
+3. Doppio clic su Configura-Desktop.cmd nella cartella del Bridge.
+   Usa il solito account Windows, non un altro amministratore.
+   Il controllo locale non invia documenti. Se Windows nega i permessi,
+   fermati e comunica l'errore: non cambiare account o criteri di sistema.
+
+4. Si apre il pannello e compare il collegamento 28PRINT Bridge sul desktop.
+   Premi Avvia Bridge. Dopo circa 30 secondi verifica il ciclo riuscito
+   e il contatto nel gestionale. Puoi chiudere il pannello: il Bridge resta
+   in background e partira automaticamente ai prossimi login.
+
+USO QUOTIDIANO
+
+- Nessun comando PowerShell. Accedi a Windows con lo stesso utente.
+- PC acceso e senza sospensione; Fiery Hot Folders deve essere attivo.
+- Il desktop apre il pannello, non avvia una seconda copia del motore.
+- Pausa Bridge disabilita anche l'avvio automatico e attende il termine
+  dell'operazione in corso. Avvia Bridge riabilita l'avvio automatico.
+- Pausa non annulla lavori gia consegnati e non ferma la stampante.
+- Apri gestionale usa l'URL gia configurato, senza segreti nell'indirizzo.
+- Apri cartella log aiuta la diagnosi; non inviare chiavi o file DPAPI.
+
+LIMITI
+
+Non e un servizio prima del login. Non modifica autologin, sospensione,
+stampanti o configurazione di Fiery. Il profilo resta quello di prova:
+PDF A4, B/N, solo fronte, una copia, coda in attesa.
+Ultimo ciclo riuscito non certifica lo stato fisico della stampante.
+La nuova interfaccia Windows richiede una verifica sul PC dopo l'installazione;
+i test automatici sono stati eseguiti sul Mac, con cartelle e API simulate.

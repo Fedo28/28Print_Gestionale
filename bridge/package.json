@@ -1,0 +1,15 @@
+{
+  "name": "28print-bridge",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.14.0 <25" },
+  "scripts": {
+    "start": "node src/cli.ts run",
+    "check": "node src/cli.ts check",
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": { "pdf-lib": "1.17.1" },
+  "devDependencies": { "@types/node": "^24.0.0", "typescript": "5.8.2" }
+}

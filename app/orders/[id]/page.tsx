@@ -26,6 +26,8 @@ import { HistoryBackButton } from "@/components/history-back-button";
 import { MaterialCategorySelectorField } from "@/components/material-category-selector-field";
 import { OrderHistoryUndoShortcut } from "@/components/order-history-undo-shortcut";
 import { OrderPrintButton } from "@/components/order-print-button";
+import { PrintAttachmentActions } from "@/components/print-attachment-actions";
+import { printEnabled } from "@/lib/print-runtime";
 import { OrderCustomerSwitchForm } from "@/components/order-customer-switch-form";
 import { OrderItemEditorForm } from "@/components/order-item-editor-form";
 import { OrderEditToggleButton } from "@/components/order-edit-toggle-button";
@@ -932,7 +934,7 @@ export default async function OrderDetailPage({
           ) : null}
 
           <div className="order-detail-side-bottom-grid">
-            <details className="card card-pad order-detail-disclosure order-detail-attachments-card" id="order-detail-attachments-card">
+            <details open={printEnabled() || undefined} className="card card-pad order-detail-disclosure order-detail-attachments-card" id="order-detail-attachments-card">
               <summary className="order-detail-disclosure-summary">
                 <div className="order-detail-disclosure-copy">
                   <h3>Allegati</h3>
@@ -948,12 +950,14 @@ export default async function OrderDetailPage({
                   <div className="empty">Nessun file caricato.</div>
                 ) : (
                   order.attachments.map((attachment) => (
-                    <a className="mini-item" href={attachment.filePath} key={attachment.id} rel="noreferrer" target="_blank">
+                    <div key={attachment.id}><a className="mini-item" href={attachment.filePath} rel="noreferrer" target="_blank">
                       <strong>{attachment.fileName}</strong>
                       <span className="subtle">
                         {formatAttachmentSize(attachment.sizeBytes)} • {formatDateTime(attachment.createdAt)}
                       </span>
                     </a>
+                    {printEnabled() && !order.isQuote && attachment.fileName.toLowerCase().endsWith(".pdf") && <PrintAttachmentActions orderId={order.id} attachmentId={attachment.id} admin={session.role === "ADMIN"} />}
+                    </div>
                   ))
                 )}
               </div>

@@ -1,0 +1,13 @@
+{
+  "baseUrl": "https://INSERIRE-GESTIONALE-DI-TEST.example",
+  "workDir": "C:\\28PRINT-Bridge",
+  "pollSeconds": 15,
+  "destinations": {
+    "ipc650-test-a4-bn": {
+      "hotFolder": "C:\\Users\\UTENTE\\Desktop\\Automazione 650\\28PRINT_TEST_A4_BN",
+      "staging": "C:\\28PRINT-Bridge-Staging",
+      "profileKey": "A4_BW_SIMPLEX_1_HOLD_V1",
+      "verifiedHoldOneCopy": false
+    }
+  }
+}

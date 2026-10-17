@@ -1,0 +1,76 @@
+// Local-only UI QA. No cloud credentials, printer connections or production data.
+import { createRequire } from "node:module";
+import { createHmac, randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
+import { mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { setTimeout as sleep } from "node:timers/promises";
+import { verifyPrintTestIsolation } from "./print-test-env.mjs";
+const require = createRequire(import.meta.url);
+const { PrismaClient } = require("@prisma/client");
+if (!process.env.PLAYWRIGHT_PACKAGE) throw Error("Specify the installed Playwright package path.");
+const { chromium } = require(process.env.PLAYWRIGHT_PACKAGE);
+const env = await verifyPrintTestIsolation(); env.NODE_ENV = "production";
+const db = new PrismaClient({ datasources: { db: { url: env.DATABASE_URL } } });
+const orderId = `quick-ui-${randomUUID()}`;
+let printerId, destinationId, browser;
+const child = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", "3017"], { env, stdio: ["ignore", "pipe", "pipe"] });
+let ready = false; child.stdout.on("data", chunk => { if (String(chunk).includes("Ready in")) ready = true; }); child.stderr.on("data", () => {});
+try {
+  const deadline = Date.now() + 30000;
+  while (!ready && child.exitCode === null && Date.now() < deadline) await sleep(100);
+  if (!ready) throw Error("Local server unavailable");
+  const source = await db.attachment.findUniqueOrThrow({ where: { id: "print-test-attachment" } });
+  await db.order.create({ data: { id: orderId, customerId: "print-test-customer", orderCode: orderId, title: "Collaudo interfaccia · documento sintetico", titleNormalized: orderId, createdOn: "2026-10-16", deliveryAt: new Date(), attachments: { create: { fileName: source.fileName, filePath: source.filePath, mimeType: source.mimeType, sizeBytes: source.sizeBytes } } } });
+  const profile = await db.printProfile.findUniqueOrThrow({ where: { key: "A4_BW_SIMPLEX_1_HOLD_V1" } });
+  const printer = await db.printPrinter.create({ data: { name: "Canon C7260 · simulatore", preferredFor: "BW" } }); printerId = printer.id;
+  const destination = await db.printDestination.create({ data: { key: orderId, name: "Cartella simulata", printerName: printer.name, printerId, profileId: profile.id, profileKey: profile.key, bridgeId: "print-test-bridge", enabled: true } }); destinationId = destination.id;
+  const executablePath = [chromium.executablePath(), "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"].find(existsSync);
+  browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const encoded = Buffer.from(JSON.stringify({ userId: "print-test-admin", role: "ADMIN", exp: Date.now() + 300000 })).toString("base64url");
+  const signature = createHmac("sha256", env.AUTH_SECRET).update(encoded).digest("hex");
+  await context.addCookies([{ name: "fede_session", value: `${encoded}.${signature}`, url: "http://127.0.0.1:3017", httpOnly: true }]);
+  const page = await context.newPage();
+  const errors = []; page.on("pageerror", error => errors.push(error.message));
+  await page.goto(`http://127.0.0.1:3017/orders/${orderId}`, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Invia a Fiery", exact: true }).click();
+  await page.getByRole("button", { name: "Approva e invia", exact: true }).waitFor();
+  await page.getByText("Pagina 1 di 1", { exact: true }).waitFor();
+  await page.locator('[aria-busy="false"] canvas').waitFor();
+  if (await page.getByRole("combobox", { name: "Stampante", exact: true }).inputValue() !== destinationId) throw Error("Recommended printer not selected");
+  if (await db.printJob.count({ where: { orderId } })) throw Error("Review created a print job");
+  await mkdir("output/print-ui", { recursive: true });
+  await page.locator("dialog[open]").screenshot({ path: "output/print-ui/invio-rapido-desktop.png" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator("dialog[open]").screenshot({ path: "output/print-ui/invio-rapido-mobile.png" });
+  await page.getByRole("button", { name: "Approva e invia", exact: true }).click();
+  await page.locator("dialog").waitFor({ state: "hidden" });
+  const jobs = await db.printJob.findMany({ where: { orderId } });
+  if (jobs.length !== 1 || jobs[0].destinationId !== destinationId || jobs[0].status !== "APPROVED") throw Error("Incorrect approval");
+  await page.reload({ waitUntil: "networkidle" });
+  if (await page.getByRole("button", { name: "Invia a Fiery", exact: true }).count()) throw Error("Duplicate send enabled");
+  await db.printJob.update({ where: { id: jobs[0].id }, data: { status: "DELIVERED" } }); // Synthetic UI state only, no worker involved.
+  await page.reload({ waitUntil: "networkidle" });
+  await page.getByRole("button", { name: "Invia di nuovo…" }).click();
+  const reapprove = page.getByRole("button", { name: "Approva nuovo invio" }); await reapprove.waitFor();
+  if (!(await reapprove.isDisabled())) throw Error("Reprint must require an explicit reason");
+  await page.getByLabel("Perché lo invii di nuovo?").selectOption({ label: "Collaudo autorizzato della destinazione" });
+  if (await reapprove.isDisabled()) throw Error("Reason did not unlock reprint");
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("http://127.0.0.1:3017/whatsapp", { waitUntil: "networkidle" });
+  if (!(await page.getByText("Numero non collegato", { exact: true }).isVisible())) throw Error("WhatsApp must not appear connected");
+  await page.screenshot({ path: "output/print-ui/whatsapp-desktop.png", fullPage: true });
+  if (errors.length) throw Error(`Browser errors: ${errors.length}`);
+  console.log("UI desktop/mobile: preview read-only, recommended printer, explicit single approval, duplicate guard, reprint reason and disconnected WhatsApp verified. Screenshots in output/print-ui. No physical printing.");
+} finally {
+  await browser?.close();
+  await db.printJobEvent.deleteMany({ where: { job: { orderId } } });
+  await db.printJob.deleteMany({ where: { orderId } });
+  await db.order.deleteMany({ where: { id: orderId } });
+  if (destinationId) await db.printDestination.delete({ where: { id: destinationId } });
+  if (printerId) await db.printPrinter.delete({ where: { id: printerId } });
+  await db.$disconnect();
+  if (child.exitCode === null && child.signalCode === null) { const stopped = new Promise(resolve => child.once("exit", resolve)); child.kill("SIGTERM"); await stopped; }
+}
