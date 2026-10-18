@@ -638,6 +638,8 @@ const productDefinitions: ProductDefinition[] = [
     fileQuantityMode: "file-count",
     fileUploadHint: "Carica JPG o PNG: ogni immagine vale 1 foto",
     hideTemplateCard: true,
+    imageAlt: "Bambina fotografata in un prato fiorito",
+    imageSrc: "/shop/product-photo.webp",
     optionSectionLabel: "Formato",
     slug: "stampa-foto",
     title: "Stampa foto"
