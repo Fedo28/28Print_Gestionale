@@ -23,6 +23,8 @@ import {
   SHOP_SALES_ORDER_NOTIFICATION_TOPIC
 } from "@/lib/shop-notification-inbox";
 import { customerShopSalesOrderItemFileSelect } from "@/lib/shop-order-files";
+import { areShopPhotoFilesComplete, readShopPhotoSubjects } from "@/lib/shop-photo-order";
+import { resolveShopPhotoOnlineServicePricing } from "@/lib/shop-photo-pricing";
 import {
   buildShopDocumentBundleDetailedSummary,
   buildShopDocumentBundleOverview,
@@ -838,7 +840,11 @@ export async function createShopSalesOrder(input: CreateShopSalesOrderInput) {
       throw new Error("Servizio shop non disponibile.");
     }
 
-    const pricedService = resolveShopDocumentPreviewPricing(service, input.sourcePath);
+    const pricedService = resolveShopPhotoOnlineServicePricing(
+      resolveShopDocumentPreviewPricing(service, input.sourcePath),
+      input.sourcePath,
+      serviceLabel
+    );
     const subjectCustomization = catalogCustomization.subject;
     const subjectPricingQuantities =
       subjectCustomization?.pricingMode === "per-subject"
@@ -1175,6 +1181,9 @@ export async function completeShopDemoCheckout(input: {
         items: {
           orderBy: [{ createdAt: "asc" }],
           include: {
+            files: {
+              select: { fileAsset: { select: { originalName: true } } }
+            },
             serviceCatalog: {
               select: {
                 id: true,
@@ -1213,6 +1222,13 @@ export async function completeShopDemoCheckout(input: {
 
     if (!salesOrder.items.length) {
       throw new Error("Ordine shop senza righe.");
+    }
+
+    if (salesOrder.items.some((item) => !areShopPhotoFilesComplete(
+      readShopPhotoSubjects(item.configuration),
+      item.files.map((file) => file.fileAsset.originalName)
+    ))) {
+      throw new Error("Completa il caricamento di tutte le foto prima del pagamento.");
     }
 
     const wasAlreadyCompleted = salesOrder.status === "PAID" || salesOrder.status === "FULFILLED";

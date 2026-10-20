@@ -94,7 +94,14 @@ export const shopHomeCategories: ShopHomeCategory[] = [
     accent: "lime",
     imageSrc: "/shop/category-photo-mockup.svg",
     products: [
-      { href: "/shop/servizi/stampa-foto", label: "Stampa foto", note: "Piccolo formato", ready: true },
+      {
+        href: "/shop/servizi/stampa-foto",
+        imageAlt: "Foto stampate",
+        imageSrc: "/shop/product-photo.webp",
+        label: "Stampa foto",
+        note: "Piccolo formato",
+        ready: true
+      },
       {
         href: "/shop/servizi/poster-fotografici",
         imageAlt: "Poster fotografico stampato",
@@ -114,10 +121,38 @@ export const shopHomeCategories: ShopHomeCategory[] = [
     accent: "red",
     imageSrc: "/shop/category-gadget-mockup.svg",
     products: [
-      { href: "/shop/servizi/t-shirt-personalizzate", label: "T-shirt personalizzate", note: "Singole o per aziende", ready: true },
-      { href: "/shop/servizi/abbigliamento-da-lavoro", label: "Abbigliamento da lavoro", note: "Quantità e loghi", ready: true },
-      { href: "/shop/servizi/tazze", label: "Tazze", note: "Foto, scritte e grafiche", ready: true },
-      { href: "/shop/servizi/borracce", label: "Borracce", note: "Colori e personalizzazione", ready: true },
+      {
+        href: "/shop/servizi/t-shirt-personalizzate",
+        imageAlt: "T-shirt personalizzata 28 Print",
+        imageSrc: "/shop/product-tshirt.webp",
+        label: "T-shirt personalizzate",
+        note: "Singole o per aziende",
+        ready: true
+      },
+      {
+        href: "/shop/servizi/abbigliamento-da-lavoro",
+        imageAlt: "Esempi di abbigliamento da lavoro personalizzato",
+        imageSrc: "/shop/product-workwear.webp",
+        label: "Abbigliamento da lavoro",
+        note: "Quantità e loghi",
+        ready: true
+      },
+      {
+        href: "/shop/servizi/tazze",
+        imageAlt: "Tazza personalizzata",
+        imageSrc: "/shop/product-mug.webp",
+        label: "Tazze",
+        note: "Foto, scritte e grafiche",
+        ready: true
+      },
+      {
+        href: "/shop/servizi/borracce",
+        imageAlt: "Borraccia personalizzata",
+        imageSrc: "/shop/product-bottle.webp",
+        label: "Borracce",
+        note: "Colori e personalizzazione",
+        ready: true
+      },
       {
         href: "/shop/servizi/etichette-adesive",
         imageAlt: "Etichette adesive colorate",
@@ -126,8 +161,22 @@ export const shopHomeCategories: ShopHomeCategory[] = [
         note: "Per packaging e gadget",
         ready: true
       },
-      { href: "/shop/servizi/shopper-e-cappellini", label: "Shopper e cappellini", note: "Gadget coordinati", ready: true },
-      { href: "/shop/servizi/portachiavi", label: "Portachiavi", note: "Oggettistica rapida", ready: true }
+      {
+        href: "/shop/servizi/shopper-e-cappellini",
+        imageAlt: "Shopper personalizzata",
+        imageSrc: "/shop/product-shopper.webp",
+        label: "Shopper e cappellini",
+        note: "Gadget coordinati",
+        ready: true
+      },
+      {
+        href: "/shop/servizi/portachiavi",
+        imageAlt: "Portachiavi personalizzato",
+        imageSrc: "/shop/product-keychain.webp",
+        label: "Portachiavi",
+        note: "Oggettistica rapida",
+        ready: true
+      }
     ],
     slug: "magliette-e-gadget",
     title: "Magliette e gadget"

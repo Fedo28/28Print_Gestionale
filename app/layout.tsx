@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Manrope, Sora, Space_Grotesk } from "next/font/google";
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/app-shell";
+import { NightPauseBoundary } from "@/components/night-pause-boundary";
+import { nightPauseEnabled } from "@/lib/night-pause";
 import { InPageAnchorScroll } from "@/components/in-page-anchor-scroll";
 import { InteractionFeedback } from "@/components/interaction-feedback";
 import brandLogo from "../logo.png";
@@ -138,7 +140,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className={`${manrope.variable} ${spaceGrotesk.variable} ${sora.variable}`}>
         <InteractionFeedback />
         <InPageAnchorScroll />
-        <AppShell localPreview={process.env.NODE_ENV !== "production" && process.env.GESTIONALE_LOCAL_PREVIEW === "true"}>{children}</AppShell>
+        <NightPauseBoundary enabled={nightPauseEnabled()}>
+          <AppShell localPreview={process.env.NODE_ENV !== "production" && process.env.GESTIONALE_LOCAL_PREVIEW === "true"}>{children}</AppShell>
+        </NightPauseBoundary>
       </body>
     </html>
   );

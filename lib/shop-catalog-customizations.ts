@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { sanitizeAttachmentFileName } from "@/lib/attachment-utils";
 import {
   buildShopLabelSummaryLines,
   computeShopLabelQuote,
@@ -14,6 +15,7 @@ import {
   type ShopBannerSelectionInput
 } from "@/lib/shop-banner-pricing";
 import type { ShopCatalogProductPaperChoice } from "@/lib/shop-product-pages";
+import { isShopPhotoFitMode, type ShopPhotoFitMode } from "@/lib/shop-photo-order";
 import {
   buildShopStampSummaryLines,
   computeShopStampCustomization,
@@ -38,6 +40,8 @@ export type ShopCatalogSelectionInput = {
   stamp?: ShopStampSelectionInput | null;
   sticker?: ShopStickerSelectionInput | null;
   subjectCount?: number | null;
+  subjectFileNames?: string[] | null;
+  subjectFitModes?: ShopPhotoFitMode[] | null;
   subjectPricingMode?: "per-subject" | "total-quantity" | null;
   subjectQuantities?: number[] | null;
 };
@@ -46,6 +50,8 @@ export type ShopCatalogSubjectCustomization = {
   copiesPerSubject: number;
   pricingMode: "per-subject" | "total-quantity";
   subjectCount: number;
+  subjectFileNames: string[];
+  subjectFitModes: ShopPhotoFitMode[];
   subjectQuantities: number[];
   totalQuantity: number;
 };
@@ -108,6 +114,10 @@ function isLabelSource(sourcePath: string | null | undefined) {
   return String(sourcePath || "").includes("/shop/servizi/etichette-adesive");
 }
 
+function isPhotoSource(sourcePath: string | null | undefined) {
+  return String(sourcePath || "").split("?")[0] === "/shop/servizi/stampa-foto";
+}
+
 function normalizePercentFromMultiplier(multiplier: number) {
   return Math.max(0, Math.round((multiplier - 1) * 100));
 }
@@ -149,6 +159,12 @@ export function normalizeShopCatalogSelection(value: unknown): ShopCatalogSelect
     stamp: normalizeShopStampSelection(record.stamp),
     sticker: normalizeShopStickerSelection(record.sticker),
     subjectCount: record.subjectCount ? normalizePositiveInteger(record.subjectCount) : null,
+    subjectFileNames: Array.isArray(record.subjectFileNames)
+      ? record.subjectFileNames.slice(0, 200).map((entry) => sanitizeAttachmentFileName(String(entry || "").trim()))
+      : null,
+    subjectFitModes: Array.isArray(record.subjectFitModes)
+      ? record.subjectFitModes.slice(0, 200).filter(isShopPhotoFitMode)
+      : null,
     subjectPricingMode: normalizeSubjectPricingMode(record.subjectPricingMode),
     subjectQuantities: normalizeSubjectQuantities(record.subjectQuantities)
   };
@@ -164,7 +180,7 @@ function resolveSubjectCustomization(selection: ShopCatalogSelectionInput | null
   const subjectCount = subjectQuantities.length;
   const pricingMode = selection?.subjectPricingMode || "total-quantity";
 
-  if (subjectCount <= 1) {
+  if (subjectCount <= 1 && !selection?.subjectQuantities?.length) {
     return null;
   }
 
@@ -172,6 +188,8 @@ function resolveSubjectCustomization(selection: ShopCatalogSelectionInput | null
     copiesPerSubject,
     pricingMode,
     subjectCount,
+    subjectFileNames: selection?.subjectFileNames?.slice(0, subjectCount) || [],
+    subjectFitModes: selection?.subjectFitModes?.slice(0, subjectCount) || [],
     subjectQuantities,
     totalQuantity: subjectQuantities.reduce((total, quantity) => total + quantity, 0)
   } satisfies ShopCatalogSubjectCustomization;
@@ -181,7 +199,11 @@ export function resolveShopCatalogCustomization(input: {
   selection?: ShopCatalogSelectionInput | null;
   sourcePath?: string | null;
 }): ShopCatalogCustomization {
-  const subject = resolveSubjectCustomization(input.selection);
+  const subject = resolveSubjectCustomization(
+    isPhotoSource(input.sourcePath) && input.selection
+      ? { ...input.selection, subjectPricingMode: "total-quantity" }
+      : input.selection
+  );
   const banner =
     isBannerSource(input.sourcePath) && input.selection?.banner
       ? computeShopBannerQuote(input.selection.banner)
@@ -203,11 +225,16 @@ export function resolveShopCatalogCustomization(input: {
     throw new Error("Configurazione shop non valida.");
   }
   const subjectSummaryLines = subject
-    ? [
-        `Soggetti: ${subject.subjectCount}`,
-        `Copie per file: ${subject.subjectQuantities.join(" + ")} pz`,
-        `Totale copie: ${subject.totalQuantity} pz`
-      ]
+    ? isPhotoSource(input.sourcePath) && subject.subjectFileNames.length === subject.subjectCount
+      ? [
+          `Foto: ${subject.subjectCount}`,
+          `Totale stampe: ${subject.totalQuantity}`
+        ]
+      : [
+          `Soggetti: ${subject.subjectCount}`,
+          `Copie per file: ${subject.subjectQuantities.join(" + ")} pz`,
+          `Totale copie: ${subject.totalQuantity} pz`
+        ]
     : [];
   const bannerSummaryLines = banner ? buildShopBannerSummaryLines(banner) : [];
   const stickerSummaryLines = sticker ? buildShopStickerSummaryLines(sticker) : [];

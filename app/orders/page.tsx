@@ -37,7 +37,7 @@ import {
   parseStatusFilter,
   parseCustomerTypeFilter
 } from "@/lib/order-filters";
-import { getOrdersList, getOrdersTabCounts } from "@/lib/orders";
+import { getOrdersListPage, getOrdersTabCounts } from "@/lib/orders";
 import { getOrderCreatorProfiles } from "@/lib/order-creators";
 import { automaticPriorityValues } from "@/lib/priorities";
 
@@ -58,6 +58,7 @@ type Props = {
     sort?: string;
     dir?: string;
     shop?: string;
+    page?: string;
   };
 };
 
@@ -96,8 +97,8 @@ export default async function OrdersPage({ searchParams }: Props) {
     dir
   };
   const activeTab = getOrdersPrimaryTab(filters.view, filters.preset);
-  const [orders, tabCounts] = await Promise.all([
-    getOrdersList({
+  const [result, tabCounts] = await Promise.all([
+    getOrdersListPage({
       view: filters.view,
       query: filters.q,
       phase: filters.phase,
@@ -112,7 +113,7 @@ export default async function OrdersPage({ searchParams }: Props) {
       preset: filters.preset,
       sort: filters.sort,
       direction: filters.dir
-    }),
+    }, Number(searchParams?.page || 1)),
     getOrdersTabCounts({
       query: filters.q,
       status: filters.status,
@@ -125,6 +126,11 @@ export default async function OrdersPage({ searchParams }: Props) {
       quote: "ORDER"
     })
   ]);
+  const { orders } = result;
+  const pageHref = (page: number) => {
+    const href = buildOrdersFilterHref(filters);
+    return `${href}${href.includes("?") ? "&" : "?"}page=${page}`;
+  };
   const presetFilterLabel = getOrdersPresetFilterLabel(filters.preset);
   const activeFilters = [
     presetFilterLabel
@@ -263,6 +269,7 @@ export default async function OrdersPage({ searchParams }: Props) {
             <Link
               className={`orders-primary-tab${activeTab === tab.key ? " active" : ""}`}
               href={tab.href}
+              prefetch={false}
               key={tab.key}
               replace
               scroll={false}
@@ -282,6 +289,7 @@ export default async function OrdersPage({ searchParams }: Props) {
                     aria-current={activeWorkState === entry.key ? "page" : undefined}
                     className={activeWorkState === entry.key ? "active" : ""}
                     href={entry.href}
+                    prefetch={false}
                     key={entry.key}
                     replace
                     scroll={false}
@@ -297,6 +305,7 @@ export default async function OrdersPage({ searchParams }: Props) {
             <Link
               className={`orders-priority-sort-toggle${isPrioritySort ? " active" : ""}`}
               href={prioritySortHref}
+              prefetch={false}
               replace
               scroll={false}
             >
@@ -449,10 +458,18 @@ export default async function OrdersPage({ searchParams }: Props) {
           <div>
             <h3>{resultsTitle}</h3>
             <span className="subtle">
-              {orders.length} {orders.length === 1 ? "ordine nella lista" : "ordini nella lista"}
+              {result.total} {result.total === 1 ? "ordine" : "ordini"}
+              {result.total > 0 ? ` · Mostrati ${(result.page - 1) * result.pageSize + 1}–${Math.min(result.page * result.pageSize, result.total)}` : ""}
             </span>
           </div>
         </div>
+        {result.pages > 1 ? (
+          <nav className="button-row" aria-label="Pagine ordini">
+            {result.page > 1 ? <Link className="button ghost" prefetch={false} href={pageHref(result.page - 1)}>← Precedenti</Link> : null}
+            <span className="subtle">Pagina {result.page} di {result.pages} · Selezione limitata alla pagina corrente</span>
+            {result.page < result.pages ? <Link className="button ghost" prefetch={false} href={pageHref(result.page + 1)}>Successivi →</Link> : null}
+          </nav>
+        ) : null}
         <OrdersTable
           currentUserId={session.userId}
           filters={filters}

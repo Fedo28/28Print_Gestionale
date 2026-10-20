@@ -5,6 +5,7 @@ import {
   validateShopFileCandidate
 } from "@/lib/domain/files/shop-file-assets";
 import { prisma } from "@/lib/prisma";
+import { getMissingShopPhotoFileNames, readShopPhotoSubjects } from "@/lib/shop-photo-order";
 import { deletePrivateShopFile, readPrivateShopFile, uploadPrivateShopFile } from "@/lib/storage";
 
 export const customerShopSalesOrderItemFileSelect = {
@@ -60,7 +61,9 @@ function isKnownShopOrderFileMessage(message: string) {
       "Riga ordine shop non disponibile.",
       "File di stampa mancante.",
       "Storage file shop non ancora disponibile per il download.",
-      "File shop scaduto."
+      "File shop scaduto.",
+      "Per stampa foto carica JPG o PNG.",
+      "Questa foto non e prevista nell'ordine o risulta gia caricata."
     ].includes(message) ||
     /^Il nome file e obbligatorio\.$/.test(message) ||
     /^Formato file non supportato\. Usa PDF, JPG o PNG\.$/.test(message) ||
@@ -107,12 +110,15 @@ async function resolveCustomerShopOrderFileTarget(input: {
     select: {
       id: true,
       customerId: true,
+      status: true,
       items: {
         where: salesOrderItemId ? { id: salesOrderItemId } : undefined,
         orderBy: [{ createdAt: "asc" }],
         take: 1,
         select: {
-          id: true
+          id: true,
+          configuration: true,
+          files: { select: { fileAsset: { select: { originalName: true } } } }
         }
       }
     }
@@ -130,7 +136,10 @@ async function resolveCustomerShopOrderFileTarget(input: {
   return {
     customerId: order.customerId,
     salesOrderId: order.id,
-    salesOrderItemId: orderItem.id
+    salesOrderItemId: orderItem.id,
+    photoSubjects: readShopPhotoSubjects(orderItem.configuration),
+    uploadedFileNames: orderItem.files.map((file) => file.fileAsset.originalName),
+    status: order.status
   };
 }
 
@@ -158,6 +167,16 @@ export async function uploadCustomerShopOrderFile(input: {
     salesOrderId: input.salesOrderId,
     salesOrderItemId: input.salesOrderItemId
   });
+
+  if (target.photoSubjects !== null) {
+    if (!["image/jpeg", "image/png"].includes(validation.normalizedMimeType || "")) {
+      throw new Error("Per stampa foto carica JPG o PNG.");
+    }
+    if (target.status === "PAID" || target.status === "FULFILLED" ||
+      !getMissingShopPhotoFileNames(target.photoSubjects, target.uploadedFileNames).includes(validation.normalizedFileName)) {
+      throw new Error("Questa foto non e prevista nell'ordine o risulta gia caricata.");
+    }
+  }
 
   const createdAt = new Date();
   const storageKey = buildShopFileAssetStorageKey({

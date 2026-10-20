@@ -2,6 +2,149 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum PrintJobStatus {
+  APPROVED
+  PREPARING
+  SENDING
+  DELIVERED
+  ERROR
+  NEEDS_REVIEW
+  PRINTED
+  CANCELLED
+}
+
+enum PrintSourceType {
+  ORDER_ATTACHMENT
+  SHOP_FILE
+  WHATSAPP_MEDIA
+  INTERNAL_DOCUMENT
+}
+
+// Initial inbound adapter: metadata only, no customer media in public test Blob.
+model WhatsAppInboundMessage {
+  id                String @id @default(uuid())
+  phoneNumberId     String
+  providerMessageId String
+  sender            String
+  contactName       String
+  kind              String
+  text              String
+  fileName          String?
+  mimeType          String?
+  mediaId           String?
+  sentAt            DateTime
+  receivedAt        DateTime @default(now())
+  @@unique([phoneNumberId, providerMessageId])
+  @@index([sender, sentAt])
+  @@index([receivedAt])
+}
+
+model PrintBridge {
+  id           String @id @default(uuid())
+  name         String
+  tokenHash    String @unique
+  enabled      Boolean @default(true)
+  lastSeenAt   DateTime?
+  createdAt    DateTime @default(now())
+  destinations PrintDestination[]
+}
+
+model PrintDestination {
+  id          String @id @default(uuid())
+  key         String @unique
+  name        String
+  printerName String
+  profileKey  String
+  enabled     Boolean @default(true)
+  bridgeId    String
+  printerId   String?
+  profileId   String?
+  createdAt   DateTime @default(now())
+  bridge      PrintBridge @relation(fields: [bridgeId], references: [id], onDelete: Restrict)
+  printer     PrintPrinter? @relation(fields: [printerId], references: [id], onDelete: Restrict)
+  profile     PrintProfile? @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  jobs        PrintJob[]
+}
+
+model PrintPrinter {
+  id           String @id @default(uuid())
+  name         String
+  preferredFor String @default("NONE")
+  enabled      Boolean @default(true)
+  createdAt    DateTime @default(now())
+  destinations PrintDestination[]
+}
+
+model PrintProfile {
+  id           String @id @default(uuid())
+  key          String @unique
+  name         String
+  paperSize    String
+  colorMode    String
+  sides        String
+  copies       Int @default(1)
+  paperStock   String @default("")
+  enabled      Boolean @default(true)
+  createdAt    DateTime @default(now())
+  destinations PrintDestination[]
+}
+
+model PrintJob {
+  id                String @id @default(uuid())
+  requestKey        String @unique
+  sourceType        PrintSourceType @default(ORDER_ATTACHMENT)
+  sourceId          String
+  // Source and actor IDs are historical references: deleting/undoing an order must never erase the dispatch ledger.
+  orderId           String?
+  attachmentId      String?
+  orderCode         String
+  fileName          String
+  sourcePath        String
+  fileSize          Int
+  sha256            String
+  pageCount         Int
+  profileKey        String
+  destinationId     String
+  approvedById      String
+  approvedByName    String
+  approvedAt        DateTime @default(now())
+  reprintOfId       String?
+  reason            String @default("")
+  status            PrintJobStatus @default(APPROVED)
+  claimToken        String?
+  claimedById       String?
+  leaseExpiresAt    DateTime?
+  dispatchId        String?
+  sendingAt         DateTime?
+  deliveredAt       DateTime?
+  printedAt         DateTime?
+  printedById       String?
+  attempts          Int @default(0)
+  version           Int @default(0)
+  lastError         String @default("")
+  updatedAt         DateTime @updatedAt
+  destination       PrintDestination @relation(fields: [destinationId], references: [id], onDelete: Restrict)
+  events            PrintJobEvent[]
+
+  @@index([status, approvedAt])
+  @@index([orderId, approvedAt])
+  @@index([sourceType, sourceId, approvedAt])
+  @@index([claimedById, status])
+}
+
+model PrintJobEvent {
+  id        String @id @default(uuid())
+  jobId     String
+  key       String @unique
+  type      String
+  detail    String
+  actorId   String?
+  createdAt DateTime @default(now())
+  job       PrintJob @relation(fields: [jobId], references: [id], onDelete: Restrict)
+
+  @@index([jobId, createdAt])
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")

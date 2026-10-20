@@ -7,6 +7,7 @@ coverage
 *.log
 .env
 .env.local
+.env.print-test
 dev.db
 dev.db-journal
 prisma/dev.db
@@ -14,3 +15,13 @@ prisma/dev.db-journal
 public/uploads
 .shop-private
 .local-preview
+.local-print-test
+bridge/config.json
+bridge/data
+bridge/downloads
+bridge/staging
+bridge/errors
+bridge/logs
+bridge/*.secret
+output/bridge
+/public/vendor/pdfjs/

@@ -97,7 +97,7 @@ function OrderPrimaryAction({
   }
 
   return (
-    <Link className="button ghost orders-row-open-button" href={href}>
+    <Link prefetch={false} className="button ghost orders-row-open-button" href={href}>
       Apri
     </Link>
   );
@@ -260,7 +260,7 @@ export function OrdersTable({
                                 />
                               ) : null}
                               <div className="order-mobile-card-copy">
-                                <Link href={`/orders/${order.id}`}>
+                                <Link prefetch={false} href={`/orders/${order.id}`}>
                                   <div className="order-code order-display-title">{order.customer.name}</div>
                                 </Link>
                                 {customerContact ? <div className="subtle order-entry-meta">{customerContact}</div> : null}
@@ -343,10 +343,10 @@ export function OrdersTable({
                               />
                             ) : null}
                             <div>
-                              <Link href={`/orders/${order.id}`}>
+                              <Link prefetch={false} href={`/orders/${order.id}`}>
                                 <div className="order-code order-display-title">{order.customer.name}</div>
                               </Link>
-                              <Link className="subtle order-entry-meta order-list-work-link" href={`/orders/${order.id}`}>
+                              <Link prefetch={false} className="subtle order-entry-meta order-list-work-link" href={`/orders/${order.id}`}>
                                 {displayLabel}
                               </Link>
                               {isShopOnlineOrder ? (

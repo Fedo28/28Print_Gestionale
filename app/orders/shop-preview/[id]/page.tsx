@@ -8,6 +8,7 @@ import { requireAuth } from "@/lib/auth";
 import { formatCurrency, formatDateTime, formatQuantity } from "@/lib/format";
 import { buildOrdersFilterHref } from "@/lib/order-filters";
 import { prisma } from "@/lib/prisma";
+import { areShopPhotoFilesComplete, formatShopPhotoFitMode, readShopPhotoSubjects } from "@/lib/shop-photo-order";
 import {
   buildShopDocumentBundleOverview,
   buildShopDocumentCardSummary,
@@ -186,6 +187,11 @@ export default async function ShopOrderPreviewPage({ params }: { params: { id: s
               <div className="mini-list">
                 {salesOrder.items.map((item) => {
                   const documentBundle = extractShopDocumentBundleFromConfiguration(item.configuration, Number(item.quantity));
+                  const photoSubjects = readShopPhotoSubjects(item.configuration);
+                  const photoFilesComplete = areShopPhotoFilesComplete(
+                    photoSubjects,
+                    item.files.map((file) => file.fileAsset.originalName)
+                  );
 
                   return (
                     <article className="mini-item order-detail-shop-item" key={item.id}>
@@ -194,6 +200,15 @@ export default async function ShopOrderPreviewPage({ params }: { params: { id: s
                         <span className="pill compact-pill">{formatQuantity(item.quantity)}</span>
                       </div>
                       {documentBundle ? <div className="subtle">{buildShopDocumentBundleOverview(documentBundle)}</div> : null}
+                      {photoSubjects ? (
+                        <div className="order-detail-shop-document-line">
+                          <strong>{photoSubjects.length} foto · {photoSubjects.reduce((sum, subject) => sum + subject.copies, 0)} stampe</strong>
+                          <small>{photoFilesComplete ? "File completi" : "File mancanti: non avviare la produzione"}</small>
+                          {photoSubjects.map((subject, index) => (
+                            <span key={`${item.id}-photo-${index}`}>Foto {index + 1}: {subject.fileName} · {subject.copies} {subject.copies === 1 ? "copia" : "copie"} · {formatShopPhotoFitMode(subject.fitMode)}</span>
+                          ))}
+                        </div>
+                      ) : null}
                       {documentBundle?.documents.map((document) => (
                         <div className="order-detail-shop-document-line" key={`${item.id}-${document.id}`}>
                           <span>{document.name}</span>

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getShopHostRoute, SHOP_PUBLIC_HOSTNAME } from "@/lib/shop-host-routing";
+import { isNightPause, nextOpening, isNightExemptPath, nightPauseEnabled } from "@/lib/night-pause";
 
 const SHOP_BETA_ACCESS_COOKIE = "fede_shop_beta_access";
 const SHOP_BETA_ACCESS_PATH = "/shop/accesso-beta";
@@ -112,6 +114,40 @@ async function hasShopBetaAccess(request: NextRequest) {
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+  const shopHostRoute = getShopHostRoute(pathname, request.headers.get("host") || request.nextUrl.hostname);
+
+  if (shopHostRoute === "shop-home") {
+    const shopHome = new URL(`https://${SHOP_PUBLIC_HOSTNAME}/shop${search}`);
+    return NextResponse.redirect(shopHome);
+  }
+
+  if (shopHostRoute === "not-found") {
+    return new NextResponse("Not Found", {
+      status: 404,
+      headers: { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" }
+    });
+  }
+
+  if (nightPauseEnabled() && isNightPause() && !isNightExemptPath(pathname)) {
+    const retryAfter = String(Math.ceil((nextOpening().getTime() - Date.now()) / 1000));
+    const headers = { "Cache-Control": "private, no-store", "Retry-After": retryAfter };
+    if (pathname.startsWith("/api/") || !["GET", "HEAD"].includes(request.method)) {
+      return NextResponse.json({
+        error: "Gestionale sospeso dalle 20:00 alle 08:00 (ora italiana). Nessuna modifica salvata. Riprova dalle 08:00.",
+        code: "NIGHT_PAUSE"
+      }, { status: 503, headers });
+    }
+    const url = request.nextUrl.clone();
+    url.pathname = "/sospensione";
+    url.search = "";
+    const response = NextResponse.redirect(url, 307);
+    Object.entries(headers).forEach(([key, value]) => response.headers.set(key, value));
+    return response;
+  }
+
+  if (pathname !== "/shop" && !pathname.startsWith("/shop/")) {
+    return NextResponse.next();
+  }
   const isBetaAccessPage = pathname === SHOP_BETA_ACCESS_PATH || pathname.startsWith(`${SHOP_BETA_ACCESS_PATH}/`);
 
   if (SHOP_PUBLIC_ASSET_EXTENSION_PATTERN.test(pathname)) {
@@ -129,7 +165,9 @@ export async function middleware(request: NextRequest) {
     );
   }
 
-  const redirectUrl = request.nextUrl.clone();
+  const redirectUrl = shopHostRoute === "shop-route"
+    ? new URL(`https://${SHOP_PUBLIC_HOSTNAME}${SHOP_BETA_ACCESS_PATH}`)
+    : request.nextUrl.clone();
   redirectUrl.pathname = SHOP_BETA_ACCESS_PATH;
   redirectUrl.search = "";
   redirectUrl.searchParams.set("next", `${pathname}${search}`);
@@ -137,5 +175,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/shop/:path*"]
+  matcher: ["/((?!_next/static|_next/image).*)"]
 };

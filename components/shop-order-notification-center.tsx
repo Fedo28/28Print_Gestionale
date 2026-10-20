@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { startVisiblePolling } from "@/lib/visible-polling";
 
 type ShopOrderNotificationEntry = {
   id: string;
@@ -170,12 +171,16 @@ export function ShopOrderNotificationCenter({ compact = false }: { compact?: boo
 
   useEffect(() => {
     let active = true;
+    let revision: string | null = null;
 
-    async function refreshOrders() {
+    async function refreshOrders(signal: AbortSignal) {
       try {
         const response = await fetch("/api/orders/shop-online/pending", {
-          cache: "no-store"
+          cache: "no-store",
+          headers: revision ? { "If-None-Match": revision } : undefined,
+          signal
         });
+        if (response.status === 304) return;
         if (!response.ok) {
           throw new Error("Notifiche shop non disponibili.");
         }
@@ -187,11 +192,9 @@ export function ShopOrderNotificationCenter({ compact = false }: { compact?: boo
 
         setCount(Number(payload.count) || 0);
         setOrders(Array.isArray(payload.orders) ? payload.orders : []);
+        revision = response.headers.get("etag");
       } catch {
-        if (active) {
-          setCount(0);
-          setOrders([]);
-        }
+        // Keep the last valid notifications when the connection is temporarily unavailable.
       } finally {
         if (active) {
           setIsLoading(false);
@@ -232,13 +235,12 @@ export function ShopOrderNotificationCenter({ compact = false }: { compact?: boo
       setPushStatus(subscription && Notification.permission === "granted" ? "active" : "inactive");
     }
 
-    void refreshOrders();
+    const stopPolling = startVisiblePolling(refreshOrders, { intervalMs: SHOP_NOTIFICATION_POLL_INTERVAL_MS });
     void refreshPushState();
-    const interval = window.setInterval(refreshOrders, SHOP_NOTIFICATION_POLL_INTERVAL_MS);
 
     return () => {
       active = false;
-      window.clearInterval(interval);
+      stopPolling();
     };
   }, []);
 

@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import Stripe from "stripe";
 import { resolveShopPublicBaseUrl } from "@/lib/domain/commerce/shop-foundation";
 import { prisma } from "@/lib/prisma";
+import { areShopPhotoFilesComplete, readShopPhotoSubjects } from "@/lib/shop-photo-order";
 import {
   completeShopStripeCheckoutPayment,
   markShopStripeCheckoutPaymentFailed
@@ -140,7 +141,9 @@ export async function createShopStripeCheckoutSession(input: {
       items: {
         orderBy: [{ createdAt: "asc" }],
         select: {
-          label: true
+          label: true,
+          configuration: true,
+          files: { select: { fileAsset: { select: { originalName: true } } } }
         }
       },
       orderCode: true,
@@ -155,6 +158,13 @@ export async function createShopStripeCheckoutSession(input: {
 
   if (salesOrder.status === "PAID" || salesOrder.status === "FULFILLED") {
     throw new Error("Pagamento non disponibile.");
+  }
+
+  if (salesOrder.items.some((item) => !areShopPhotoFilesComplete(
+    readShopPhotoSubjects(item.configuration),
+    item.files.map((file) => file.fileAsset.originalName)
+  ))) {
+    throw new Error("Completa il caricamento di tutte le foto prima del pagamento.");
   }
 
   if (!Number.isFinite(salesOrder.totalCents) || salesOrder.totalCents < STRIPE_MIN_EUR_CHARGE_CENTS) {

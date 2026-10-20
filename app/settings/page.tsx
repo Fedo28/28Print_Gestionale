@@ -9,6 +9,7 @@ import { requireAuth } from "@/lib/auth";
 import { getServiceCatalogAdmin } from "@/lib/orders";
 import { getStaffUserProfile } from "@/lib/staff-users";
 import { getWhatsappTemplate } from "@/lib/settings";
+import { printEnabled } from "@/lib/print-runtime";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,8 @@ export default async function SettingsPage() {
   const headerAction =
     session.role === "ADMIN" ? (
       <div className="button-row settings-header-actions">
+        {printEnabled() && <Link className="button ghost" href="/settings/printing">Stampanti e profili</Link>}
+        {printEnabled() && <Link className="button ghost" href="/whatsapp">WhatsApp ricevuti</Link>}
         <Link className="button ghost" href="/shop">
           Preview shop
         </Link>

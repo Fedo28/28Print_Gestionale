@@ -4226,10 +4226,10 @@ type OrdersListQueryFilters = {
   direction?: OrderSortDirection;
 };
 
-async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
-  const creatorOrderIds = filters.createdBy ? await getOrderIdsCreatedBy(filters.createdBy) : undefined;
+async function getFilteredOrdersWhere(filters: OrdersListQueryFilters, resolvedCreatorIds?: string[]): Promise<Prisma.OrderWhereInput | null> {
+  const creatorOrderIds = resolvedCreatorIds ?? (filters.createdBy ? await getOrderIdsCreatedBy(filters.createdBy) : undefined);
   if (creatorOrderIds && creatorOrderIds.length === 0) {
-    return [];
+    return null;
   }
 
   const now = new Date();
@@ -4375,8 +4375,7 @@ async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
         mainPhase: { not: "CONSEGNATO" as MainPhase }
       };
 
-  const orders = await prisma.order.findMany({
-    where: {
+  return {
       ...viewWhere,
       ...presetWhere,
       ...(creatorOrderIds ? { id: { in: creatorOrderIds } } : {}),
@@ -4406,33 +4405,51 @@ async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
         : {}),
       ...(filters.quote === "QUOTE" ? { isQuote: true } : {}),
       ...(filters.quote === "ORDER" ? { isQuote: false } : {})
-    },
-    include: {
-      customer: true,
-      workTasks: orderWorkTasksRelationArgs,
-      items: {
-        select: {
-          id: true,
-          deliveredAt: true
-        }
-      },
-      salesOrderLinks: {
-        where: {
-          salesOrder: {
-            origin: "SHOP_ONLINE"
-          }
-        },
-        select: {
-          salesOrder: {
-            select: {
-              origin: true,
-              orderCode: true
-            }
-          }
-        }
-      }
-    },
-    orderBy: isDeliveredView ? [{ deliveredAt: "desc" }, { updatedAt: "desc" }] : [{ deliveryAt: "asc" }, { priority: "desc" }]
+  };
+}
+
+const orderListRelations = {
+  customer: true,
+  workTasks: orderWorkTasksRelationArgs,
+  items: { select: { id: true, deliveredAt: true } },
+  salesOrderLinks: {
+    where: { salesOrder: { origin: "SHOP_ONLINE" } },
+    select: { salesOrder: { select: { origin: true, orderCode: true } } }
+  }
+} satisfies Prisma.OrderInclude;
+
+// Search and Italian sorting need these fields, not notes, files, tasks or full customers.
+const orderCandidateSelect = {
+  id: true, orderCode: true, title: true, isQuote: true, createdAt: true,
+  deliveryAt: true, deliveredAt: true, priority: true, mainPhase: true,
+  operationalStatus: true, paymentStatus: true, totalCents: true, balanceDueCents: true,
+  customer: { select: { name: true, phone: true, whatsapp: true, email: true,
+    pec: true, taxCode: true, vatNumber: true, uniqueCode: true } }
+} satisfies Prisma.OrderSelect;
+
+function orderListDatabaseSort(delivered: boolean): Prisma.OrderOrderByWithRelationInput[] {
+  return delivered ? [{ deliveredAt: "desc" }, { updatedAt: "desc" }, { id: "asc" }]
+    : [{ deliveryAt: "asc" }, { priority: "desc" }, { id: "asc" }];
+}
+
+async function getFilteredOrderCandidates(filters: OrdersListQueryFilters) {
+  const where = await getFilteredOrdersWhere(filters);
+  if (!where) return [];
+  const delivered = filters.view === "DELIVERED";
+  const rows = await prisma.order.findMany({ where, select: orderCandidateSelect, orderBy: orderListDatabaseSort(delivered) });
+  const effective = delivered ? rows : rows.map(row => withEffectiveOrderPriority(row));
+  return !delivered && filters.priority && filters.priority !== "ALL"
+    ? effective.filter(row => row.priority === filters.priority) : effective;
+}
+
+async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
+  const where = await getFilteredOrdersWhere(filters);
+  if (!where) return [];
+  const isDeliveredView = filters.view === "DELIVERED";
+  const orders = await prisma.order.findMany({
+    where,
+    include: orderListRelations,
+    orderBy: orderListDatabaseSort(isDeliveredView)
   });
 
   const ordersWithPriority = isDeliveredView ? orders : orders.map((order) => withEffectiveOrderPriority(order));
@@ -4458,6 +4475,30 @@ export async function getOrdersList(filters: OrdersListQueryFilters) {
   });
 }
 
+export async function getOrdersListPage(filters: OrdersListQueryFilters, requestedPage = 1) {
+  const pageSize = 50;
+  const candidates = await getFilteredOrderCandidates(filters);
+  const matching = filters.query?.trim() ? rankSearchableOrders(candidates, filters.query.trim()) : candidates;
+  const sorted = sortOrdersList(matching, {
+    field: filters.sort || "delivery", direction: filters.direction || (filters.view === "DELIVERED" ? "desc" : "asc"),
+    view: filters.view || "ACTIVE"
+  });
+  const total = sorted.length;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(pages, Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1);
+  const selected = sorted.slice((page - 1) * pageSize, page * pageSize);
+  // Only expand visible rows, after Italian search, automatic priority and sorting.
+  const rows = selected.length ? await prisma.order.findMany({
+    where: { id: { in: selected.map(row => row.id) } }, include: orderListRelations
+  }) : [];
+  const byId = new Map(rows.map(row => [row.id, row]));
+  const orders = selected.flatMap(candidate => {
+    const row = byId.get(candidate.id);
+    return row ? [filters.view === "DELIVERED" ? row : withEffectiveOrderPriority(row)] : [];
+  });
+  return { orders, page, pages, pageSize, total };
+}
+
 export async function getOrderSearchSuggestions(filters: OrdersListQueryFilters & { limit?: number }) {
   const query = filters.query?.trim();
 
@@ -4465,7 +4506,7 @@ export async function getOrderSearchSuggestions(filters: OrdersListQueryFilters 
     return [];
   }
 
-  const matchedOrders = rankOrderSearchSuggestions(await getFilteredOrdersCollection(filters), query).slice(0, filters.limit || 6);
+  const matchedOrders = rankOrderSearchSuggestions(await getFilteredOrderCandidates(filters), query).slice(0, Math.min(20, Math.max(1, filters.limit || 6)));
 
   return matchedOrders.map((order) => ({
     id: order.id,
@@ -4557,6 +4598,8 @@ export async function getOrdersTabCounts(filters: {
   shop?: ShopOrderFilter;
   quote?: QuoteFilter;
 }) {
+  // Resolve attribution once, rather than reading the same audit trail for every tab.
+  const creatorOrderIds = filters.createdBy ? await getOrderIdsCreatedBy(filters.createdBy) : undefined;
   const tabDefinitions = [
     { key: "TO_DO", view: "ACTIVE" as OrderListView, preset: "TO_DO" as DashboardPreset },
     { key: "TO_START", view: "ACTIVE" as OrderListView, preset: "TO_START" as DashboardPreset },
@@ -4568,7 +4611,7 @@ export async function getOrdersTabCounts(filters: {
 
   const counts = await Promise.all(
     tabDefinitions.map(async (tab) => {
-      const orders = await getOrdersList({
+      const where = await getFilteredOrdersWhere({
         view: tab.view,
         query: filters.query,
         phase: "ALL",
@@ -4583,9 +4626,30 @@ export async function getOrdersTabCounts(filters: {
         preset: tab.preset,
         sort: "delivery",
         direction: tab.view === "DELIVERED" ? "desc" : "asc"
+      }, creatorOrderIds);
+      if (!where) return [tab.key, 0] as const;
+      const query = filters.query?.trim();
+      const automaticPriority = tab.view !== "DELIVERED" && filters.priority && filters.priority !== "ALL";
+      if (!query && !automaticPriority) {
+        return [tab.key, await prisma.order.count({ where })] as const;
+      }
+      // Search uses Italian normalization and active priority depends on today's date.
+      // Preserve those rules with a minimal projection, never the complete order graph.
+      const rows = await prisma.order.findMany({
+        where,
+        select: {
+          id: true, deliveryAt: true, priority: true, mainPhase: true,
+          ...(query ? {
+            orderCode: true, title: true,
+            customer: { select: { name: true, phone: true, whatsapp: true, email: true,
+              pec: true, taxCode: true, vatNumber: true, uniqueCode: true } }
+          } : {})
+        }
       });
-
-      return [tab.key, orders.length] as const;
+      const matching = automaticPriority
+        ? rows.filter(row => withEffectiveOrderPriority(row).priority === filters.priority)
+        : rows;
+      return [tab.key, query ? rankSearchableOrders(matching, query).length : matching.length] as const;
     })
   );
 

@@ -4,7 +4,8 @@ import { startTransition, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   formatAttachmentMaxSize,
-  formatAttachmentSize
+  formatAttachmentSize,
+  sanitizeAttachmentFileName
 } from "@/lib/attachment-utils";
 import {
   SHOP_FILE_ALLOWED_EXTENSIONS,
@@ -49,10 +50,12 @@ async function uploadShopOrderFile(orderId: string, salesOrderItemId: string, fi
 
 export function ShopOrderFileUploadForm({
   orderId,
-  salesOrderItemId
+  salesOrderItemId,
+  missingPhotoFileNames
 }: {
   orderId: string;
   salesOrderItemId: string;
+  missingPhotoFileNames?: string[];
 }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -67,6 +70,10 @@ export function ShopOrderFileUploadForm({
     const nextErrors: string[] = [];
 
     Array.from(fileList).forEach((file, index) => {
+      if (missingPhotoFileNames && !missingPhotoFileNames.includes(sanitizeAttachmentFileName(file.name))) {
+        nextErrors.push(`${file.name}: Questa foto non risulta tra quelle da completare.`);
+        return;
+      }
       const validation = validateShopFileCandidate({
         fileName: file.name,
         mimeType: file.type || "application/octet-stream",
@@ -75,6 +82,11 @@ export function ShopOrderFileUploadForm({
 
       if (!validation.valid) {
         nextErrors.push(`${file.name}: ${validation.errors[0]}`);
+        return;
+      }
+
+      if (missingPhotoFileNames && !["image/jpeg", "image/png"].includes(validation.normalizedMimeType || "")) {
+        nextErrors.push(`${file.name}: Per stampa foto carica JPG o PNG.`);
         return;
       }
 
@@ -203,15 +215,15 @@ export function ShopOrderFileUploadForm({
           }}
         >
           <input
-            accept={SHOP_FILE_ALLOWED_EXTENSIONS.join(",")}
+            accept={missingPhotoFileNames ? ".jpg,.jpeg,.png" : SHOP_FILE_ALLOWED_EXTENSIONS.join(",")}
             disabled={isUploading}
             multiple
             onChange={(event) => appendFiles(event.currentTarget.files || [])}
             ref={fileInputRef}
             type="file"
           />
-          <strong>Carica file di stampa</strong>
-          <div className="hint">PDF, JPG o PNG, max {formatAttachmentMaxSize(SHOP_FILE_MAX_SIZE_BYTES)}</div>
+          <strong>{missingPhotoFileNames ? "Ricarica le foto mancanti" : "Carica file di stampa"}</strong>
+          <div className="hint">{missingPhotoFileNames ? "JPG o PNG" : "PDF, JPG o PNG"}, max {formatAttachmentMaxSize(SHOP_FILE_MAX_SIZE_BYTES)}</div>
         </label>
 
         {queuedFiles.length ? (

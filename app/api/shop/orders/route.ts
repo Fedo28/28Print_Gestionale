@@ -12,6 +12,7 @@ import {
   SHOP_BETA_ACCESS_COOKIE
 } from "@/lib/shop-beta-gate";
 import { normalizeShopCatalogSelection } from "@/lib/shop-catalog-customizations";
+import { isShopPhotoSource, isShopPhotoUploadStorageReady, validateShopPhotoSelection } from "@/lib/shop-photo-order";
 import {
   createShopSalesOrder,
   describeShopSalesOrderFailure,
@@ -96,6 +97,20 @@ export async function POST(request: NextRequest) {
     }
 
     const billingDetails = readBillingDetailsInput(body.billingDetails);
+    const photoSelectionError = validateShopPhotoSelection({
+      sourcePath: body.sourcePath,
+      selection: body.catalogSelection,
+      quantity: body.quantity
+    });
+    if (photoSelectionError) {
+      return NextResponse.json({ error: photoSelectionError }, { status: 400 });
+    }
+    if (isShopPhotoSource(body.sourcePath) && !isShopPhotoUploadStorageReady(process.env.VERCEL)) {
+      return NextResponse.json(
+        { error: "La stampa foto online e ancora in prova: lo storage privato dei file non e configurato. Nessun ordine e stato creato." },
+        { status: 503 }
+      );
+    }
     const order = await createShopSalesOrder({
       customerAccountId: session.customerAccountId,
       serviceId: String(body.serviceId || ""),

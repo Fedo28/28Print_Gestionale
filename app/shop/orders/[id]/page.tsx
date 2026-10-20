@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ShopDemoCheckout } from "@/components/shop-demo-checkout";
+import { ShopOrderFileUploadForm } from "@/components/shop-order-file-upload-form";
 import { formatCurrency, formatQuantity } from "@/lib/format";
 import { requireCustomerAccountAuth } from "@/lib/customer-account-auth";
 import {
@@ -13,6 +14,7 @@ import {
   formatShopPrintedPagesLabel
 } from "@/lib/shop-print-config";
 import { getCustomerAccountShopOrderDetail } from "@/lib/shop-orders";
+import { areShopPhotoFilesComplete, getMissingShopPhotoFileNames, readShopPhotoSubjects } from "@/lib/shop-photo-order";
 
 export const dynamic = "force-dynamic";
 
@@ -86,6 +88,19 @@ export default async function ShopOrderDetailPage({
     documentBundles.reduce((sum, bundle) => sum + bundle.totalPrintUnits, 0) ||
     order.items.reduce((sum, item) => sum + Math.max(1, Math.round(Number(item.quantity) || 0)), 0);
   const isCheckoutComplete = order.status === "PAID" || order.status === "FULFILLED";
+  const photoItems = order.items.flatMap((item) => {
+    const subjects = readShopPhotoSubjects(item.configuration);
+    if (subjects === null) return [];
+    const uploadedNames = item.files.map((file) => file.fileAsset.originalName);
+    return [{
+      complete: areShopPhotoFilesComplete(subjects, uploadedNames),
+      formatLabel: item.label,
+      id: item.id,
+      missingFileNames: getMissingShopPhotoFileNames(subjects, uploadedNames),
+      subjects
+    }];
+  });
+  const photoFilesComplete = photoItems.every((item) => item.complete);
   const stripeCheckoutAvailability = getShopStripeCheckoutAvailability();
   const initialCheckoutNotice =
     searchParams?.checkout === "cancelled"
@@ -102,15 +117,45 @@ export default async function ShopOrderDetailPage({
 
   return (
     <div className="shop-page-shell shop-order-page">
+      {!isCheckoutComplete && photoItems.length ? (
+        <section className="shop-card shop-photo-order-summary" aria-label="Riepilogo stampa foto">
+          <span className="pill">Passaggio 3 di 3</span>
+          <h1>Riepilogo stampa foto</h1>
+          <div className="shop-photo-order-summary-grid">
+            <div><span>Formato</span><strong>{photoItems.map((item) => item.formatLabel).join(" · ")}</strong></div>
+            <div><span>Foto</span><strong>{photoItems.reduce((total, item) => total + item.subjects.length, 0)}</strong></div>
+            <div><span>Stampe</span><strong>{photoItems.reduce((total, item) => total + item.subjects.reduce((sum, subject) => sum + subject.copies, 0), 0)}</strong></div>
+            <div><span>Totale</span><strong>{formatCurrency(order.totalCents)}</strong></div>
+          </div>
+          {!photoFilesComplete ? <p role="status">Alcune foto non sono state caricate: completa l’invio qui sotto prima di pagare.</p> : null}
+        </section>
+      ) : null}
       <ShopDemoCheckout
         amountLabel={formatCurrency(order.totalCents)}
         initialNotice={initialCheckoutNotice}
         initialOpen={searchParams?.checkout === "1" && !isCheckoutComplete}
         isCompleted={isCheckoutComplete}
+        filesComplete={photoFilesComplete}
         orderId={order.id}
         stripeEnabled={stripeCheckoutAvailability.enabled}
         stripeMode={stripeCheckoutAvailability.mode}
       />
+
+      {!isCheckoutComplete && !photoFilesComplete ? (
+        <section className="shop-card" aria-label="Completa le foto mancanti">
+          <h2>Completa il caricamento</h2>
+          {photoItems.filter((item) => item.missingFileNames.length).map((item) => (
+            <div className="stack" key={item.id}>
+              <p>{item.missingFileNames.length} {item.missingFileNames.length === 1 ? "foto mancante" : "foto mancanti"}.</p>
+              <ShopOrderFileUploadForm
+                missingPhotoFileNames={item.missingFileNames}
+                orderId={order.id}
+                salesOrderItemId={item.id}
+              />
+            </div>
+          ))}
+        </section>
+      ) : null}
 
       {isCheckoutComplete ? (
         <>

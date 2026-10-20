@@ -11,6 +11,5 @@ export const prisma =
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"]
   });
 
-if (process.env.NODE_ENV !== "production") {
-  global.prisma = prisma;
-}
+// Reuse the pool within each server process, including separate Next.js server bundles.
+global.prisma = prisma;

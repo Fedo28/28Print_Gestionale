@@ -2,6 +2,7 @@ import type { ServiceCatalog } from "@prisma/client";
 import { quoteCatalogService } from "@/lib/domain/pricing/service-pricing";
 import { prisma } from "@/lib/prisma";
 import { parseQuantityTiers } from "@/lib/pricing";
+import { getShopPhotoPriceSchedule } from "@/lib/shop-photo-pricing";
 import {
   computeShopBannerQuote,
   type ShopBannerMaterial
@@ -20,6 +21,7 @@ export type ShopCatalogQuantityOption = {
 };
 
 export type ShopCatalogProductOption = {
+  basePriceCents?: number;
   bannerKind?: "custom" | "standard";
   bannerMaterial?: ShopBannerMaterial;
   bannerPreset?: {
@@ -31,9 +33,11 @@ export type ShopCatalogProductOption = {
   description?: string;
   id: string;
   label: string;
+  catalogServiceName?: string;
   orderLabel?: string;
   quantities: ShopCatalogQuantityOption[];
   serviceId?: string;
+  quantityTiers?: string | null;
   stampModel?: ShopStampModelCode;
   stampSpec?: ShopStampModelSpec;
   labelMaterial?: ShopLabelMaterial;
@@ -217,13 +221,17 @@ function buildShopPhotoOptions(services: ProductService[]) {
         return;
       }
 
+      const pricedService = { ...service, ...getShopPhotoPriceSchedule(format.label) };
       optionsByFormat.set(format.label, {
+        basePriceCents: pricedService.basePriceCents,
         code: service.code,
         id: `${service.id}:${format.label}`,
         label: format.label,
+        catalogServiceName: service.name,
         orderLabel: `Stampa foto ${format.label}`,
         photoFormatSort: format,
-        quantities: buildQuantityOptions(service),
+        quantities: buildQuantityOptions(pricedService),
+        quantityTiers: pricedService.quantityTiers,
         serviceId: service.id,
         sourcePriority
       });
@@ -636,8 +644,10 @@ const productDefinitions: ProductDefinition[] = [
     codePrefixes: ["CARTA_FOTOGRAFICA_", "FOTOGRAFIE_"],
     excludeCodeIncludes: ["FOTO_LIBRO", "FOTOLIBRO", "BOBINA", "MTL"],
     fileQuantityMode: "file-count",
-    fileUploadHint: "Carica JPG o PNG: ogni immagine vale 1 foto",
+    fileUploadHint: "JPG o PNG: scegli le copie nella schermata successiva",
     hideTemplateCard: true,
+    imageAlt: "Bambina fotografata in un prato fiorito",
+    imageSrc: "/shop/product-photo.webp",
     optionSectionLabel: "Formato",
     slug: "stampa-foto",
     title: "Stampa foto"
