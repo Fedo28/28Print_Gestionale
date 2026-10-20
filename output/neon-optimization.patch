@@ -1,0 +1,433 @@
+diff --git a/components/shop-order-notification-center.tsx b/components/shop-order-notification-center.tsx
+index 33b760e9..e66b4ebb 100644
+--- a/components/shop-order-notification-center.tsx
++++ b/components/shop-order-notification-center.tsx
+@@ -2,6 +2,7 @@
+ 
+ import Link from "next/link";
+ import { useEffect, useState } from "react";
++import { startVisiblePolling } from "@/lib/visible-polling";
+ 
+ type ShopOrderNotificationEntry = {
+   id: string;
+@@ -171,10 +172,11 @@ export function ShopOrderNotificationCenter({ compact = false }: { compact?: boo
+   useEffect(() => {
+     let active = true;
+ 
+-    async function refreshOrders() {
++    async function refreshOrders(signal: AbortSignal) {
+       try {
+         const response = await fetch("/api/orders/shop-online/pending", {
+-          cache: "no-store"
++          cache: "no-store",
++          signal
+         });
+         if (!response.ok) {
+           throw new Error("Notifiche shop non disponibili.");
+@@ -188,10 +190,7 @@ export function ShopOrderNotificationCenter({ compact = false }: { compact?: boo
+         setCount(Number(payload.count) || 0);
+         setOrders(Array.isArray(payload.orders) ? payload.orders : []);
+       } catch {
+-        if (active) {
+-          setCount(0);
+-          setOrders([]);
+-        }
++        // Keep the last valid notifications when the connection is temporarily unavailable.
+       } finally {
+         if (active) {
+           setIsLoading(false);
+@@ -232,13 +231,12 @@ export function ShopOrderNotificationCenter({ compact = false }: { compact?: boo
+       setPushStatus(subscription && Notification.permission === "granted" ? "active" : "inactive");
+     }
+ 
+-    void refreshOrders();
++    const stopPolling = startVisiblePolling(refreshOrders, { intervalMs: SHOP_NOTIFICATION_POLL_INTERVAL_MS });
+     void refreshPushState();
+-    const interval = window.setInterval(refreshOrders, SHOP_NOTIFICATION_POLL_INTERVAL_MS);
+ 
+     return () => {
+       active = false;
+-      window.clearInterval(interval);
++      stopPolling();
+     };
+   }, []);
+ 
+diff --git a/components/workspace-live-refresh.tsx b/components/workspace-live-refresh.tsx
+index a46047cb..2e4455a2 100644
+--- a/components/workspace-live-refresh.tsx
++++ b/components/workspace-live-refresh.tsx
+@@ -2,14 +2,12 @@
+ 
+ import { useEffect } from "react";
+ import { useRouter } from "next/navigation";
++import { startVisiblePolling } from "@/lib/visible-polling";
+ 
+ export function WorkspaceLiveRefresh() {
+   const router = useRouter();
+   useEffect(() => {
+-    const refresh = () => { if (document.visibilityState === "visible") router.refresh(); };
+-    const timer = window.setInterval(refresh, 30000);
+-    window.addEventListener("focus", refresh);
+-    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
++    return startVisiblePolling(() => router.refresh(), { intervalMs: 60_000, immediate: false });
+   }, [router]);
+   return null;
+ }
+diff --git a/lib/orders.ts b/lib/orders.ts
+index b3328538..8ee7271c 100644
+--- a/lib/orders.ts
++++ b/lib/orders.ts
+@@ -4226,10 +4226,10 @@ type OrdersListQueryFilters = {
+   direction?: OrderSortDirection;
+ };
+ 
+-async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
+-  const creatorOrderIds = filters.createdBy ? await getOrderIdsCreatedBy(filters.createdBy) : undefined;
++async function getFilteredOrdersWhere(filters: OrdersListQueryFilters, resolvedCreatorIds?: string[]): Promise<Prisma.OrderWhereInput | null> {
++  const creatorOrderIds = resolvedCreatorIds ?? (filters.createdBy ? await getOrderIdsCreatedBy(filters.createdBy) : undefined);
+   if (creatorOrderIds && creatorOrderIds.length === 0) {
+-    return [];
++    return null;
+   }
+ 
+   const now = new Date();
+@@ -4375,8 +4375,7 @@ async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
+         mainPhase: { not: "CONSEGNATO" as MainPhase }
+       };
+ 
+-  const orders = await prisma.order.findMany({
+-    where: {
++  return {
+       ...viewWhere,
+       ...presetWhere,
+       ...(creatorOrderIds ? { id: { in: creatorOrderIds } } : {}),
+@@ -4406,7 +4405,15 @@ async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
+         : {}),
+       ...(filters.quote === "QUOTE" ? { isQuote: true } : {}),
+       ...(filters.quote === "ORDER" ? { isQuote: false } : {})
+-    },
++  };
++}
++
++async function getFilteredOrdersCollection(filters: OrdersListQueryFilters) {
++  const where = await getFilteredOrdersWhere(filters);
++  if (!where) return [];
++  const isDeliveredView = filters.view === "DELIVERED";
++  const orders = await prisma.order.findMany({
++    where,
+     include: {
+       customer: true,
+       workTasks: orderWorkTasksRelationArgs,
+@@ -4557,6 +4564,8 @@ export async function getOrdersTabCounts(filters: {
+   shop?: ShopOrderFilter;
+   quote?: QuoteFilter;
+ }) {
++  // Resolve attribution once, rather than reading the same audit trail for every tab.
++  const creatorOrderIds = filters.createdBy ? await getOrderIdsCreatedBy(filters.createdBy) : undefined;
+   const tabDefinitions = [
+     { key: "TO_DO", view: "ACTIVE" as OrderListView, preset: "TO_DO" as DashboardPreset },
+     { key: "TO_START", view: "ACTIVE" as OrderListView, preset: "TO_START" as DashboardPreset },
+@@ -4568,7 +4577,7 @@ export async function getOrdersTabCounts(filters: {
+ 
+   const counts = await Promise.all(
+     tabDefinitions.map(async (tab) => {
+-      const orders = await getOrdersList({
++      const where = await getFilteredOrdersWhere({
+         view: tab.view,
+         query: filters.query,
+         phase: "ALL",
+@@ -4583,9 +4592,30 @@ export async function getOrdersTabCounts(filters: {
+         preset: tab.preset,
+         sort: "delivery",
+         direction: tab.view === "DELIVERED" ? "desc" : "asc"
++      }, creatorOrderIds);
++      if (!where) return [tab.key, 0] as const;
++      const query = filters.query?.trim();
++      const automaticPriority = tab.view !== "DELIVERED" && filters.priority && filters.priority !== "ALL";
++      if (!query && !automaticPriority) {
++        return [tab.key, await prisma.order.count({ where })] as const;
++      }
++      // Search uses Italian normalization and active priority depends on today's date.
++      // Preserve those rules with a minimal projection, never the complete order graph.
++      const rows = await prisma.order.findMany({
++        where,
++        select: {
++          id: true, deliveryAt: true, priority: true, mainPhase: true,
++          ...(query ? {
++            orderCode: true, title: true,
++            customer: { select: { name: true, phone: true, whatsapp: true, email: true,
++              pec: true, taxCode: true, vatNumber: true, uniqueCode: true } }
++          } : {})
++        }
+       });
+-
+-      return [tab.key, orders.length] as const;
++      const matching = automaticPriority
++        ? rows.filter(row => withEffectiveOrderPriority(row).priority === filters.priority)
++        : rows;
++      return [tab.key, query ? rankSearchableOrders(matching, query).length : matching.length] as const;
+     })
+   );
+ 
+diff --git a/lib/prisma.ts b/lib/prisma.ts
+index cdd9a5b4..da7a4d13 100644
+--- a/lib/prisma.ts
++++ b/lib/prisma.ts
+@@ -11,6 +11,5 @@ export const prisma =
+     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"]
+   });
+ 
+-if (process.env.NODE_ENV !== "production") {
+-  global.prisma = prisma;
+-}
++// Reuse the pool within each server process, including separate Next.js server bundles.
++global.prisma = prisma;
+diff --git a/tests/order-creators.test.ts b/tests/order-creators.test.ts
+index 57d0ad33..1404a4a4 100644
+--- a/tests/order-creators.test.ts
++++ b/tests/order-creators.test.ts
+@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
+ const db = vi.hoisted(() => ({
+   auditLog: { findMany: vi.fn() },
+   domainEvent: { findMany: vi.fn() },
+-  order: { findMany: vi.fn() },
++  order: { findMany: vi.fn(), count: vi.fn() },
+   $transaction: vi.fn()
+ }));
+ 
+@@ -18,6 +18,7 @@ beforeEach(() => {
+   db.auditLog.findMany.mockResolvedValue([]);
+   db.domainEvent.findMany.mockResolvedValue([]);
+   db.order.findMany.mockResolvedValue([]);
++  db.order.count.mockResolvedValue(0);
+ });
+ 
+ describe("order creator filtering", () => {
+@@ -57,8 +58,9 @@ describe("order creator filtering", () => {
+     db.order.findMany.mockClear();
+     await getOrdersTabCounts({ createdBy: "rick-id", quote: "ORDER" });
+     await getOrderSearchSuggestions({ createdBy: "rick-id", query: "biglietti", quote: "ORDER" });
+-    expect(db.order.findMany).toHaveBeenCalledTimes(7);
+-    for (const [args] of db.order.findMany.mock.calls) {
++    expect(db.order.findMany).toHaveBeenCalledTimes(1);
++    expect(db.order.count).toHaveBeenCalledTimes(6);
++    for (const [args] of [...db.order.findMany.mock.calls, ...db.order.count.mock.calls]) {
+       expect(args.where.id).toEqual({ in: ["rick-order"] });
+     }
+   });
+@@ -72,6 +74,55 @@ describe("order creator filtering", () => {
+     expect(buildOrdersFilterHref({ createdBy: "ALL" })).toBe("/orders");
+     expect(buildOrdersFilterHref({ createdBy: undefined })).toBe("/orders");
+   });
++
++  it("counts directly in SQL with the same payment, customer and shop constraints", async () => {
++    db.order.count.mockResolvedValue(17);
++    expect(await getOrdersTabCounts({ payment: "NON_PAGATO", customerType: "PUBBLICO", shop: "ONLINE", quote: "ORDER" }))
++      .toEqual({ TO_DO: 17, TO_START: 17, WORKING: 17, BLOCKED: 17, READY: 17, DELIVERED: 17 });
++    expect(db.order.findMany).not.toHaveBeenCalled();
++    for (const [args] of db.order.count.mock.calls) {
++      expect(args.where).toMatchObject({ paymentStatus: "NON_PAGATO", customer: { type: "PUBBLICO" },
++        salesOrderLinks: { some: { salesOrder: { origin: "SHOP_ONLINE" } } }, isQuote: false });
++    }
++    expect(db.order.count.mock.calls.map(([args]) => args.where.mainPhase)).toEqual([
++      { notIn: ["CONSEGNATO", "SVILUPPO_COMPLETATO"] }, "ACCETTATO",
++      { in: ["IN_LAVORAZIONE", "CALENDARIZZATO"] }, { not: "CONSEGNATO" }, "SVILUPPO_COMPLETATO", "CONSEGNATO"
++    ]);
++  });
++
++  it("preserves accent-insensitive search without fetching notes, work assignments or items", async () => {
++    db.order.findMany.mockResolvedValue([
++      { id: "1", orderCode: "ORD-1", title: "Caffè", customer: { name: "Cliente" } },
++      { id: "2", orderCode: "ORD-2", title: "Altro", customer: { name: "Cliente" } }
++    ]);
++    const counts = await getOrdersTabCounts({ query: "caffe" });
++    expect(Object.values(counts)).toEqual([1, 1, 1, 1, 1, 1]);
++    expect(db.order.count).not.toHaveBeenCalled();
++    for (const [args] of db.order.findMany.mock.calls) {
++      expect(args.include).toBeUndefined();
++      expect(args.select.notes).toBeUndefined();
++      expect(args.select.items).toBeUndefined();
++      expect(args.select.workTasks).toBeUndefined();
++      expect(args.select.customer.select.name).toBe(true);
++    }
++  });
++
++  it("uses automatic priority only for active orders and stored priority for delivered orders", async () => {
++    vi.useFakeTimers();
++    vi.setSystemTime(new Date("2026-10-19T12:00:00Z"));
++    try {
++      db.order.findMany.mockResolvedValue([
++        { id: "1", deliveryAt: new Date("2026-10-19T12:00:00Z"), priority: "BASSA", mainPhase: "ACCETTATO" },
++        { id: "2", deliveryAt: new Date("2026-11-19T12:00:00Z"), priority: "URGENTE", mainPhase: "ACCETTATO" }
++      ]);
++      db.order.count.mockResolvedValue(3);
++      expect(await getOrdersTabCounts({ priority: "URGENTE" })).toEqual({
++        TO_DO: 1, TO_START: 1, WORKING: 1, BLOCKED: 1, READY: 1, DELIVERED: 3
++      });
++      expect(db.order.count).toHaveBeenCalledWith({ where: { mainPhase: "CONSEGNATO", priority: "URGENTE" } });
++      expect(db.order.findMany.mock.calls[0][0].select.customer).toBeUndefined();
++    } finally { vi.useRealTimers(); }
++  });
+ });
+ 
+ describe("creator registration", () => {
+diff --git a/lib/visible-polling.ts b/lib/visible-polling.ts
+new file mode 100644
+index 00000000..634ca556
+--- /dev/null
++++ b/lib/visible-polling.ts
+@@ -0,0 +1,32 @@
++type PollOptions = { intervalMs: number; immediate?: boolean };
++
++// Browser-only lifecycle. Hidden/offline tabs do no work and slow requests never overlap.
++export function startVisiblePolling(task: (signal: AbortSignal) => void | Promise<void>, options: PollOptions) {
++  let stopped = false;
++  let pending = false;
++  let lastStarted = options.immediate === false ? Date.now() : -Infinity;
++  const controller = new AbortController();
++  const poll = async () => {
++    if (stopped || pending || document.visibilityState !== "visible" || !navigator.onLine ||
++      Date.now() - lastStarted < options.intervalMs) return;
++    pending = true;
++    lastStarted = Date.now();
++    try { await task(controller.signal); }
++    catch { /* A transient failure must not create an unhandled rejection or a retry loop. */ }
++    finally { pending = false; }
++  };
++  const wake = () => { void poll(); };
++  const timer = window.setInterval(wake, options.intervalMs);
++  document.addEventListener("visibilitychange", wake);
++  window.addEventListener("focus", wake);
++  window.addEventListener("online", wake);
++  if (options.immediate !== false) wake();
++  return () => {
++    stopped = true;
++    controller.abort();
++    window.clearInterval(timer);
++    document.removeEventListener("visibilitychange", wake);
++    window.removeEventListener("focus", wake);
++    window.removeEventListener("online", wake);
++  };
++}
+diff --git a/tests/visible-polling.test.ts b/tests/visible-polling.test.ts
+new file mode 100644
+index 00000000..61360167
+--- /dev/null
++++ b/tests/visible-polling.test.ts
+@@ -0,0 +1,66 @@
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { startVisiblePolling } from "../lib/visible-polling";
++
++let page: EventTarget & { visibilityState: string };
++let browser: EventTarget;
++let connection: { onLine: boolean };
++let stop: (() => void) | undefined;
++beforeEach(() => {
++  vi.useFakeTimers();
++  page = Object.assign(new EventTarget(), { visibilityState: "visible" });
++  browser = Object.assign(new EventTarget(), { setInterval, clearInterval });
++  connection = { onLine: true };
++  vi.stubGlobal("document", page);
++  vi.stubGlobal("window", browser);
++  vi.stubGlobal("navigator", connection);
++});
++afterEach(() => { stop?.(); stop = undefined; vi.unstubAllGlobals(); vi.useRealTimers(); });
++
++describe("visible polling", () => {
++  it("does no background work and refreshes when a stale hidden tab becomes visible", async () => {
++    const task = vi.fn();
++    page.visibilityState = "hidden";
++    stop = startVisiblePolling(task, { intervalMs: 30_000 });
++    await vi.advanceTimersByTimeAsync(120_000);
++    expect(task).not.toHaveBeenCalled();
++    page.visibilityState = "visible";
++    page.dispatchEvent(new Event("visibilitychange"));
++    await Promise.resolve();
++    expect(task).toHaveBeenCalledTimes(1);
++    browser.dispatchEvent(new Event("focus"));
++    await vi.advanceTimersByTimeAsync(1000);
++    expect(task).toHaveBeenCalledTimes(1);
++  });
++  it("does not overlap slow requests and aborts them on disposal", async () => {
++    const task = vi.fn((_signal: AbortSignal) => new Promise<void>(() => {}));
++    stop = startVisiblePolling(task, { intervalMs: 30_000 });
++    await vi.advanceTimersByTimeAsync(120_000);
++    expect(task).toHaveBeenCalledTimes(1);
++    const signal = task.mock.calls[0][0];
++    stop();
++    expect(signal.aborted).toBe(true);
++    await vi.advanceTimersByTimeAsync(60_000);
++    expect(task).toHaveBeenCalledTimes(1);
++  });
++  it("waits for the first interval for server-rendered content, pauses offline and resumes online", async () => {
++    const task = vi.fn();
++    stop = startVisiblePolling(task, { intervalMs: 60_000, immediate: false });
++    browser.dispatchEvent(new Event("focus"));
++    expect(task).not.toHaveBeenCalled();
++    connection.onLine = false;
++    await vi.advanceTimersByTimeAsync(120_000);
++    expect(task).not.toHaveBeenCalled();
++    connection.onLine = true;
++    browser.dispatchEvent(new Event("online"));
++    await Promise.resolve();
++    expect(task).toHaveBeenCalledTimes(1);
++  });
++  it("retries a failure at the normal interval without a tight loop", async () => {
++    const task = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(undefined);
++    stop = startVisiblePolling(task, { intervalMs: 30_000 });
++    await vi.advanceTimersByTimeAsync(29_999);
++    expect(task).toHaveBeenCalledTimes(1);
++    await vi.advanceTimersByTimeAsync(1);
++    expect(task).toHaveBeenCalledTimes(2);
++  });
++});
+diff --git a/tests/order-counts.integration.test.ts b/tests/order-counts.integration.test.ts
+new file mode 100644
+index 00000000..c2c0a87d
+--- /dev/null
++++ b/tests/order-counts.integration.test.ts
+@@ -0,0 +1,44 @@
++import { afterAll, beforeAll, describe, expect, it } from "vitest";
++import { randomUUID } from "node:crypto";
++import { prisma } from "../lib/prisma";
++import { getOrdersList, getOrdersTabCounts } from "../lib/orders";
++
++const url = process.env.PRINT_BRIDGE_TEST_DATABASE_URL;
++if (url) {
++  const target = new URL(url);
++  if (target.hostname !== "127.0.0.1" || target.port !== "54339" || target.pathname !== "/fede_print_bridge_test" ||
++    process.env.DATABASE_URL !== url) throw Error("Order count tests require the isolated local print database.");
++}
++describe.runIf(Boolean(url))("optimized order counts against PostgreSQL", () => {
++  const customerId = randomUUID();
++  const marker = `Count-${randomUUID()}`;
++  beforeAll(async () => {
++    await prisma.customer.create({ data: { id: customerId, name: marker, type: "AZIENDA" } });
++    const phases = ["ACCETTATO", "IN_LAVORAZIONE", "CALENDARIZZATO", "SVILUPPO_COMPLETATO", "CONSEGNATO"] as const;
++    for (const [index, mainPhase] of phases.entries()) {
++      const id = randomUUID();
++      await prisma.order.create({ data: { id, orderCode: id, customerId, title: `${marker} Caffè`,
++        titleNormalized: id, createdOn: "2026-10-19", deliveryAt: new Date(Date.now() + index * 86400000), mainPhase,
++        operationalStatus: index === 2 ? "IN_ATTESA_MATERIALE" : "ATTIVO",
++        priority: "BASSA", paymentStatus: index % 2 ? "PAGATO" : "NON_PAGATO" } });
++    }
++  });
++  afterAll(async () => {
++    await prisma.order.deleteMany({ where: { customerId } });
++    await prisma.customer.deleteMany({ where: { id: customerId } });
++    await prisma.$disconnect();
++  });
++  const tabs = ["TO_DO", "TO_START", "WORKING", "BLOCKED", "READY", "DELIVERED"] as const;
++  it.each([
++    {}, { query: "caffe" }, { priority: "URGENTE" as const },
++    { priority: "BASSA" as const, query: marker }, { payment: "NON_PAGATO" as const },
++    { customerType: "AZIENDA" as const }, { shop: "ONLINE" as const }
++  ])("matches the displayed lists for %j", async filters => {
++    const counts = await getOrdersTabCounts({ ...filters, quote: "ORDER" });
++    for (const tab of tabs) {
++      const orders = await getOrdersList({ ...filters, quote: "ORDER",
++        view: tab === "DELIVERED" ? "DELIVERED" : "ACTIVE", preset: tab === "DELIVERED" ? "ALL" : tab });
++      expect(counts[tab], tab).toBe(orders.length);
++    }
++  });
++});

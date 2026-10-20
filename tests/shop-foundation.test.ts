@@ -25,8 +25,60 @@ import {
   resolveShopCatalogCustomization
 } from "../lib/shop-catalog-customizations";
 import { computeShopStickerQuote } from "../lib/shop-sticker-pricing";
+import {
+  areShopPhotoFilesComplete,
+  getMissingShopPhotoFileNames,
+  isShopPhotoUploadStorageReady,
+  readShopPhotoSubjects,
+  validateShopPhotoSelection
+} from "../lib/shop-photo-order";
+import {
+  getShopPhotoPriceSchedule,
+  resolveShopPhotoOnlineServicePricing
+} from "../lib/shop-photo-pricing";
 
 describe("shop foundation", () => {
+  it("prices photo formats by total prints at every online tier boundary", () => {
+    const cases = [
+      ["10x15", 1, 50],
+      ["10x15", 10, 500],
+      ["10x15", 11, 440],
+      ["10x15", 100, 4000],
+      ["10x15", 101, 3535],
+      ["10x15", 500, 17500],
+      ["10x15", 501, 15030],
+      ["13x18", 100, 10000],
+      ["13x18", 101, 8080],
+      ["15x20", 100, 10000],
+      ["20x15", 101, 8080]
+    ] as const;
+
+    for (const [format, quantity, expectedCents] of cases) {
+      const schedule = getShopPhotoPriceSchedule(format);
+      expect(schedule).not.toBeNull();
+      expect(quoteCatalogService({
+        service: { code: `FOTOGRAFIE_${format.toUpperCase()}`, name: `Foto ${format}`, ...schedule! },
+        quantity
+      }).lineTotalCents).toBe(expectedCents);
+    }
+    expect(getShopPhotoPriceSchedule("20x30")).toBeNull();
+  });
+
+  it("overrides catalog prices only for matching online photo services", () => {
+    const service = {
+      basePriceCents: 10,
+      code: "FOTOGRAFIE_10X15",
+      name: "Fotografie 10x15",
+      quantityTiers: null
+    };
+    expect(resolveShopPhotoOnlineServicePricing(service, "/shop/servizi/stampa-foto", "Stampa foto 10x15"))
+      .toMatchObject({ basePriceCents: 50, quantityTiers: expect.stringContaining("501+:0,30") });
+    expect(resolveShopPhotoOnlineServicePricing(service, "/shop/servizi/stampa-foto", "Stampa foto 13x18"))
+      .toBe(service);
+    expect(resolveShopPhotoOnlineServicePricing(service, "/shop/servizi/poster-fotografici", "Stampa foto 10x15"))
+      .toBe(service);
+  });
+
   it("normalizes service codes in the shared catalog module", () => {
     expect(normalizeServiceCode("Biglietti visita premium")).toBe("BIGLIETTI_VISITA_PREMIUM");
     expect(normalizeServiceCode("Installazione / Vetrina")).toBe("INSTALLAZIONE_VETRINA");
@@ -153,6 +205,92 @@ describe("shop foundation", () => {
       subjectQuantities: [10, 5, 15],
       totalQuantity: 30
     });
+  });
+
+  it("keeps each photo's copies and prevents checkout before all named files arrive", () => {
+    const selection = {
+      subjectCount: 2,
+      subjectFileNames: ["prima foto.jpg", "seconda.png"],
+      subjectFitModes: ["contain", "cover"] as Array<"contain" | "cover">,
+      subjectPricingMode: "per-subject" as const,
+      subjectQuantities: [2, 4]
+    };
+    expect(validateShopPhotoSelection({
+      sourcePath: "/shop/servizi/stampa-foto",
+      selection,
+      quantity: 6
+    })).toBeNull();
+    expect(validateShopPhotoSelection({
+      sourcePath: "/shop/servizi/stampa-foto",
+      selection: { ...selection, subjectPricingMode: "total-quantity" },
+      quantity: 6
+    })).toBeNull();
+    expect(validateShopPhotoSelection({
+      sourcePath: "/shop/servizi/stampa-foto",
+      selection,
+      quantity: 5
+    })).toMatch(/totale/i);
+
+    const customization = resolveShopCatalogCustomization({
+      selection,
+      sourcePath: "/shop/servizi/stampa-foto"
+    });
+    expect(customization.subject?.pricingMode).toBe("total-quantity");
+    expect(customization.summaryLines).toEqual([
+      "Foto: 2",
+      "Totale stampe: 6"
+    ]);
+    const subjects = readShopPhotoSubjects({
+      sourcePath: "/shop/servizi/stampa-foto",
+      catalogCustomization: customization.configuration
+    });
+    expect(subjects).toEqual([
+      { fileName: "prima_foto.jpg", copies: 2, fitMode: "contain" },
+      { fileName: "seconda.png", copies: 4, fitMode: "cover" }
+    ]);
+    expect(areShopPhotoFilesComplete(subjects, ["prima_foto.jpg"])).toBe(false);
+    expect(getMissingShopPhotoFileNames(subjects, ["prima_foto.jpg"])).toEqual(["seconda.png"]);
+    expect(areShopPhotoFilesComplete(subjects, ["prima_foto.jpg", "seconda.png"])).toBe(true);
+    expect(areShopPhotoFilesComplete(subjects, ["prima_foto.jpg", "seconda.png", "extra.jpg"])).toBe(false);
+    expect(readShopPhotoSubjects({
+      sourcePath: "/shop/servizi/stampa-foto",
+      catalogCustomization: {
+        subjects: {
+          subjectFileNames: ["prima_foto.jpg", "seconda.png"],
+          subjectQuantities: [2, 4],
+          subjectFitModes: []
+        }
+      }
+    })).toEqual([
+      { fileName: "prima_foto.jpg", copies: 2, fitMode: "contain" },
+      { fileName: "seconda.png", copies: 4, fitMode: "contain" }
+    ]);
+  });
+
+  it("keeps a large photo order compact and rejects invalid fit choices", () => {
+    expect(isShopPhotoUploadStorageReady("1")).toBe(false);
+    expect(isShopPhotoUploadStorageReady(undefined)).toBe(true);
+    const selection = {
+      subjectCount: 150,
+      subjectFileNames: Array.from({ length: 150 }, (_, index) => `foto-${index + 1}.jpg`),
+      subjectFitModes: Array.from({ length: 150 }, () => "contain" as const),
+      subjectPricingMode: "per-subject" as const,
+      subjectQuantities: Array.from({ length: 150 }, () => 1)
+    };
+    expect(validateShopPhotoSelection({
+      sourcePath: "/shop/servizi/stampa-foto",
+      selection,
+      quantity: 150
+    })).toBeNull();
+    expect(resolveShopCatalogCustomization({
+      selection,
+      sourcePath: "/shop/servizi/stampa-foto"
+    }).summaryLines).toEqual(["Foto: 150", "Totale stampe: 150"]);
+    expect(validateShopPhotoSelection({
+      sourcePath: "/shop/servizi/stampa-foto",
+      selection: { ...selection, subjectFitModes: [...selection.subjectFitModes.slice(0, 149), "stretch"] },
+      quantity: 150
+    })).toMatch(/adattamento/i);
   });
 
   it("applies the business-card hammered paper surcharge only to shop business cards", () => {

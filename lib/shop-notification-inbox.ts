@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 import { resolveShopNotificationSource, type ShopNotificationSourceTone } from "@/lib/shop-notification-source";
@@ -156,6 +156,20 @@ export async function createRickManualOrderNotification(input: RickManualOrderNo
   };
 }
 
+// One small response: count + fingerprint of the eight visible notifications only.
+// Hash content as well as IDs, so same-count replacements and payload edits invalidate it.
+export async function getShopNotificationRevision() {
+  const [row] = await prisma.$queryRaw<{ revision: string }[]>`
+    SELECT md5(
+      (SELECT count(*)::text FROM "DomainEvent" WHERE "status" = 'PENDING' AND "topic" IN (${Prisma.join(ORDER_NOTIFICATION_TOPICS)}))
+      || ':' || COALESCE((SELECT string_agg(md5(row_to_json(e)::text), '' ORDER BY e."createdAt" DESC, e."id" DESC)
+        FROM (SELECT "id", "createdAt", "entityId", "payloadJson", "topic" FROM "DomainEvent"
+          WHERE "status" = 'PENDING' AND "topic" IN (${Prisma.join(ORDER_NOTIFICATION_TOPICS)})
+          ORDER BY "createdAt" DESC, "id" DESC LIMIT 8) e), '')
+    ) AS revision`;
+  return `"notifications-v1-${row.revision}"`;
+}
+
 export async function listUnreadShopSalesOrderNotifications(limit = 8) {
   const safeLimit = Math.max(1, limit);
   const where = {
@@ -168,7 +182,7 @@ export async function listUnreadShopSalesOrderNotifications(limit = 8) {
     prisma.domainEvent.count({ where }),
     prisma.domainEvent.findMany({
       where,
-      orderBy: [{ createdAt: "desc" }],
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: safeLimit,
       select: {
         createdAt: true,

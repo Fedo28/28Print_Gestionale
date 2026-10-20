@@ -121,16 +121,20 @@ function manifest(job: PrintJob, destinationKey: string): PrintManifest {
   return { id: job.id, claimToken: job.claimToken!, sha256: job.sha256, fileSize: job.fileSize, destinationKey, profileKey: job.profileKey };
 }
 async function assertBridgeActive(tx: Tx, bridgeId: string) {
-  const bridge = await tx.printBridge.findUnique({ where: { id: bridgeId } });
+  const bridge = await tx.printBridge.findUnique({ where: { id: bridgeId }, select: { enabled: true, lastSeenAt: true } });
   if (!bridge?.enabled) throw new Error("Bridge non autorizzato.");
+  return bridge;
 }
 export async function claimPrintJob(bridgeId: string, keys: string[]) {
   assertPrintEnabled();
   const now = new Date();
   const supported = [...new Set(keys)].filter(key => /^[a-z0-9][a-z0-9_-]{0,79}$/.test(key)).slice(0, 20);
   return prisma.$transaction(async tx => {
-    await assertBridgeActive(tx, bridgeId);
-    await tx.printBridge.update({ where: { id: bridgeId }, data: { lastSeenAt: now } });
+    const bridge = await assertBridgeActive(tx, bridgeId);
+    // Keep credential checks and exclusive claiming unchanged; avoid a write every 15 seconds.
+    if (!bridge.lastSeenAt || now.getTime() - bridge.lastSeenAt.getTime() >= 30000) {
+      await tx.printBridge.update({ where: { id: bridgeId }, data: { lastSeenAt: now } });
+    }
     // Prisma DateTime columns are UTC timestamp-without-zone; raw Date parameters are timestamptz.
     // Normalize explicitly so a non-UTC PostgreSQL session cannot expire a fresh lease.
     const stale = await tx.$queryRaw<{ id: string }[]>`SELECT "id" FROM "PrintJob" WHERE "claimedById" = ${bridgeId} AND "status" = 'SENDING' AND "sendingAt" < (${new Date(now.getTime() - 600000)}::timestamptz AT TIME ZONE 'UTC') FOR UPDATE SKIP LOCKED`;

@@ -94,7 +94,14 @@ export const shopHomeCategories: ShopHomeCategory[] = [
     accent: "lime",
     imageSrc: "/shop/category-photo-mockup.svg",
     products: [
-      { href: "/shop/servizi/stampa-foto", label: "Stampa foto", note: "Piccolo formato", ready: true },
+      {
+        href: "/shop/servizi/stampa-foto",
+        imageAlt: "Foto stampate",
+        imageSrc: "/shop/product-photo.webp",
+        label: "Stampa foto",
+        note: "Piccolo formato",
+        ready: true
+      },
       {
         href: "/shop/servizi/poster-fotografici",
         imageAlt: "Poster fotografico stampato",

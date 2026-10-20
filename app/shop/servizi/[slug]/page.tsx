@@ -3,6 +3,7 @@ import { ShopCatalogProductConfigurator } from "@/components/shop-catalog-produc
 import { ShopTShirtCustomizer } from "@/components/shop-t-shirt-customizer";
 import { getShopServicePreviewCandidate } from "@/lib/shop-catalog";
 import { getShopCatalogProductPage } from "@/lib/shop-product-pages";
+import { isShopPhotoUploadStorageReady } from "@/lib/shop-photo-order";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -42,7 +43,10 @@ export default async function ShopServicePage({
         {params.slug === "t-shirt-personalizzate" ? (
           <ShopTShirtCustomizer page={catalogProductPage} />
         ) : (
-          <ShopCatalogProductConfigurator page={catalogProductPage} />
+          <ShopCatalogProductConfigurator
+            page={catalogProductPage}
+            photoUploadAvailable={isShopPhotoUploadStorageReady(process.env.VERCEL)}
+          />
         )}
       </div>
     );

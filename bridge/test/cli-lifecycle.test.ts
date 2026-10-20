@@ -16,7 +16,7 @@ async function until<T>(read: () => Promise<T>, accept: (value: T) => boolean): 
   }
   throw Error("Timeout lifecycle Bridge");
 }
-for (const responseCode of [200, 503]) test(`CLI: pausa cooperativa e riavvio con API simulata ${responseCode}`, async () => {
+for (const responseCode of [200, 503, 0]) test(`CLI: pausa cooperativa e riavvio con API simulata ${responseCode} (0=notte senza HTTP)`, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "bridge-cli-"));
   const children: ChildProcess[] = [];
   try {
@@ -26,7 +26,13 @@ for (const responseCode of [200, 503]) test(`CLI: pausa cooperativa e riavvio co
     await writeFile(config, JSON.stringify({ baseUrl: "https://unit.invalid", workDir, pollSeconds: 5,
       destinations: { test: { hotFolder: hot, staging: path.join(root, "stage"), profileKey: PROFILE, verifiedHoldOneCopy: true } } }));
     const mock = path.join(root, "mock.mjs");
-    await writeFile(mock, `globalThis.fetch = async (url) => {
+    await writeFile(mock, `
+    const RealDate = Date;
+    globalThis.Date = class extends RealDate {
+      constructor(...args) { super(...(args.length ? args : ['2026-10-20T${responseCode === 0 ? "21" : "10"}:00:00Z'])); }
+    };
+    globalThis.fetch = async (url) => {
+      ${responseCode === 0 ? "process.exit(99);" : ""}
       if (url !== 'https://unit.invalid/api/print-bridge') throw Error('Unexpected endpoint');
       return new Response(JSON.stringify({job:null}), {status:${responseCode}, headers:{'content-type':'application/json'}});
     };`);
@@ -39,7 +45,7 @@ for (const responseCode of [200, 503]) test(`CLI: pausa cooperativa e riavvio co
         fileURLToPath(new URL("../src/cli.ts", import.meta.url)), "run", config], { env, stdio: "ignore" });
       children.push(child); return child;
     };
-    const state = responseCode === 200 ? "running" : "retrying";
+    const state = responseCode === 0 ? "night_paused" : responseCode === 200 ? "running" : "retrying";
     const first = start();
     const before = await until(read, s => s.state === state);
     await writeFile(path.join(workDir, "data/stop-request.json"), JSON.stringify({ instanceId: before.instanceId }));

@@ -22,8 +22,10 @@ export class Worker {
     entry.report = { jobId: entry.id, claimToken: entry.manifest.claimToken, dispatchId: entry.dispatchId, outcome, detail };
     entry.acked = false; this.ledger.save(entry);
   }
-  async tick() {
+  async tick(allowClaim = true) {
+    let worked = false;
     for (const entry of this.ledger.pending()) {
+      worked = true;
       if (entry.phase === "DISPATCH_INTENT") this.finish(entry, "NEEDS_REVIEW", "Riavvio/interruzione durante l'invio: controllare Fiery. Nessun nuovo deposito eseguito.");
       if (entry.report) {
         try { await this.api.report(entry.report); }
@@ -34,20 +36,22 @@ export class Worker {
         }
         entry.acked = true; this.ledger.save(entry);
         await this.log(entry.phase, entry.id);
-      } else if (entry.phase === "PREPARING") { await this.process(entry); return; }
+      } else if (entry.phase === "PREPARING") { await this.process(entry); return true; }
     }
+    if (!allowClaim) return worked;
     const raw = await this.api.claim(Object.keys(this.config.destinations));
-    if (!raw) return;
+    if (!raw) return worked;
     const job = validateManifest(raw);
     const previous = this.ledger.get(job.id);
     if (previous) {
       // Includes lost/rebuilt server leases. A known job ID can never reach filesystem publication again.
       await this.api.report({ jobId: job.id, claimToken: job.claimToken, outcome: "ERROR", detail: "Identificativo già presente nel registro locale: richiede verifica e nuova autorizzazione." });
-      return;
+      return true;
     }
     const entry: Entry = { id: job.id, manifest: job, phase: "PREPARING", acked: false };
     this.ledger.save(entry);
     await this.process(entry);
+    return true;
   }
   private async process(entry: Entry) {
     const job = entry.manifest;

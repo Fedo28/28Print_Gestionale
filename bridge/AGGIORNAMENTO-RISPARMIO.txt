@@ -1,0 +1,25 @@
+28PRINT Bridge 0.4 — controlli adattivi e pausa notturna 20:00–08:00 (Europe/Rome)
+
+Per aggiornare un Bridge 0.2 già installato e funzionante:
+1. Dal pannello scegli Pausa Bridge e attendi lo stato fermo. Non terminare Node durante un invio.
+2. Conserva una copia delle cartelle src e windows attuali, fuori dalle Hot Folders.
+3. Estrai il pacchetto risparmio dentro C:\28PRINT-Bridge, sostituendo solo i file presenti nello ZIP.
+   Il pacchetto non contiene config.json, credenziali, data, log o Hot Folders.
+   Non cancellare o ricreare data: contiene il registro contro i duplicati.
+4. Da PowerShell, nella cartella C:\28PRINT-Bridge, esegui npm.cmd test e npm.cmd run check.
+   Le dipendenze sono invariate; non occorre reinstallare o inserire di nuovo le chiavi.
+5. Dal pannello scegli Avvia Bridge. La pausa disabilita l'avvio automatico; Avvia lo riabilita.
+
+Con pollSeconds=15: dopo cicli vuoti la frequenza scende a 30 e poi 60 secondi.
+Il primo lavoro dopo un periodo vuoto può essere rilevato entro circa un minuto, oltre ai tempi di rete.
+Quando c'è lavoro o una ricevuta da inviare si torna all'intervallo configurato.
+Errori, autorizzazioni, presa in carico esclusiva e registro antiduplicati mantengono le protezioni esistenti.
+Nessun lavoro viene approvato da questo aggiornamento.
+Dalle 20:00 alle 08:00 italiane non vengono presi nuovi lavori.
+Il Bridge resta avviato ma, senza operazioni pendenti, non contatta il server.
+Invii gia iniziati e ricevute persistenti possono essere completati anche di notte.
+Il pannello mostra Pausa notturna; dalle 08:00 riprende automaticamente entro circa un minuto.
+L'ora legale/solare italiana e gestita anche se il PC usa un altro fuso.
+Non cambia nulla ai lavori gia consegnati a Fiery, ne spegne PC o stampanti.
+Non usare Pausa manuale per la notte: disabilita l'avvio, mentre la pausa oraria riprende da sola.
+La versione installata sul PC non cambia finché non si applica questo pacchetto.

@@ -6,6 +6,8 @@ import { HttpPrintApi } from "./client.ts";
 import { Ledger } from "./ledger.ts";
 import { Worker } from "./worker.ts";
 import { RuntimeStatus } from "./runtime-status.ts";
+import { nextPollSeconds } from "./polling.ts";
+import { isNightPause } from "./service-hours.ts";
 
 const command = process.argv[2];
 if (!["run", "check"].includes(command)) throw new Error("Uso: node src/cli.ts check|run [percorso-config.json]");
@@ -27,7 +29,7 @@ if (command === "check") {
     await appendFile(logPath, JSON.stringify({ time: new Date().toISOString(), event: message, jobId }) + "\n", { mode: 0o600 });
   };
   const worker = new Worker(config, api, ledger, log);
-  let stopping = false, failures = 0;
+  let stopping = false, failures = 0, emptyCycles = 0;
   const stopWait = new AbortController();
   const stop = () => { stopping = true; stopWait.abort(); };
   process.on("SIGINT", stop); process.on("SIGTERM", stop);
@@ -36,14 +38,22 @@ if (command === "check") {
     await log("Bridge avviato");
     while (!stopping) {
       if (await status.stopRequested()) break;
-      try { await worker.tick(); failures = 0; await status.publish("running"); }
+      try {
+        // Finish durable receipts/in-flight jobs; never claim new work at night.
+        // With an empty ledger this performs zero HTTP calls.
+        const worked = await worker.tick(!isNightPause());
+        emptyCycles = worked ? 0 : Math.min(emptyCycles + 1, 5);
+        failures = 0;
+        await status.publish(isNightPause() ? "night_paused" : "running");
+      }
       catch {
+        emptyCycles = 0;
         failures++; await status.publish("retrying", failures);
         await log("Comunicazione o registro indisponibili; nessun nuovo deposito autorizzato. Controllare rete e credenziale.");
       }
       // Arresto cooperativo: mai interrompere download/pubblicazione a meta'.
       // Eventuali ricevute persistenti ancora da inviare ripartono al prossimo avvio.
-      const wakeAt = Date.now() + Math.min(300, config.pollSeconds * 2 ** Math.min(failures, 5)) * 1000;
+      const wakeAt = Date.now() + (isNightPause() && failures === 0 ? 60 : nextPollSeconds(config.pollSeconds, emptyCycles, failures)) * 1000;
       while (!stopping && Date.now() < wakeAt) {
         if (await status.stopRequested()) { stopping = true; break; }
         await setTimeout(Math.min(1000, Math.max(1, wakeAt - Date.now())), undefined, { signal: stopWait.signal })

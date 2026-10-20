@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFile, rename, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 
-export type RuntimeState = "starting" | "running" | "retrying" | "stopped";
+export type RuntimeState = "starting" | "running" | "retrying" | "stopped" | "night_paused";
 // Informazioni diagnostiche soltanto: mai token, manifest, percorsi dei PDF o dati cliente.
 // Il registro SQLite resta l'unica autorita' per la consegna dei lavori.
 export class RuntimeStatus {

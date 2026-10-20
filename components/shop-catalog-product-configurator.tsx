@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { formatAttachmentMaxSize, formatAttachmentSize } from "@/lib/attachment-utils";
+import { quoteCatalogService } from "@/lib/domain/pricing/service-pricing";
 import {
   SHOP_FILE_ALLOWED_EXTENSIONS,
   SHOP_FILE_MAX_SIZE_BYTES,
@@ -24,6 +25,9 @@ import {
   type ShopLabelSelectionInput
 } from "@/lib/label-calculator";
 import { applyShopCatalogPriceMultiplier } from "@/lib/shop-catalog-customizations";
+import { parseQuantityTiers } from "@/lib/pricing";
+import type { ShopPhotoFitMode } from "@/lib/shop-photo-order";
+import { getShopPhotoPriceSchedule } from "@/lib/shop-photo-pricing";
 import type { ShopCatalogProductPage } from "@/lib/shop-product-pages";
 import {
   buildShopStampSummaryLines,
@@ -43,6 +47,7 @@ import {
 
 type ShopCatalogProductConfiguratorProps = {
   page: ShopCatalogProductPage;
+  photoUploadAvailable?: boolean;
 };
 
 type CreateCatalogOrderResponse = {
@@ -55,9 +60,10 @@ type CreateCatalogOrderResponse = {
 type QueuedCatalogFile = {
   error: string | null;
   file: File;
+  fitMode: ShopPhotoFitMode;
   id: string;
   quantity: number;
-  status: "ready" | "uploading" | "error";
+  status: "ready" | "uploading" | "uploaded" | "error";
 };
 
 const currencyFormatter = new Intl.NumberFormat("it-IT", {
@@ -71,6 +77,56 @@ function formatPrice(cents: number) {
 
 function buildQueuedCatalogFileId(file: File, index: number) {
   return `${file.name}-${file.size}-${file.lastModified}-${Date.now()}-${index}`;
+}
+
+function photoFrameRatio(formatLabel: string, imageWidth: number, imageHeight: number) {
+  const match = formatLabel.match(/(\d{1,3})\s*[xX]\s*(\d{1,3})/);
+  if (!match) return imageWidth > 0 && imageHeight > 0 ? imageWidth / imageHeight : 1;
+  const first = Number(match[1]);
+  const second = Number(match[2]);
+  const shortSide = Math.min(first, second);
+  const longSide = Math.max(first, second);
+  return imageWidth >= imageHeight ? longSide / shortSide : shortSide / longSide;
+}
+
+function PhotoThumbnail({ file, fitMode = "contain", formatLabel = "", large = false }: {
+  file: File;
+  fitMode?: ShopPhotoFitMode;
+  formatLabel?: string;
+  large?: boolean;
+}) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [dimensions, setDimensions] = useState("");
+  const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    setDimensions("");
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  return (
+    <div
+      className={`shop-photo-review-thumbnail${large ? " is-main" : ""}`}
+      style={large ? { aspectRatio: photoFrameRatio(formatLabel, naturalSize.width, naturalSize.height) } : undefined}
+    >
+      {previewUrl ? (
+        <img
+          alt={`Anteprima di ${file.name}`}
+          loading={large ? "eager" : "lazy"}
+          onLoad={(event) => {
+            const { naturalHeight, naturalWidth } = event.currentTarget;
+            setDimensions(`${naturalWidth} × ${naturalHeight} px`);
+            setNaturalSize({ width: naturalWidth, height: naturalHeight });
+          }}
+          src={previewUrl}
+          style={large ? { objectFit: fitMode } : undefined}
+        />
+      ) : null}
+      {large && dimensions ? <span>{dimensions}</span> : null}
+    </div>
+  );
 }
 
 function getRequestErrorMessage(error: unknown, fallback: string) {
@@ -164,6 +220,8 @@ async function createCatalogOrder(payload: {
     stamp?: ShopStampSelectionInput | null;
     sticker?: ShopStickerSelectionInput | null;
     subjectCount?: number | null;
+    subjectFileNames?: string[] | null;
+    subjectFitModes?: ShopPhotoFitMode[] | null;
     subjectPricingMode?: "per-subject" | "total-quantity" | null;
     subjectQuantities?: number[] | null;
   };
@@ -210,7 +268,7 @@ async function uploadCatalogOrderFile(orderId: string, salesOrderItemId: string 
   }
 }
 
-export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfiguratorProps) {
+export function ShopCatalogProductConfigurator({ page, photoUploadAvailable = true }: ShopCatalogProductConfiguratorProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const quantityMode = page.quantityMode || "tiers";
@@ -225,6 +283,7 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
   const firstOption = page.options[0] || null;
   const [selectedId, setSelectedId] = useState(firstOption?.id || "");
   const selectedOption = page.options.find((option) => option.id === selectedId) || firstOption;
+  const photoPriceSchedule = usesFileCountQuantity ? getShopPhotoPriceSchedule(selectedOption?.label) : null;
   const defaultUnitQuantity = isLabelCalculator ? 100 : 1;
   const firstQuantity = quantityMode === "unit-input" ? defaultUnitQuantity : selectedOption?.quantities[0]?.quantity || 0;
   const [selectedQuantity, setSelectedQuantity] = useState(firstQuantity);
@@ -252,6 +311,10 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
     selectedPaperChoice?.variants?.[0] ||
     null;
   const [queuedFiles, setQueuedFiles] = useState<QueuedCatalogFile[]>([]);
+  const [photoStep, setPhotoStep] = useState<"configuration" | "review">("configuration");
+  const [activePhotoId, setActivePhotoId] = useState("");
+  const [photoPage, setPhotoPage] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState<{ completed: number; total: number } | null>(null);
   const [customerNote, setCustomerNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [needsFileChoice, setNeedsFileChoice] = useState(false);
@@ -403,6 +466,20 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
     }
 
     const normalizedQuantity = Math.max(1, Math.round(Number(quantity) || 1));
+    if (usesFileCountQuantity && selectedOption.basePriceCents !== undefined) {
+      return {
+        quantity: normalizedQuantity,
+        priceCents: quoteCatalogService({
+          service: {
+            basePriceCents: selectedOption.basePriceCents,
+            code: selectedOption.code,
+            name: selectedOption.catalogServiceName,
+            quantityTiers: selectedOption.quantityTiers
+          },
+          quantity: normalizedQuantity
+        }).lineTotalCents
+      };
+    }
     if (quantityMode === "unit-input") {
       const unitPriceCents = Math.round(selectedBaseQuantityOption.priceCents / Math.max(1, selectedBaseQuantityOption.quantity));
       return {
@@ -430,12 +507,16 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
       return null;
     }
 
-    if (usesFileCountQuantity) {
-      return uploadedFileCountQuantity > 0 ? resolveQuantityPrice(uploadedFileCountQuantity) : null;
+    if (!usesFileCountQuantity && !hasFileSubjects) {
+      return selectedBaseQuantityOption;
     }
 
-    if (!hasFileSubjects) {
-      return selectedBaseQuantityOption;
+    if (!fileSubjectQuantities.length) {
+      return null;
+    }
+
+    if (usesFileCountQuantity) {
+      return resolveQuantityPrice(fileSubjectQuantities.reduce((total, quantity) => total + quantity, 0));
     }
 
     const subjectQuotes = fileSubjectQuantities
@@ -542,8 +623,9 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
           ].join("\n")
         : null,
       usesFileCountQuantity ? `Foto caricate: ${uploadedFileCountQuantity}` : null,
-      hasFileSubjects ? `Soggetti: ${fileSubjectQuantities.length}` : null,
-      hasFileSubjects ? `Copie per file: ${fileSubjectQuantities.join(" + ")} pz` : null,
+      usesFileCountQuantity ? `Con ritaglio: ${queuedFiles.filter((entry) => entry.fitMode === "cover").length}` : null,
+      hasFileSubjects && !usesFileCountQuantity ? `Soggetti: ${fileSubjectQuantities.length}` : null,
+      hasFileSubjects && !usesFileCountQuantity ? `Copie per file: ${fileSubjectQuantities.join(" + ")} pz` : null,
       stickerQuote
         ? `Area conteggiata: ${formatShopStickerMetric(selectedQuantityOption.quantity)} mq`
         : labelQuote
@@ -560,6 +642,7 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
     hasFileSubjects,
     optionSectionLabel,
     queuedFiles.length,
+    queuedFiles,
     bannerQuote,
     labelQuote,
     stickerQuote,
@@ -580,6 +663,7 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
     }
 
     setSelectedId(nextOption.id);
+    if (usesFileCountQuantity) setPhotoStep("configuration");
     setSelectedQuantity(quantityMode === "unit-input" ? defaultUnitQuantity : nextOption.quantities[0]?.quantity || 0);
     if (nextOption.bannerPreset) {
       setBannerWidthDraft(formatBannerDraft(nextOption.bannerPreset.widthM));
@@ -614,6 +698,11 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
       return;
     }
 
+    if (usesFileCountQuantity && queuedFiles.length + files.length > 200) {
+      setError("Puoi caricare al massimo 200 foto per ordine.");
+      return;
+    }
+
     const defaultFileQuantity = usesFileCountQuantity ? 1 : selectedBaseQuantityOption?.quantity || 1;
     const nextErrors: string[] = [];
     const nextFiles: QueuedCatalogFile[] = [];
@@ -642,6 +731,7 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
       nextFiles.push({
         error: null,
         file,
+        fitMode: "contain",
         id: buildQueuedCatalogFileId(file, index),
         quantity: defaultFileQuantity,
         status: "ready"
@@ -649,6 +739,9 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
     });
 
     setQueuedFiles((current) => [...current, ...nextFiles]);
+    if (usesFileCountQuantity && nextFiles.length) {
+      setActivePhotoId((current) => current || nextFiles[0].id);
+    }
     setNeedsFileChoice(false);
     setError(nextErrors[0] || null);
 
@@ -659,10 +752,15 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
 
   function removeQueuedFile(fileId: string) {
     setQueuedFiles((current) => current.filter((entry) => entry.id !== fileId));
+    if (fileId === activePhotoId) {
+      setActivePhotoId("");
+      setPhotoPage(0);
+    }
+    if (usesFileCountQuantity && queuedFiles.length === 1) setPhotoStep("configuration");
   }
 
   function updateQueuedFileQuantity(fileId: string, value: string) {
-    const nextQuantity = Math.max(1, Math.round(Number(value) || 1));
+    const nextQuantity = Math.min(999, Math.max(1, Math.round(Number(value) || 1)));
     setQueuedFiles((current) =>
       current.map((entry) =>
         entry.id === fileId
@@ -675,6 +773,14 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
     );
   }
 
+  function updatePhotoFitMode(fileId: string, fitMode: ShopPhotoFitMode) {
+    setQueuedFiles((current) => current.map((entry) => entry.id === fileId ? { ...entry, fitMode } : entry));
+  }
+
+  function applyPhotoFitModeToAll(fitMode: ShopPhotoFitMode) {
+    setQueuedFiles((current) => current.map((entry) => ({ ...entry, fitMode })));
+  }
+
   function updateStampLineWeight(lineIndex: number, fontWeight: ShopStampFontWeight) {
     setStampLineWeights((current) => {
       const next = [...current];
@@ -683,8 +789,18 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
     });
   }
 
-  async function handleContinue(allowWithoutFiles = false) {
+  async function handleContinue(allowWithoutFiles = false, fromPhotoReview = false) {
+    if (usesFileCountQuantity && createdOrderPath) {
+      router.push(createdOrderPath);
+      return;
+    }
     if (!selectedOption || !selectedQuantityOption || isSubmitting || isRouting) {
+      return;
+    }
+
+    if (usesFileCountQuantity && !fromPhotoReview) {
+      setPhotoStep("review");
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
@@ -713,6 +829,7 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
     setCreatedOrderPath(null);
     setError(null);
     setNeedsFileChoice(false);
+    setUploadProgress(queuedFiles.length ? { completed: 0, total: queuedFiles.length } : null);
     setQueuedFiles((current) => current.map((entry) => ({ ...entry, error: null, status: "ready" })));
 
     try {
@@ -764,7 +881,7 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
           ? {
               banner: bannerSelection,
               copiesPerSubject: usesFileCountQuantity
-                ? 1
+                ? fileSubjectQuantities[0] || 1
                 : hasFileSubjects
                   ? fileSubjectQuantities[0] || null
                   : supportsSubjects
@@ -776,9 +893,11 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
               stamp: stampSelection,
               sticker: stickerSelection,
               subjectCount: usesFileCountQuantity ? uploadedFileCountQuantity : supportsSubjects ? subjectCount : null,
-              subjectPricingMode: usesFileCountQuantity ? "per-subject" : supportsSubjects ? subjectPricingMode : null,
+              subjectFileNames: usesFileCountQuantity ? queuedFiles.map((entry) => entry.file.name) : null,
+              subjectFitModes: usesFileCountQuantity ? queuedFiles.map((entry) => entry.fitMode) : null,
+              subjectPricingMode: usesFileCountQuantity ? "total-quantity" : supportsSubjects ? subjectPricingMode : null,
               subjectQuantities: usesFileCountQuantity
-                ? queuedFiles.map(() => 1)
+                ? fileSubjectQuantities
                 : hasFileSubjects
                   ? fileSubjectQuantities
                   : null
@@ -809,6 +928,7 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
         }
       }
       const filesToUpload = queuedFiles;
+      let completedUploads = 0;
 
       for (const entry of filesToUpload) {
         setQueuedFiles((current) =>
@@ -825,7 +945,11 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
 
         try {
           await uploadCatalogOrderFile(createdOrder.orderId, createdOrder.salesOrderItemId, entry.file);
-          setQueuedFiles((current) => current.filter((queuedFile) => queuedFile.id !== entry.id));
+          completedUploads += 1;
+          setUploadProgress({ completed: completedUploads, total: filesToUpload.length });
+          setQueuedFiles((current) => usesFileCountQuantity
+            ? current.map((queuedFile) => queuedFile.id === entry.id ? { ...queuedFile, status: "uploaded" } : queuedFile)
+            : current.filter((queuedFile) => queuedFile.id !== entry.id));
         } catch (uploadError) {
           failedUploads += 1;
           const message = getRequestErrorMessage(uploadError, "Upload file shop non riuscito.");
@@ -854,12 +978,13 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
       }
 
       startRouting(() => {
-        router.push(`${createdOrder.redirectPath}?checkout=1`);
+        router.push(usesFileCountQuantity ? createdOrder.redirectPath : `${createdOrder.redirectPath}?checkout=1`);
       });
     } catch (requestError) {
       setError(getRequestErrorMessage(requestError, "Ordine shop non creato."));
     } finally {
       setIsSubmitting(false);
+      setUploadProgress(null);
     }
   }
 
@@ -871,6 +996,19 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
       !isSubmitting &&
       !isRouting
   );
+  const photosPerPage = 12;
+  const photoPageCount = Math.max(1, Math.ceil(queuedFiles.length / photosPerPage));
+  const visiblePhotoPage = Math.min(photoPage, photoPageCount - 1);
+  const visiblePhotos = queuedFiles.slice(visiblePhotoPage * photosPerPage, (visiblePhotoPage + 1) * photosPerPage);
+  const activePhoto = queuedFiles.find((entry) => entry.id === activePhotoId) || queuedFiles[0] || null;
+  const activePhotoIndex = activePhoto ? queuedFiles.findIndex((entry) => entry.id === activePhoto.id) : -1;
+
+  function selectPhotoAt(index: number) {
+    const entry = queuedFiles[index];
+    if (!entry) return;
+    setActivePhotoId(entry.id);
+    setPhotoPage(Math.floor(index / photosPerPage));
+  }
 
   function renderFileSection() {
     if (usesGeneratedFile) {
@@ -910,7 +1048,20 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
           <span>{fileUploadHint}</span>
         </button>
 
-        {queuedFiles.length ? (
+        {usesFileCountQuantity && queuedFiles.length ? (
+          <div className="shop-photo-selection-compact" role="status">
+            <div>
+              <strong>{queuedFiles.length} {queuedFiles.length === 1 ? "foto selezionata" : "foto selezionate"}</strong>
+              <span>Le miniature e le copie si impostano nel prossimo passaggio.</span>
+            </div>
+            <button onClick={() => {
+              setQueuedFiles([]);
+              setActivePhotoId("");
+              setPhotoPage(0);
+            }} type="button">Rimuovi tutte</button>
+          </div>
+        ) : null}
+        {!usesFileCountQuantity && queuedFiles.length ? (
           <div className="shop-catalog-file-list">
             {queuedFiles.map((entry) => (
               <article className={`shop-catalog-file-item is-${entry.status}`} key={entry.id}>
@@ -950,7 +1101,7 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
                 ) : usesFileCountQuantity ? (
                   <div className="shop-catalog-file-quantity is-readonly">
                     <span>Copie</span>
-                    <strong>1</strong>
+                    <strong>{entry.quantity}</strong>
                   </div>
                 ) : null}
                 {entry.status !== "uploading" ? (
@@ -965,6 +1116,116 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
           </div>
         ) : null}
       </div>
+    );
+  }
+
+  if (usesFileCountQuantity && photoStep === "review") {
+    return (
+      <section className="shop-photo-review" aria-label="Adatta le foto e scegli le copie">
+        <div className="shop-photo-review-heading">
+          <div>
+            <span>Passaggio 2 di 3</span>
+            <h2>Adatta le tue foto</h2>
+            <p>Formato {selectedOption?.label || "scelto"}: scegli se mantenere tutta la foto o riempire il foglio con un ritaglio centrale. Imposta le copie qui, poi vai direttamente al pagamento.</p>
+          </div>
+          <button disabled={isSubmitting || isRouting} onClick={() => setPhotoStep("configuration")} type="button">Indietro</button>
+        </div>
+        <div className="shop-photo-review-workspace">
+          <aside className="shop-photo-review-gallery" aria-label="Foto selezionate">
+            <div className="shop-photo-review-gallery-head">
+              <strong>{queuedFiles.length} foto</strong>
+              <span>{visiblePhotoPage + 1} / {photoPageCount}</span>
+            </div>
+            <div className="shop-photo-review-grid">
+              {visiblePhotos.map((entry, index) => (
+                <button
+                  aria-label={`Apri foto ${visiblePhotoPage * photosPerPage + index + 1}: ${entry.file.name}`}
+                  aria-pressed={activePhoto?.id === entry.id}
+                  className={`shop-photo-review-card${activePhoto?.id === entry.id ? " is-active" : ""}`}
+                  disabled={isSubmitting || isRouting}
+                  key={entry.id}
+                  onClick={() => setActivePhotoId(entry.id)}
+                  type="button"
+                >
+                  <PhotoThumbnail file={entry.file} />
+                  <span>{visiblePhotoPage * photosPerPage + index + 1} · {entry.quantity} {entry.quantity === 1 ? "copia" : "copie"}</span>
+                </button>
+              ))}
+            </div>
+            {photoPageCount > 1 ? (
+              <div className="shop-photo-review-pagination">
+                <button disabled={visiblePhotoPage === 0 || isSubmitting} onClick={() => {
+                  const nextPage = visiblePhotoPage - 1;
+                  setPhotoPage(nextPage);
+                  setActivePhotoId(queuedFiles[nextPage * photosPerPage]?.id || "");
+                }} type="button">Precedenti</button>
+                <button disabled={visiblePhotoPage >= photoPageCount - 1 || isSubmitting} onClick={() => {
+                  const nextPage = visiblePhotoPage + 1;
+                  setPhotoPage(nextPage);
+                  setActivePhotoId(queuedFiles[nextPage * photosPerPage]?.id || "");
+                }} type="button">Successive</button>
+              </div>
+            ) : null}
+            <input
+              accept={fileInputAccept}
+              className="shop-document-file-input"
+              multiple
+              onChange={(event) => appendFiles(event.currentTarget.files || [])}
+              ref={fileInputRef}
+              type="file"
+            />
+            <button className="shop-photo-review-add" disabled={isSubmitting} onClick={() => fileInputRef.current?.click()} type="button">Aggiungi altre foto</button>
+          </aside>
+
+          {activePhoto ? (
+            <div className="shop-photo-review-editor">
+              <div className="shop-photo-review-editor-heading">
+                <div>
+                  <span>Foto {activePhotoIndex + 1} di {queuedFiles.length}</span>
+                  <strong title={activePhoto.file.name}>{activePhoto.file.name}</strong>
+                  <small>{formatAttachmentSize(activePhoto.file.size)}</small>
+                </div>
+                <div className="shop-photo-review-pagination">
+                  <button aria-label="Foto precedente" disabled={activePhotoIndex <= 0 || isSubmitting} onClick={() => selectPhotoAt(activePhotoIndex - 1)} type="button">←</button>
+                  <button aria-label="Foto successiva" disabled={activePhotoIndex >= queuedFiles.length - 1 || isSubmitting} onClick={() => selectPhotoAt(activePhotoIndex + 1)} type="button">→</button>
+                </div>
+              </div>
+              <PhotoThumbnail file={activePhoto.file} fitMode={activePhoto.fitMode} formatLabel={selectedOption?.label || ""} large />
+              <div className="shop-photo-review-fit" role="group" aria-label={`Adattamento di ${activePhoto.file.name}`}>
+                <button aria-pressed={activePhoto.fitMode === "contain"} disabled={isSubmitting} onClick={() => updatePhotoFitMode(activePhoto.id, "contain")} type="button">
+                  Foto intera <small>Nessun taglio, possibili bordi bianchi</small>
+                </button>
+                <button aria-pressed={activePhoto.fitMode === "cover"} disabled={isSubmitting} onClick={() => updatePhotoFitMode(activePhoto.id, "cover")} type="button">
+                  Riempi formato <small>Ritaglio centrale, senza bordi</small>
+                </button>
+              </div>
+              <button className="shop-photo-review-apply-all" disabled={isSubmitting} onClick={() => applyPhotoFitModeToAll(activePhoto.fitMode)} type="button">Applica questa scelta a tutte le foto</button>
+              <div className="shop-photo-review-editor-actions">
+                <div className="shop-photo-review-quantity">
+                  <span>Copie di questa foto</span>
+                  <div>
+                    <button aria-label={`Riduci copie di ${activePhoto.file.name}`} disabled={activePhoto.quantity <= 1 || isSubmitting} onClick={() => updateQueuedFileQuantity(activePhoto.id, String(activePhoto.quantity - 1))} type="button">−</button>
+                    <input aria-label={`Copie di ${activePhoto.file.name}`} disabled={isSubmitting} inputMode="numeric" max={999} min={1} onChange={(event) => updateQueuedFileQuantity(activePhoto.id, event.currentTarget.value)} type="number" value={activePhoto.quantity} />
+                    <button aria-label={`Aumenta copie di ${activePhoto.file.name}`} disabled={activePhoto.quantity >= 999 || isSubmitting} onClick={() => updateQueuedFileQuantity(activePhoto.id, String(activePhoto.quantity + 1))} type="button">+</button>
+                  </div>
+                </div>
+                <button className="shop-photo-review-remove" disabled={isSubmitting} onClick={() => removeQueuedFile(activePhoto.id)} type="button">Rimuovi questa foto</button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+        {!photoUploadAvailable ? (
+          <p className="shop-photo-review-error" role="status">Anteprima del flusso foto: su questa Preview l’archivio privato non è ancora attivo. Puoi provare selezione, adattamento e copie con file di test; l’invio dell’ordine è sospeso per non perdere gli originali.</p>
+        ) : null}
+        {error ? <p className="shop-photo-review-error" role="alert">{error}</p> : null}
+        {uploadProgress ? <p className="shop-photo-review-progress" role="status">Caricamento: {uploadProgress.completed} di {uploadProgress.total} foto completate. Non chiudere la pagina.</p> : null}
+        <div className="shop-photo-review-footer">
+          <p>{queuedFiles.length} foto · {selectedQuantityOption?.quantity || 0} stampe · <strong>{selectedTotalPriceCents !== null ? formatPrice(selectedTotalPriceCents) : "Da verificare"}</strong></p>
+          <button disabled={(!canContinue && !createdOrderPath) || !photoUploadAvailable} onClick={() => void handleContinue(false, true)} type="button">
+            {!photoUploadAvailable ? "Invio non ancora disponibile" : isSubmitting ? "Carico le foto..." : isRouting ? "Apro il riepilogo..." : createdOrderPath ? "Apri l'ordine incompleto" : "Continua al riepilogo e pagamento"}
+          </button>
+        </div>
+      </section>
     );
   }
 
@@ -1047,6 +1308,8 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
                         ? `${formatPrice(applyShopCatalogPriceMultiplier(option.quantities[0].priceCents, priceMultiplier))} / mq`
                         : quantityMode === "unit-input"
                         ? `${formatPrice(applyShopCatalogPriceMultiplier(option.quantities[0].priceCents, priceMultiplier))} cad.`
+                        : usesFileCountQuantity && getShopPhotoPriceSchedule(option.label)
+                        ? `1 stampa ${formatPrice(option.quantities[0].priceCents)}`
                         : `Da ${formatPrice(applyShopCatalogPriceMultiplier(option.quantities[0].priceCents, priceMultiplier))}`}
                     </span>
                   ) : (
@@ -1058,6 +1321,19 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
           ) : (
             <div className="shop-business-card-empty">Catalogo da completare.</div>
           )}
+          {photoPriceSchedule ? (
+            <div className="shop-photo-price-tiers">
+              <strong>Prezzi per stampa {selectedOption?.label}</strong>
+              <div>
+                {parseQuantityTiers(photoPriceSchedule.quantityTiers).map((tier) => (
+                  <span key={tier.minQuantity}>
+                    {tier.maxQuantity === null ? `${tier.minQuantity}+` : `${tier.minQuantity}–${tier.maxQuantity}`} stampe: <b>{formatPrice(tier.unitPriceCents)} cad.</b>
+                  </span>
+                ))}
+              </div>
+              <small>La fascia dipende dal totale delle stampe, comprese le copie della stessa foto.</small>
+            </div>
+          ) : null}
         </div>
 
         {stampCustomization && selectedOption?.stampSpec ? (
@@ -1421,7 +1697,7 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
               onClick={() => void handleContinue(false)}
               type="button"
             >
-              {isSubmitting || isRouting ? "Continuo..." : "Continua"}
+              {isSubmitting || isRouting ? "Continuo..." : usesFileCountQuantity ? "Continua: adatta le foto" : "Continua"}
             </button>
           </div>
         </aside>
@@ -1433,7 +1709,7 @@ export function ShopCatalogProductConfigurator({ page }: ShopCatalogProductConfi
           <strong>{selectedTotalPriceCents !== null ? formatPrice(selectedTotalPriceCents) : "Da verificare"}</strong>
         </div>
         <button disabled={!canContinue} onClick={() => void handleContinue(false)} type="button">
-          {isSubmitting || isRouting ? "..." : "Continua"}
+          {isSubmitting || isRouting ? "..." : usesFileCountQuantity ? "Adatta le foto" : "Continua"}
         </button>
       </div>
     </section>

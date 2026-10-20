@@ -79,6 +79,19 @@ describe.runIf(Boolean(url))("Print Bridge: isolated PostgreSQL + HTTP + SQLite 
       vi.stubEnv("WHATSAPP_WEBHOOK_ENABLED", "false"); expect((await receiveWhatsApp(request(signature))).status).toBe(404);
     } finally { await prisma.whatsAppInboundMessage.deleteMany({ where: { providerMessageId: id } }); vi.unstubAllEnvs(); }
   });
+  it("does not rewrite the Bridge heartbeat on consecutive empty checks", async () => {
+    const f = await fixture();
+    await f.claim();
+    const first = await prisma.printBridge.findUniqueOrThrow({ where: { id: f.bridge.id } });
+    expect(first.lastSeenAt).not.toBeNull();
+    await f.claim();
+    const second = await prisma.printBridge.findUniqueOrThrow({ where: { id: f.bridge.id } });
+    expect(second.lastSeenAt).toEqual(first.lastSeenAt);
+    await prisma.printBridge.update({ where: { id: f.bridge.id }, data: { lastSeenAt: new Date(Date.now() - 60000) } });
+    await f.claim();
+    const third = await prisma.printBridge.findUniqueOrThrow({ where: { id: f.bridge.id } });
+    expect(third.lastSeenAt!.getTime()).toBeGreaterThanOrEqual(first.lastSeenAt!.getTime());
+  });
   it("requires approval and an active administrator", async () => {
     const f = await fixture(); expect(await f.claim()).toBeNull();
     await expect(approvePrint({ ...f.input, userId: operator })).rejects.toThrow(/amministratore/);

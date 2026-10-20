@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { lockShopBetaAccessAction, logoutCustomerAccountAction } from "@/app/shop/actions";
 import { ShopBetaAccessForm } from "@/components/shop-beta-access-form";
@@ -9,6 +10,13 @@ import { getShopBetaGateState } from "@/lib/shop-beta-gate";
 import "./shop.css";
 
 const shopAppLogo = "/shop/shop-app-logo.png";
+
+export const metadata: Metadata = {
+  title: "28 Print | Shop",
+  description: "Stampe e prodotti personalizzati 28 Print da ordinare online.",
+  applicationName: "28 Print Shop",
+  manifest: "/shop/manifest.webmanifest"
+};
 
 function MenuGlyph() {
   return (

@@ -25,6 +25,7 @@ type ShopDemoCheckoutProps = {
   } | null;
   initialOpen: boolean;
   isCompleted: boolean;
+  filesComplete?: boolean;
   orderId: string;
   stripeEnabled?: boolean;
   stripeMode?: "demo" | "live" | "test";
@@ -43,12 +44,13 @@ export function ShopDemoCheckout({
   initialNotice = null,
   initialOpen,
   isCompleted,
+  filesComplete = true,
   orderId,
   stripeEnabled = false,
   stripeMode = "demo"
 }: ShopDemoCheckoutProps) {
   const router = useRouter();
-  const [isOpen, setIsOpen] = useState(initialOpen && !isCompleted);
+  const [isOpen, setIsOpen] = useState(initialOpen && !isCompleted && filesComplete);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState<{
     kind: "success" | "error";
@@ -144,17 +146,24 @@ export function ShopDemoCheckout({
           </p>
         </div>
 
+        {!isCompleted && !filesComplete ? (
+          <div className="shop-pickup-reminder" role="status">
+            <strong>Caricamento foto da completare</strong>
+            <p>Ricarica le foto mancanti qui sotto prima di pagare.</p>
+          </div>
+        ) : null}
+
         <div className="button-row">
           {isCompleted ? (
             <Link className="button primary" href="/shop/stampa-documenti">
               Nuovo ordine
             </Link>
           ) : stripeEnabled ? (
-            <button className="button primary" disabled={isSubmitting} onClick={handleStripeCheckout} type="button">
+            <button className="button primary" disabled={isSubmitting || !filesComplete} onClick={handleStripeCheckout} type="button">
               {isSubmitting ? "Apro Stripe..." : "Paga con carta"}
             </button>
           ) : (
-            <button className="button primary" onClick={() => setIsOpen(true)} type="button">
+            <button className="button primary" disabled={!filesComplete} onClick={() => setIsOpen(true)} type="button">
               Inserisci dati pagamento demo
             </button>
           )}

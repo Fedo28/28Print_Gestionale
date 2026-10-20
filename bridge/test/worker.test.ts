@@ -32,10 +32,32 @@ async function setup() {
 test("publishes once, records receipt, reports without marking physical printing", async () => {
   const s = await setup();
   try {
-    await s.worker.tick(); assert.equal(s.begins(), 1); assert.equal((await readdir(s.hot)).length, 1);
+    assert.equal(await s.worker.tick(), true); assert.equal(s.begins(), 1); assert.equal((await readdir(s.hot)).length, 1);
     assert.deepEqual(new Uint8Array(await readFile(path.join(s.hot, `28PRINT-${s.job.id}.pdf`))), s.bytes);
-    await s.worker.tick(); await s.worker.tick();
+    assert.equal(await s.worker.tick(), true, "Receipt is work, so it resets idle backoff");
+    assert.equal(await s.worker.tick(), false, "Only an empty cycle slows down");
     assert.equal(s.reports.length, 1); assert.equal(s.reports[0].outcome, "DELIVERED"); assert.equal(s.begins(), 1);
+  } finally { await s.cleanup(); }
+});
+test("night pause makes no empty HTTP calls, preserves receipts and resumes claims", async () => {
+  const s = await setup();
+  try {
+    const claim = s.api.claim;
+    let claims = 0;
+    s.api.claim = async keys => { claims++; return claim(keys); };
+    assert.equal(await s.worker.tick(false), false);
+    assert.equal(claims, 0);
+    await s.worker.tick(true);
+    assert.equal(s.begins(), 1);
+    await s.worker.tick(false);
+    assert.equal(claims, 1);
+    assert.equal(s.reports.length, 1);
+    assert.equal(s.reports[0].outcome, "DELIVERED");
+    await s.worker.tick(false);
+    assert.equal(claims, 1);
+    await s.worker.tick(true);
+    assert.equal(claims, 2);
+    assert.equal(s.begins(), 1);
   } finally { await s.cleanup(); }
 });
 test("lost acknowledgement retries only the receipt even after Fiery consumes the file", async () => {

@@ -6,22 +6,27 @@ import { spawnSync } from "node:child_process";
 
 const root = path.resolve(import.meta.dirname, "..");
 const desktopPatch = process.argv.includes("--desktop-patch");
+const pollingPatch = process.argv.includes("--polling-patch");
+if (desktopPatch && pollingPatch) throw Error("Selezionare un solo tipo di aggiornamento.");
 // Lista chiusa: mai archiviare l'intero repository, la configurazione reale o dati runtime.
-const files = desktopPatch ? ["windows/Install-Startup.ps1", "windows/Bridge-Control.ps1"] : [
+const files = pollingPatch ? ["package.json", "package-lock.json", "src/cli.ts", "src/worker.ts", "src/polling.ts",
+  "src/service-hours.ts", "src/runtime-status.ts", "windows/Bridge-Control.ps1",
+  "test/service-hours.test.ts", "test/cli-lifecycle.test.ts",
+  "test/polling.test.ts", "test/worker.test.ts", "AGGIORNAMENTO-RISPARMIO.txt"] : desktopPatch ? ["windows/Install-Startup.ps1", "windows/Bridge-Control.ps1"] : [
   "package.json", "package-lock.json", "tsconfig.json", "config.example.json",
-  "README.md", "README-START-WINDOWS.txt", "AGGIORNAMENTO-DESKTOP.txt", "Configura-Desktop.cmd", "CHANGELOG-PHASE2.md", "VERCEL-STATUS.md",
-  "src/protocol.ts", "src/config.ts", "src/pdf.ts", "src/client.ts", "src/ledger.ts", "src/worker.ts", "src/cli.ts", "src/runtime-status.ts",
+  "README.md", "README-START-WINDOWS.txt", "AGGIORNAMENTO-DESKTOP.txt", "AGGIORNAMENTO-RISPARMIO.txt", "Configura-Desktop.cmd", "CHANGELOG-PHASE2.md", "VERCEL-STATUS.md",
+  "src/protocol.ts", "src/config.ts", "src/pdf.ts", "src/client.ts", "src/ledger.ts", "src/worker.ts", "src/cli.ts", "src/runtime-status.ts", "src/polling.ts", "src/service-hours.ts",
   "windows/Set-BridgeSecret.ps1", "windows/Start-Bridge.ps1", "windows/Install-Startup.ps1", "windows/Bridge-Control.ps1",
-  "test/worker.test.ts", "test/client.test.ts", "test/runtime-status.test.ts", "test/windows-package.test.ts", "test/cli-lifecycle.test.ts"
+  "test/worker.test.ts", "test/client.test.ts", "test/runtime-status.test.ts", "test/windows-package.test.ts", "test/cli-lifecycle.test.ts", "test/polling.test.ts", "test/service-hours.test.ts"
 ];
 const stage = await mkdtemp(path.join(os.tmpdir(), "28print-package-"));
 const outputDir = path.join(root, "output/bridge");
 await mkdir(outputDir, { recursive: true });
-const output = path.join(outputDir, `28PRINT-Bridge-${desktopPatch ? "desktop-fix" : "test"}-${new Date().toISOString().slice(0, 10)}-${randomUUID().slice(0, 8)}.zip`);
+const output = path.join(outputDir, `28PRINT-Bridge-${pollingPatch ? "risparmio" : desktopPatch ? "desktop-fix" : "test"}-${new Date().toISOString().slice(0, 10)}-${randomUUID().slice(0, 8)}.zip`);
 const manifest = [];
 try {
   const entries = files.map(name => ({ source: path.join(root, "bridge", name), name }));
-  if (!desktopPatch) entries.push({ source: path.join(root, "output/pdf/28print-fiery-test-a4.pdf"), name: "test-document/28print-fiery-test-a4.pdf" });
+  if (!desktopPatch && !pollingPatch) entries.push({ source: path.join(root, "output/pdf/28print-fiery-test-a4.pdf"), name: "test-document/28print-fiery-test-a4.pdf" });
   for (const { source, name } of entries) {
     if (!(await lstat(source)).isFile()) throw new Error(`File assente o non regolare: ${name}`);
     const dest = path.join(stage, name);

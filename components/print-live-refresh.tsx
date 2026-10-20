@@ -1,11 +1,11 @@
 "use client";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { startVisiblePolling } from "@/lib/visible-polling";
 export function PrintLiveRefresh() {
   const router = useRouter();
   useEffect(() => {
-    const timer = window.setInterval(() => { if (document.visibilityState === "visible") router.refresh(); }, 15000);
-    return () => window.clearInterval(timer);
+    return startVisiblePolling(() => router.refresh(), { intervalMs: 15000, immediate: false });
   }, [router]);
   return null;
 }

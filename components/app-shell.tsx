@@ -60,7 +60,7 @@ const COMPACT_NAV_MEDIA_QUERY = "(max-width: 1180px)";
 export function AppShell({ children, localPreview = false }: { children: ReactNode; localPreview?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
-  const isLoginRoute = pathname === "/login";
+  const isLoginRoute = pathname === "/login" || pathname === "/sospensione";
   const isPrintRoute = pathname.endsWith("/print");
   const isShopRoute = pathname === "/shop" || pathname.startsWith("/shop/");
   const isDashboardRoute = pathname === "/";
@@ -203,6 +203,8 @@ export function AppShell({ children, localPreview = false }: { children: ReactNo
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [isMobileSearchOpen]);
+
+  if (pathname === "/sospensione") return <>{children}</>;
 
   if (isLoginRoute) {
     return (

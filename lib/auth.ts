@@ -1,9 +1,11 @@
 import { Prisma, type User } from "@prisma/client";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { cookies, headers } from "next/headers";
+import { notFound, redirect } from "next/navigation";
 import { isAuthSecretConfigured, readSession, serializeSession, verifyPassword } from "@/lib/auth-core";
 import { prisma } from "@/lib/prisma";
 import { normalizeStaffNickname } from "@/lib/staff-users";
+import { isShopPublicHostname } from "@/lib/shop-host-routing";
+import { isNightPause, nightPauseEnabled } from "@/lib/night-pause";
 
 const SESSION_COOKIE = "fede_session";
 const SESSION_DURATION_SECONDS = 60 * 60 * 12;
@@ -18,6 +20,11 @@ export function getSession() {
 }
 
 export async function requireAuth() {
+  if (isShopPublicHostname(headers().get("host"))) {
+    notFound();
+  }
+  // Also fence staff Server Actions posted to an otherwise public route.
+  if (nightPauseEnabled() && isNightPause()) redirect("/sospensione");
   const session = getSession();
   if (!session) {
     redirect("/login");
@@ -36,6 +43,7 @@ export async function requireAdmin() {
 }
 
 export async function authenticateUser(nickname: string, password: string) {
+  if (nightPauseEnabled() && isNightPause()) redirect("/sospensione");
   const normalizedNickname = normalizeStaffNickname(nickname);
   const user = await prisma.user.findUnique({
     where: { nickname: normalizedNickname }

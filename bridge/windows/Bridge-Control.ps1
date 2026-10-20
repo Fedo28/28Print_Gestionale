@@ -103,6 +103,7 @@ function Refresh-Panel {
       if (-not $active) { $stateLabel.Text = 'Bridge fermo (attivita pianificata non in esecuzione)' }
       elseif (-not $status) { $stateLabel.Text = 'Avvio in corso / diagnostica non ancora disponibile' }
       elseif ($status.state -eq 'stopped') { $stateLabel.Text = 'Arresto in corso...' }
+      elseif ($status.state -eq 'night_paused') { $stateLabel.Text = 'Pausa notturna - ripresa automatica alle 08:00 (ora italiana)' }
       elseif ($status.state -eq 'retrying') { $stateLabel.Text = 'Connessione o registro da verificare - nuovo tentativo automatico' }
       elseif ($status.lastSuccessAt -and ([DateTimeOffset]::UtcNow - [DateTimeOffset]::Parse($status.lastSuccessAt)).TotalSeconds -lt 90) {
         $stateLabel.Text = 'Bridge attivo - ultimo ciclo riuscito di recente'
